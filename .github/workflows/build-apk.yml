@@ -54,8 +54,15 @@ jobs:
 
       - name: Prepare APK for Release
         run: |
-          APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          echo "Found APK at: $APK_FILE"
+          echo "Listing all APK files:"
+          find . -name "*.apk"
+          APK_FILE=$(find . -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "ERROR: No APK file generated!"
+            find android -type f -name "*debug*"
+            exit 1
+          fi
+          echo "Using APK: $APK_FILE"
           cp "$APK_FILE" sakuin-v1.0.0.apk
           cp "$APK_FILE" sakuin.apk
 
