@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +14,8 @@ import { usePinLock } from "@/components/auth/pin-lock-provider";
 import {
   LogOut,
   Wallet,
+  HandCoins,
+  ArrowRight,
   Calendar,
   Edit3,
   X,
@@ -414,6 +417,46 @@ export default function ProfilePage() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Fitur Keuangan: Multi Rekening & Utang Piutang */}
+      <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-3">
+        <h3 className="text-sm font-extrabold text-foreground">
+          Fitur Dompet & Catatan
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link
+            href="/accounts"
+            className="p-3.5 bg-background hover:bg-muted/50 border border-border rounded-xl flex items-center justify-between gap-2 group transition-all"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                <Wallet className="w-4 h-4 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
+                <p className="text-[10px] text-muted-foreground truncate">Kelola Bank & E-Wallet</p>
+              </div>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-accent transition-colors shrink-0" />
+          </Link>
+
+          <Link
+            href="/debts"
+            className="p-3.5 bg-background hover:bg-muted/50 border border-border rounded-xl flex items-center justify-between gap-2 group transition-all"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                <HandCoins className="w-4 h-4 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
+                <p className="text-[10px] text-muted-foreground truncate">Catat Pinjaman Teman</p>
+              </div>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-accent transition-colors shrink-0" />
+          </Link>
         </div>
       </section>
 

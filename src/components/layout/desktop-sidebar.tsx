@@ -11,6 +11,8 @@ import {
   Receipt,
   PiggyBank,
   User,
+  Wallet,
+  HandCoins,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -26,6 +28,8 @@ const SIDEBAR_NAV_ITEMS: NavItem[] = [
   { name: "Beranda", href: "/dashboard", icon: Home },
   { name: "Statistik", href: "/statistics", icon: PieChart },
   { name: "Catat Transaksi", href: "/record", icon: PlusCircle },
+  { name: "Multi Rekening", href: "/accounts", icon: Wallet },
+  { name: "Utang Piutang", href: "/debts", icon: HandCoins },
   { name: "Riwayat", href: "/transactions", icon: Receipt },
   { name: "Tabungan", href: "/savings", icon: PiggyBank },
   { name: "Profil", href: "/profile", icon: User },

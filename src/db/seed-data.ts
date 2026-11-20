@@ -1,12 +1,87 @@
 // Default categories as defined in PRD Section 8.3 & 10
+export const STUDENT_ONBOARDING_CATEGORIES = [
+  {
+    name: "Makan",
+    description: "Makan warteg, kantin, sehari-hari",
+    icon: "Utensils",
+    color: "#8CCBFF",
+    defaultSelected: true,
+  },
+  {
+    name: "Nongkrong",
+    description: "Kafe, nugas bareng, ngopi",
+    icon: "Coffee",
+    color: "#6B72FF",
+    defaultSelected: true,
+  },
+  {
+    name: "Bensin & Transport",
+    description: "Bensin motor, ojol, angkot, parkir",
+    icon: "Bike",
+    color: "#5BAA6B",
+    defaultSelected: true,
+  },
+  {
+    name: "Jajan & Cemilan",
+    description: "Gorengan, boba, jajan sore",
+    icon: "Cookie",
+    color: "#FFB04A",
+    defaultSelected: true,
+  },
+  {
+    name: "Kuota & Internet",
+    description: "Paket data bulanan, wifi kos",
+    icon: "Wifi",
+    color: "#38BDF8",
+    defaultSelected: true,
+  },
+  {
+    name: "Kebutuhan Kos",
+    description: "Sabun, deterjen, galon air, mandi",
+    icon: "ShoppingBag",
+    color: "#F472B6",
+    defaultSelected: true,
+  },
+  {
+    name: "Laundry",
+    description: "Cuci pakaian kiloan",
+    icon: "Shirt",
+    color: "#A78BFA",
+    defaultSelected: true,
+  },
+  {
+    name: "Listrik & Token",
+    description: "Token listrik kamar kos",
+    icon: "Zap",
+    color: "#FACC15",
+    defaultSelected: false,
+  },
+  {
+    name: "Kuliah & Fotokopi",
+    description: "Print tugas, ATK, modul praktikum",
+    icon: "GraduationCap",
+    color: "#4ADE80",
+    defaultSelected: true,
+  },
+  {
+    name: "Rokok / Vape",
+    description: "Khusus yang merokok atau vaping",
+    icon: "Flame",
+    color: "#FF7B7B",
+    defaultSelected: false,
+  },
+];
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   { name: "Makan", type: "expense", icon: "Utensils", color: "#8CCBFF", requiresLabel: false, isDefault: true, sortOrder: 1 },
   { name: "Nongkrong", type: "expense", icon: "Coffee", color: "#6B72FF", requiresLabel: false, isDefault: true, sortOrder: 2 },
-  { name: "Rokok", type: "expense", icon: "Cigarette", color: "#FF7B7B", requiresLabel: false, isDefault: true, sortOrder: 3 },
-  { name: "Listrik", type: "expense", icon: "Zap", color: "#FFB04A", requiresLabel: false, isDefault: true, sortOrder: 4 },
-  { name: "Kuota", type: "expense", icon: "Wifi", color: "#5BAA6B", requiresLabel: false, isDefault: true, sortOrder: 5 },
-  { name: "Laundry", type: "expense", icon: "Shirt", color: "#A78BFA", requiresLabel: false, isDefault: true, sortOrder: 6 },
-  { name: "Kebutuhan Lain", type: "expense", icon: "MoreHorizontal", color: "#8A8A8A", requiresLabel: true, isDefault: true, sortOrder: 7 },
+  { name: "Bensin & Transport", type: "expense", icon: "Bike", color: "#5BAA6B", requiresLabel: false, isDefault: true, sortOrder: 3 },
+  { name: "Jajan & Cemilan", type: "expense", icon: "Cookie", color: "#FFB04A", requiresLabel: false, isDefault: true, sortOrder: 4 },
+  { name: "Kuota & Internet", type: "expense", icon: "Wifi", color: "#38BDF8", requiresLabel: false, isDefault: true, sortOrder: 5 },
+  { name: "Kebutuhan Kos", type: "expense", icon: "ShoppingBag", color: "#F472B6", requiresLabel: false, isDefault: true, sortOrder: 6 },
+  { name: "Laundry", type: "expense", icon: "Shirt", color: "#A78BFA", requiresLabel: false, isDefault: true, sortOrder: 7 },
+  { name: "Kuliah & Fotokopi", type: "expense", icon: "GraduationCap", color: "#4ADE80", requiresLabel: false, isDefault: true, sortOrder: 8 },
+  { name: "Kebutuhan Lain", type: "expense", icon: "MoreHorizontal", color: "#8A8A8A", requiresLabel: true, isDefault: true, sortOrder: 9 },
 ];
 
 export const DEFAULT_INCOME_CATEGORIES = [

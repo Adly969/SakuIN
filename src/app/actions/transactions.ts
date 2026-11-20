@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { transactions, categories } from "@/db/schema";
+import { transactions, categories, accounts } from "@/db/schema";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -18,6 +18,7 @@ const createTransactionSchema = z
     categoryName: z.string().min(1, "Kategori wajib dipilih"),
     note: z.string().max(200, "Catatan maksimal 200 karakter").optional(),
     customLabel: z.string().max(60, "Keterangan maksimal 60 karakter").optional(),
+    accountId: z.string().uuid().optional(),
     occurredOn: z.string().optional(),
   })
   .refine(
@@ -100,13 +101,36 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
         occurredOn: dateStr,
         note: input.note || null,
         customLabel: input.customLabel || null,
+        accountId: input.accountId || null,
       })
       .returning();
+
+    // Update saldo rekening jika dipilih
+    if (input.accountId) {
+      if (input.type === "expense") {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} - ${BigInt(input.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, input.accountId));
+      } else {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} + ${BigInt(input.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, input.accountId));
+      }
+    }
 
     revalidatePath("/dashboard");
     revalidatePath("/record");
     revalidatePath("/transactions");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
     return {
       success: true,
@@ -400,4 +424,8 @@ export async function getUserCategoriesAction() {
     console.error("Gagal mengambil kategori:", error);
     return { success: false, error: "Gagal mengambil kategori" };
   }
+}
+
+export async function getCategoriesAction() {
+  return getUserCategoriesAction();
 }

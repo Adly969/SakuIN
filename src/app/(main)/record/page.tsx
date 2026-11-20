@@ -21,33 +21,21 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Plus,
+  Bike,
+  Cookie,
+  Wifi,
+  ShoppingBag,
+  Banknote,
+  Landmark,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
   createTransactionAction,
   getTransactionsAction,
+  getCategoriesAction,
 } from "@/app/actions/transactions";
+import { getAccountsAction } from "@/app/actions/accounts";
 import { enqueueOfflineTransaction } from "@/lib/offline-queue";
-
-interface CategoryOption {
-  name: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const EXPENSE_CATEGORIES: CategoryOption[] = [
-  { name: "Makan", icon: Utensils },
-  { name: "Nongkrong", icon: Coffee },
-  { name: "Rokok", icon: Flame },
-  { name: "Listrik", icon: Zap },
-  { name: "Kuota", icon: Smartphone },
-  { name: "Laundry", icon: Shirt },
-];
-
-const INCOME_CATEGORIES: CategoryOption[] = [
-  { name: "Uang Kiriman", icon: Wallet },
-  { name: "Gaji / Upah", icon: Briefcase },
-  { name: "Beasiswa", icon: GraduationCap },
-];
 
 const QUICK_AMOUNTS = [
   { label: "+10rb", value: 10000 },
@@ -66,15 +54,37 @@ interface RecentTx {
   note?: string;
 }
 
+interface CategoryItem {
+  id: string;
+  name: string;
+  type: string;
+  icon: string;
+  color: string;
+  requiresLabel: boolean;
+}
+
+interface AccountItem {
+  id: string;
+  name: string;
+  type: "bank" | "ewallet" | "cash";
+  balance: number;
+  isDefault: boolean;
+}
+
 export default function RecordPage() {
   const router = useRouter();
   const [recordType, setRecordType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState<number>(0);
 
   // Kategori states
+  const [categoriesList, setCategoriesList] = useState<CategoryItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("Makan");
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+
+  // Rekening states
+  const [accountsList, setAccountsList] = useState<AccountItem[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
   // Catatan terpisah
   const [note, setNote] = useState("");
@@ -84,6 +94,33 @@ export default function RecordPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [todayTransactions, setTodayTransactions] = useState<RecentTx[]>([]);
+
+  // Load Categories & Accounts from DB
+  useEffect(() => {
+    async function initData() {
+      try {
+        const [catRes, accRes] = await Promise.all([
+          getCategoriesAction(),
+          getAccountsAction(),
+        ]);
+
+        if (catRes.success && catRes.data && catRes.data.length > 0) {
+          setCategoriesList(catRes.data);
+          const firstExp = catRes.data.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          if (firstExp) setSelectedCategory(firstExp.name);
+        }
+
+        if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
+          setAccountsList(accRes.data.accounts);
+          const def = accRes.data.accounts.find((a) => a.isDefault) || accRes.data.accounts[0];
+          setSelectedAccountId(def.id);
+        }
+      } catch (err) {
+        console.error("Gagal inisialisasi data:", err);
+      }
+    }
+    initData();
+  }, []);
 
   // Load today's recorded transactions for context
   useEffect(() => {
@@ -104,7 +141,46 @@ export default function RecordPage() {
     loadRecent();
   }, [showToast]);
 
-  const activeCategories = recordType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const getCategoryIconComponent = (name: string, iconStr?: string) => {
+    const key = (iconStr || name).toLowerCase();
+    if (key.includes("makan") || key === "utensils") return Utensils;
+    if (key.includes("nongkrong") || key.includes("kopi") || key === "coffee") return Coffee;
+    if (key.includes("bensin") || key.includes("transport") || key === "bike") return Bike;
+    if (key.includes("jajan") || key.includes("cemilan") || key === "cookie") return Cookie;
+    if (key.includes("kuota") || key.includes("internet") || key === "wifi") return Wifi;
+    if (key.includes("kos") || key === "shoppingbag") return ShoppingBag;
+    if (key.includes("laundry") || key === "shirt") return Shirt;
+    if (key.includes("listrik") || key === "zap") return Zap;
+    if (key.includes("kuliah") || key.includes("fotokopi") || key.includes("beasiswa") || key === "graduationcap")
+      return GraduationCap;
+    if (key.includes("rokok") || key.includes("vape") || key === "flame" || key === "cigarette") return Flame;
+    if (key.includes("kiriman") || key === "wallet") return Wallet;
+    if (key.includes("gaji") || key.includes("kerja") || key === "briefcase") return Briefcase;
+    return Tag;
+  };
+
+  const currentCategories = categoriesList.filter(
+    (c) => c.type === recordType && c.name !== "Kebutuhan Lain" && c.name !== "Lainnya"
+  );
+
+  // Fallback if dbCategories empty yet
+  const displayCategories =
+    currentCategories.length > 0
+      ? currentCategories
+      : recordType === "expense"
+      ? [
+          { id: "1", name: "Makan", type: "expense", icon: "Utensils", color: "#8CCBFF", requiresLabel: false },
+          { id: "2", name: "Nongkrong", type: "expense", icon: "Coffee", color: "#6B72FF", requiresLabel: false },
+          { id: "3", name: "Bensin & Transport", type: "expense", icon: "Bike", color: "#5BAA6B", requiresLabel: false },
+          { id: "4", name: "Jajan & Cemilan", type: "expense", icon: "Cookie", color: "#FFB04A", requiresLabel: false },
+          { id: "5", name: "Kuota & Internet", type: "expense", icon: "Wifi", color: "#38BDF8", requiresLabel: false },
+          { id: "6", name: "Laundry", type: "expense", icon: "Shirt", color: "#A78BFA", requiresLabel: false },
+        ]
+      : [
+          { id: "7", name: "Uang Kiriman", type: "income", icon: "Wallet", color: "#D4FF5A", requiresLabel: false },
+          { id: "8", name: "Kerja Sambilan", type: "income", icon: "Briefcase", color: "#8CCBFF", requiresLabel: false },
+          { id: "9", name: "Beasiswa", type: "income", icon: "GraduationCap", color: "#5BAA6B", requiresLabel: false },
+        ];
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -115,13 +191,10 @@ export default function RecordPage() {
     if (!isCustomCategory && !selectedCategory) return;
 
     setIsSaving(true);
-    const finalCategory = isCustomCategory
-      ? customCategory.trim()
-      : selectedCategory;
-
+    const finalCategory = isCustomCategory ? customCategory.trim() : selectedCategory;
     const itemTitle = note.trim() || finalCategory;
 
-    // PRD T6: Antrean offline bila koneksi terputus
+    // Offline Queue
     if (typeof window !== "undefined" && !navigator.onLine) {
       enqueueOfflineTransaction({
         amount,
@@ -135,18 +208,13 @@ export default function RecordPage() {
       setToastMessage(`${itemTitle} (${formatRupiah(amount)}) disimpan ke antrean offline!`);
       setShowToast(true);
 
-      // Reset form
       setAmount(0);
       setIsCustomCategory(false);
       setCustomCategory("");
       setNote("");
-      setSelectedCategory(recordType === "expense" ? "Makan" : "Uang Kiriman");
-      setTxDate(new Date().toISOString().split("T")[0]);
       setIsSaving(false);
 
-      setTimeout(() => {
-        setShowToast(false);
-      }, 4000);
+      setTimeout(() => setShowToast(false), 4000);
       return;
     }
 
@@ -157,6 +225,7 @@ export default function RecordPage() {
         categoryName: finalCategory,
         note: note.trim() || undefined,
         customLabel: isCustomCategory ? customCategory.trim() : (note.trim() || undefined),
+        accountId: selectedAccountId || undefined,
         occurredOn: txDate,
       });
 
@@ -164,17 +233,12 @@ export default function RecordPage() {
         setToastMessage(`${itemTitle} (${formatRupiah(amount)}) berhasil dicatat!`);
         setShowToast(true);
 
-        // Reset form
         setAmount(0);
         setIsCustomCategory(false);
         setCustomCategory("");
         setNote("");
-        setSelectedCategory(recordType === "expense" ? "Makan" : "Uang Kiriman");
-        setTxDate(new Date().toISOString().split("T")[0]);
 
-        setTimeout(() => {
-          setShowToast(false);
-        }, 4000);
+        setTimeout(() => setShowToast(false), 4000);
       } else {
         alert(res.error || "Gagal menyimpan transaksi");
       }
@@ -188,7 +252,7 @@ export default function RecordPage() {
         customLabel: isCustomCategory ? customCategory.trim() : (note.trim() || undefined),
         occurredOn: txDate,
       });
-      setToastMessage(`${itemTitle} disimpan ke antrean offline (koneksi tidak stabil)!`);
+      setToastMessage(`${itemTitle} disimpan ke antrean offline!`);
       setShowToast(true);
       setAmount(0);
       setIsCustomCategory(false);
@@ -200,29 +264,18 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-xl mx-auto pb-2">
-      {/* Header Halaman Catat */}
-      <div className="flex items-center justify-between px-1">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-            Catat Transaksi
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Pencatatan cepat pengeluaran dan pemasukan
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => router.push("/transactions")}
-          className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
-        >
-          <span>Lihat Riwayat</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+    <div className="space-y-6 max-w-xl mx-auto pb-12">
+      {/* 1. Header Halaman */}
+      <div>
+        <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+          Catat Transaksi
+        </h1>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Catat pengeluaran atau pemasukanmu secara instan dalam hitungan detik.
+        </p>
       </div>
 
-      {/* Toast Alert */}
+      {/* Floating Success Notification */}
       <AnimatePresence>
         {showToast && (
           <motion.div
@@ -286,7 +339,7 @@ export default function RecordPage() {
           </button>
         </div>
 
-        {/* Input Nominal Langsung (Ketik Sendiri Angkanya) */}
+        {/* Input Nominal Langsung */}
         <div className="bg-background rounded-xl border border-border p-4 space-y-2">
           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
             Nominal {recordType === "expense" ? "Pengeluaran" : "Pemasukan"}
@@ -310,9 +363,7 @@ export default function RecordPage() {
               }}
               placeholder="0"
               className={`flex-1 min-w-0 bg-transparent font-black text-foreground placeholder:text-muted-foreground/30 focus:outline-none tracking-tight ${
-                amount >= 10000000
-                  ? "text-xl sm:text-2xl"
-                  : "text-2xl sm:text-3xl"
+                amount >= 10000000 ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"
               }`}
             />
             {amount > 0 && (
@@ -350,14 +401,13 @@ export default function RecordPage() {
             Pilih Kategori
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {activeCategories.map((cat) => {
-              const Icon = cat.icon;
-              // Kategori bawaan hanya terpilih jika TIDAK sedang memilih kategori lain
+            {displayCategories.map((cat) => {
+              const Icon = getCategoryIconComponent(cat.name, cat.icon);
               const isSelected = !isCustomCategory && selectedCategory === cat.name;
 
               return (
                 <button
-                  key={cat.name}
+                  key={cat.id || cat.name}
                   type="button"
                   onClick={() => {
                     setSelectedCategory(cat.name);
@@ -394,7 +444,7 @@ export default function RecordPage() {
             <span>Kategori Lainnya</span>
           </button>
 
-          {/* Kolom Input Kategori Lain (Muncul jika Kategori Lain dipilih) */}
+          {/* Kolom Input Kategori Lain */}
           <AnimatePresence>
             {isCustomCategory && (
               <motion.div
@@ -413,13 +463,51 @@ export default function RecordPage() {
                   autoFocus
                   value={customCategory}
                   onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="Ketik nama kategori (contoh: Bensin, Skincare, Obat...)"
+                  placeholder="Ketik nama kategori (contoh: Servis Motor, Skincare, Obat...)"
                   className="w-full px-3.5 py-2.5 rounded-lg bg-card border border-accent text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
+        {/* Pilih Sumber Rekening / Dompet (Multi Rekening) */}
+        {accountsList.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-bold text-foreground flex items-center justify-between">
+              <span>{recordType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
+              <span className="text-[10px] text-muted-foreground">Saldo otomatis terupdate</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {accountsList.map((acc) => {
+                const isSelected = selectedAccountId === acc.id;
+                const AccIcon =
+                  acc.type === "bank" ? Landmark : acc.type === "ewallet" ? Smartphone : Banknote;
+
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => setSelectedAccountId(acc.id)}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 ${
+                      isSelected
+                        ? "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <AccIcon className="w-3.5 h-3.5 shrink-0 text-accent" />
+                      <span className="text-xs font-bold truncate">{acc.name}</span>
+                    </div>
+                    <span className="text-[10px] font-semibold text-muted-foreground truncate">
+                      {formatRupiah(acc.balance)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Kolom Catatan Terpisah */}
         <div className="space-y-1.5">
@@ -451,37 +539,41 @@ export default function RecordPage() {
           />
         </div>
 
-        {/* Tombol Simpan CTA with breathing room */}
-        <div className="pt-2 pb-2">
-          <button
-            type="submit"
-            disabled={
-              amount <= 0 ||
-              isSaving ||
-              (isCustomCategory ? !customCategory.trim() : !selectedCategory)
-            }
-            className="w-full py-4 bg-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] font-black rounded-full text-sm shadow-lg shadow-accent/20 transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2"
-          >
-            <Check className="w-5 h-5 stroke-[3]" />
-            <span>{isSaving ? "Menyimpan..." : "Simpan Catatan"}</span>
-          </button>
-        </div>
+        {/* Tombol Simpan Transaksi */}
+        <button
+          type="submit"
+          disabled={amount <= 0 || isSaving || (isCustomCategory && !customCategory.trim())}
+          className={`w-full py-3.5 rounded-pill text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md ${
+            amount > 0 && (!isCustomCategory || customCategory.trim())
+              ? "bg-accent hover:bg-accent-hover text-[#1F1F1F] active:scale-[0.98] shadow-accent/20 cursor-pointer"
+              : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+          }`}
+        >
+          {isSaving ? (
+            <span>Menyimpan transaksi...</span>
+          ) : (
+            <>
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>
+                Simpan {recordType === "expense" ? "Pengeluaran" : "Pemasukan"}
+                {amount > 0 ? ` (${formatRupiah(amount)})` : ""}
+              </span>
+            </>
+          )}
+        </button>
       </form>
 
-      {/* Riwayat Ringkas Hari Ini (Supaya pengguna langsung tahu apa yang sudah dicatat hari ini) */}
+      {/* 3 Transaksi Terakhir Hari Ini */}
       {todayTransactions.length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-3">
+        <section className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-                Dicatat Hari Ini ({todayTransactions.length})
-              </h2>
-            </div>
+            <h2 className="text-[11px] font-black text-muted-foreground uppercase tracking-wider">
+              Transaksi Terakhir Hari Ini
+            </h2>
             <button
               type="button"
               onClick={() => router.push("/transactions")}
-              className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
+              className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
             >
               <span>Semua Riwayat</span>
               <ArrowRight className="w-3 h-3" />
@@ -492,23 +584,21 @@ export default function RecordPage() {
             {todayTransactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-background border border-border text-xs"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-background border border-border text-xs"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className="min-w-0 flex items-center gap-2">
                   <div
-                    className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${
-                      tx.type === "expense"
-                        ? "bg-expense/15 text-expense"
-                        : "bg-accent/20 text-accent"
+                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
+                      tx.type === "expense" ? "bg-expense/15 text-expense" : "bg-accent/20 text-accent"
                     }`}
                   >
                     {tx.type === "expense" ? (
-                      <ArrowUpRight className="w-4 h-4" />
+                      <ArrowUpRight className="w-3 h-3 stroke-[2.5]" />
                     ) : (
-                      <ArrowDownLeft className="w-4 h-4" />
+                      <ArrowDownLeft className="w-3 h-3 stroke-[2.5]" />
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="truncate">
                     <p className="font-bold text-foreground truncate">{tx.title}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{tx.category}</p>
                   </div>

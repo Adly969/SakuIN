@@ -23,6 +23,7 @@ import {
   Zap,
   Tag,
   Wallet,
+  HandCoins,
   Briefcase,
   GraduationCap,
 } from "lucide-react";
@@ -401,6 +402,35 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* 2.5 Akses Cepat: Multi Rekening & Utang Piutang */}
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/accounts"
+          className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3 shadow-xs transition-all flex items-center gap-2.5 group"
+        >
+          <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <Wallet className="w-4 h-4 stroke-[2.2]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
+            <p className="text-[10px] text-muted-foreground truncate">Bank, E-Wallet, Tunai</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/debts"
+          className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3 shadow-xs transition-all flex items-center gap-2.5 group"
+        >
+          <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <HandCoins className="w-4 h-4 stroke-[2.2]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
+            <p className="text-[10px] text-muted-foreground truncate">Catat Utang Teman</p>
+          </div>
+        </Link>
+      </div>
 
       {/* 3. Filter Controls: Dropdown Pill on Left & Month/Year Segmented Toggle on Right */}
       <div className="flex items-center justify-between px-1">
