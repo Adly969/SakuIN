@@ -30,11 +30,20 @@ export async function getPinStatusAction() {
       where: eq(profiles.id, user.id),
     });
 
+    const cookieStore = await cookies();
+
     if (!profile || !profile.pinEnabled || !profile.pinHash) {
+      cookieStore.delete("sakuin_has_pin");
       return { success: true, pinEnabled: false, isUnlocked: true, userName: profile?.name || "Kawan" };
     }
 
-    const cookieStore = await cookies();
+    // Set cookie permanen tanda bahwa akun ini menggunakan PIN
+    cookieStore.set("sakuin_has_pin", "true", {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+
     const isUnlocked = cookieStore.get("sakuin_pin_unlocked")?.value === "true";
 
     return {
@@ -80,6 +89,11 @@ export async function setupPinAction(pin: string) {
 
     // Jangan simpan sesi terbuka lama agar selalu terkunci saat aplikasi baru dibuka
     const cookieStore = await cookies();
+    cookieStore.set("sakuin_has_pin", "true", {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
     cookieStore.set("sakuin_pin_unlocked", "true", {
       path: "/",
       httpOnly: true,
@@ -171,6 +185,7 @@ export async function disablePinAction() {
 
     const cookieStore = await cookies();
     cookieStore.delete("sakuin_pin_unlocked");
+    cookieStore.delete("sakuin_has_pin");
 
     revalidatePath("/profile");
     revalidatePath("/dashboard");
@@ -189,6 +204,7 @@ export async function lockAppAction() {
   try {
     const cookieStore = await cookies();
     cookieStore.delete("sakuin_pin_unlocked");
+    cookieStore.delete("sakuin_has_pin");
     revalidatePath("/dashboard");
     return { success: true };
   } catch (err) {
