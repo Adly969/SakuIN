@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { getProfileAction } from "@/app/actions/profile";
+import { scheduleNativeDailyReminder } from "@/lib/native-notifications";
 
 export function ReminderScheduler() {
   const isCheckingRef = useRef(false);
@@ -20,6 +21,14 @@ export function ReminderScheduler() {
           }
           if (res.data.name) {
             localStorage.setItem("sakuin_user_name", res.data.name);
+          }
+
+          // Daftarkan ke alarm Android Native jika aktif
+          if (res.data.reminderEnabled && res.data.reminderTime) {
+            const [h, m] = res.data.reminderTime.split(":").map(Number);
+            if (!isNaN(h) && !isNaN(m)) {
+              await scheduleNativeDailyReminder(h, m, res.data.name || "Kawan");
+            }
           }
         }
       } catch (err) {

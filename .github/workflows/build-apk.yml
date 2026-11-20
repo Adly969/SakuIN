@@ -1,0 +1,70 @@
+name: Build Android APK (SakuIN)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build Native Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Make Gradlew Executable
+        run: chmod +x android/gradlew
+
+      - name: Build APK (Debug / Standalone)
+        run: |
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/sakuin.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SakuIN-Android-APK
+          path: android/app/build/outputs/apk/debug/sakuin.apk
+          retention-days: 14
+
+      - name: Create GitHub Release (On Tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/debug/sakuin.apk
+          name: SakuIN ${{ github.ref_name }}
+          body: |
+            ## Rilis Resmi SakuIN APK Android (${{ github.ref_name }})
+            - Aplikasi Native Android mandiri (didukung Android AlarmManager).
+            - Notifikasi pengingat harian tetap berbunyi meski aplikasi mati atau HP terkunci.
+            - Sangat ringan (~4 MB).
+            - Login dengan Akun Google didukung penuh.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

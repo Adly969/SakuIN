@@ -12,6 +12,11 @@ import {
 import { setupPinAction, disablePinAction } from "@/app/actions/pin";
 import { usePinLock } from "@/components/auth/pin-lock-provider";
 import {
+  scheduleNativeDailyReminder,
+  cancelNativeDailyReminder,
+  requestNotificationPermission,
+} from "@/lib/native-notifications";
+import {
   LogOut,
   Wallet,
   HandCoins,
@@ -175,10 +180,14 @@ export default function ProfilePage() {
     }
     if (!profile) return;
 
-    if (nextVal && typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        await Notification.requestPermission();
+    if (nextVal) {
+      await requestNotificationPermission();
+      const [h, m] = reminderTime.split(":").map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        await scheduleNativeDailyReminder(h, m, profile.name || "Kawan");
       }
+    } else {
+      await cancelNativeDailyReminder();
     }
 
     try {
@@ -207,6 +216,13 @@ export default function ProfilePage() {
       window.dispatchEvent(new Event("sakuin:reminder-updated"));
     }
     if (!profile) return;
+
+    if (reminderEnabled) {
+      const [h, m] = newTime.split(":").map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        await scheduleNativeDailyReminder(h, m, profile.name || "Kawan");
+      }
+    }
 
     try {
       await updateProfileAction({
