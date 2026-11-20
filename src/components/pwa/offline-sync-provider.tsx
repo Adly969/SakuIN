@@ -145,7 +145,7 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
             exit={{ opacity: 0, y: 20 }}
             role="status"
             aria-live="polite"
-            className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-card border border-border text-foreground text-xs font-bold rounded-xl shadow-2xl flex items-center gap-2.5 max-w-sm"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+96px)] sm:bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-card border border-border text-foreground text-xs font-bold rounded-xl shadow-2xl flex items-center gap-2.5 max-w-sm"
           >
             <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
             <span>{syncToast.message}</span>

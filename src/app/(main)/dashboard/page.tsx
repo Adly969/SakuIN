@@ -124,6 +124,7 @@ export default function DashboardPage() {
   const [trendType, setTrendType] = useState<"expense" | "income">("expense");
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [activeMonthData, setActiveMonthData] = useState<MonthHistoryItem | null>(null);
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState<number>(0);
   const [showMotivation, setShowMotivation] = useState(true);
   const [isRefreshingQuote, setIsRefreshingQuote] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -485,22 +486,28 @@ export default function DashboardPage() {
                         paddingAngle={4}
                         cornerRadius={6}
                         stroke="none"
+                        onClick={(_, idx) => setActiveCategoryIndex(idx)}
+                        className="cursor-pointer"
                       >
                         {donutData.map((entry: CategoryItem, index: number) => (
-                          <Cell key={`donut-${index}`} fill={entry.color} />
+                          <Cell
+                            key={`donut-${index}`}
+                            fill={entry.color}
+                            opacity={activeCategoryIndex === index ? 1 : 0.85}
+                          />
                         ))}
                       </Pie>
                     </RePieChart>
                   </ResponsiveContainer>
                 )}
 
-                {/* Large Bold Percentage in Center */}
+                {/* Large Bold Percentage in Center (Interactive) */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-2xl font-black tracking-tight text-foreground">
-                    {donutData[0]?.value || 0}%
+                    {(donutData[activeCategoryIndex] || donutData[0])?.value || 0}%
                   </span>
                   <span className="text-[10px] font-semibold text-muted-foreground -mt-0.5 truncate max-w-[80px]">
-                    {donutData[0]?.name || "-"}
+                    {(donutData[activeCategoryIndex] || donutData[0])?.name || "-"}
                   </span>
                 </div>
               </>
@@ -508,27 +515,36 @@ export default function DashboardPage() {
           </div>
 
           {/* Donut Legend Items */}
-          <div className="space-y-1.5 pt-3 border-t border-border/60">
+          <div className="space-y-1 pt-3 border-t border-border/60">
             {donutData.length === 0 ? (
               <p className="text-[10px] text-muted-foreground text-center py-1">
                 Kategori akan muncul setelah mencatat transaksi
               </p>
             ) : (
-              donutData.slice(0, 4).map((cat: CategoryItem) => (
-                <div
-                  key={cat.name}
-                  className="flex items-center justify-between text-[11px] font-semibold"
-                >
-                  <div className="flex items-center gap-1.5 truncate max-w-[75%]">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: cat.color }}
-                    />
-                    <span className="text-muted-foreground truncate">{cat.name}</span>
-                  </div>
-                  <span className="text-foreground font-bold">{cat.value}%</span>
-                </div>
-              ))
+              donutData.map((cat: CategoryItem, idx: number) => {
+                const isSelected = activeCategoryIndex === idx;
+                return (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() => setActiveCategoryIndex(idx)}
+                    className={`w-full flex items-center justify-between text-[11px] font-semibold px-1.5 py-0.5 rounded-md transition-all text-left ${
+                      isSelected
+                        ? "bg-muted text-foreground"
+                        : "hover:bg-muted/40 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate max-w-[75%]">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      <span className="truncate">{cat.name}</span>
+                    </div>
+                    <span className="text-foreground font-bold shrink-0">{cat.value}%</span>
+                  </button>
+                );
+              })
             )}
           </div>
         </section>

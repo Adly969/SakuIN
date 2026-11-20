@@ -79,7 +79,7 @@ export function PwaInstaller() {
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 50 }}
-        className="fixed bottom-24 sm:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-40 bg-card border border-border p-4 rounded-xl shadow-2xl flex items-center justify-between gap-3"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+104px)] sm:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-40 bg-card/95 backdrop-blur-md border border-border p-3.5 rounded-xl shadow-2xl flex items-center justify-between gap-3"
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2.5 rounded-lg bg-accent/15 text-accent shrink-0">
@@ -97,10 +97,10 @@ export function PwaInstaller() {
           <button
             type="button"
             onClick={handleInstallClick}
-            className="flex items-center gap-1.5 bg-accent text-accent-foreground px-3 py-1.5 rounded-lg text-xs font-bold shadow-xs hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 bg-[#D4FF5A] text-[#1F1F1F] px-3.5 py-1.5 rounded-lg text-xs font-black shadow-sm hover:brightness-105 active:scale-95 transition-all"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Pasang</span>
+            <Download className="w-3.5 h-3.5 text-[#1F1F1F] stroke-[2.5]" />
+            <span className="text-[#1F1F1F] font-black">Pasang</span>
           </button>
           <button
             type="button"

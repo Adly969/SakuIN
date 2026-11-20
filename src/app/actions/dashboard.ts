@@ -154,24 +154,58 @@ export async function getDashboardDataAction() {
         .where(eq(profiles.id, userId));
     }
 
-    // 8. Data Kategori Riil untuk Donut Chart
-    const categoryPalette = ["#8CCBFF", "#6B72FF", "#5BAA6B", "#FFB04A", "#FF7B7B", "#D4FF5A", "#A78BFA", "#8A8A8A"];
-    const donutCategories = Object.entries(categoryTotals).map(([name, val], idx) => ({
-      name,
-      amount: val.amount,
-      value: totalExpense > 0 ? Math.round((val.amount / totalExpense) * 100) : 0,
-      color: categoryPalette[idx % categoryPalette.length],
-    }));
+    // 8. Data Kategori Riil untuk Donut Chart (Diurutkan dari pengeluaran terbesar)
+    const categoryPalette = [
+      "#D4FF5A", // Brand lime untuk kategori #1 terbesar
+      "#8CCBFF", // Biru muda
+      "#FFB04A", // Oranye
+      "#FF7B7B", // Merah koral
+      "#6B72FF", // Indigo
+      "#5BAA6B", // Hijau
+      "#A78BFA", // Ungu
+      "#8A8A8A", // Abu-abu
+    ];
+
+    const sortedEntries = Object.entries(categoryTotals)
+      .map(([name, val]) => ({
+        name,
+        amount: val.amount,
+        value: totalExpense > 0 ? Math.round((val.amount / totalExpense) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    let donutCategories: { name: string; amount: number; value: number; color: string }[] = [];
+    if (sortedEntries.length <= 4) {
+      donutCategories = sortedEntries.map((item, idx) => ({
+        ...item,
+        color: categoryPalette[idx % categoryPalette.length],
+      }));
+    } else {
+      const top3 = sortedEntries.slice(0, 3);
+      const remaining = sortedEntries.slice(3);
+      const remainingAmount = remaining.reduce((sum, item) => sum + item.amount, 0);
+      const remainingValue = totalExpense > 0 ? Math.round((remainingAmount / totalExpense) * 100) : 0;
+
+      donutCategories = [
+        ...top3.map((item, idx) => ({
+          ...item,
+          color: categoryPalette[idx % categoryPalette.length],
+        })),
+        {
+          name: "Lainnya",
+          amount: remainingAmount,
+          value: remainingValue,
+          color: "#8A8A8A",
+        },
+      ];
+    }
 
     // Top 3 Pengeluaran Terbesar Periode Ini (PRD G1 & G6)
-    const topExpenses = Object.entries(categoryTotals)
-      .map(([name, data]) => ({
-        name,
-        amount: data.amount,
-        percentage: totalExpense > 0 ? Math.round((data.amount / totalExpense) * 100) : 0,
-      }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 3);
+    const topExpenses = sortedEntries.slice(0, 3).map((item) => ({
+      name: item.name,
+      amount: item.amount,
+      percentage: item.value,
+    }));
 
     // 9. Komposisi Bulan Ini Riil (Uang Masuk vs Pengeluaran Aktual vs Tabungan)
     const effectiveIncome = allowance + totalIncome;
