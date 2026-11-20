@@ -92,3 +92,49 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+// Push Notification Handler
+self.addEventListener("push", (event) => {
+  let data = {
+    title: "SakuIN — Waktunya Catat Keuangan!",
+    body: "Sudah mencatat pengeluaran hari ini? Yuk luangkan 10 detik agar batas harianmu tetap aman!",
+  };
+
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: "/logo-mark.png",
+    badge: "/logo-mark.png",
+    vibrate: [200, 100, 200],
+    data: { url: "/record" },
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title, options));
+});
+
+// Notification Click Handler (Buka aplikasi ke halaman Catat Transaksi)
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ("focus" in client) {
+            return client.focus();
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow("/record");
+        }
+      })
+  );
+});

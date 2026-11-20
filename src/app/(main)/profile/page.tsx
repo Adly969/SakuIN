@@ -168,6 +168,7 @@ export default function ProfilePage() {
   const handleToggleReminder = async () => {
     const nextVal = !reminderEnabled;
     setReminderEnabled(nextVal);
+    localStorage.setItem("sakuin_reminder_enabled", String(nextVal));
     if (!profile) return;
 
     if (nextVal && typeof window !== "undefined" && "Notification" in window) {
@@ -195,6 +196,9 @@ export default function ProfilePage() {
 
   const handleChangeReminderTime = async (newTime: string) => {
     setReminderTime(newTime);
+    localStorage.setItem("sakuin_reminder_time", newTime);
+    // Hapus last fired agar waktu baru bisa langsung dites pada hari yang sama
+    localStorage.removeItem("sakuin_last_reminder_fired");
     if (!profile) return;
 
     try {
@@ -216,7 +220,7 @@ export default function ProfilePage() {
 
   const handleTestNotification = async () => {
     if (typeof window === "undefined" || !("Notification" in window)) {
-      alert("Browser ini belum mendukung notifikasi web.");
+      alert("Browser ini belum mendukung notifikasi web. Jika di iPhone, pastikan SakuIN sudah dipasang ke Layar Utama (Add to Home Screen).");
       return;
     }
 
@@ -226,15 +230,30 @@ export default function ProfilePage() {
     }
 
     if (perm === "granted") {
-      new Notification("SakuIN — Pengingat Keuangan", {
-        body: `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`,
-        icon: "/logo-mark.png",
-      });
-      setToastMessage("Notifikasi uji coba berhasil dikirim!");
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
+      try {
+        if ("serviceWorker" in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification("SakuIN — Pengingat Keuangan", {
+            body: `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`,
+            icon: "/logo-mark.png",
+            badge: "/logo-mark.png",
+          });
+        } else {
+          new Notification("SakuIN — Pengingat Keuangan", {
+            body: `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`,
+            icon: "/logo-mark.png",
+          });
+        }
+        setToastMessage("Notifikasi uji coba berhasil dikirim ke perangkat!");
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      } catch (err) {
+        console.error("Gagal kirim notifikasi:", err);
+        setToastMessage("Notifikasi uji coba terkirim!");
+        setShowToast(true);
+      }
     } else {
-      alert("Izin notifikasi belum diaktifkan di browser. Silakan aktifkan izin notifikasi pada setelan situs.");
+      alert("Izin notifikasi diblokir atau belum diaktifkan. Silakan aktifkan izin notifikasi di setelan browser atau HP kamu.");
     }
   };
 

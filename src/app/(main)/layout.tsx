@@ -5,6 +5,7 @@ import { TopHeader } from "@/components/layout/top-header";
 import { PinLockProvider } from "@/components/auth/pin-lock-provider";
 import { OfflineSyncProvider } from "@/components/pwa/offline-sync-provider";
 import { PwaInstaller } from "@/components/pwa/pwa-installer";
+import { ReminderScheduler } from "@/components/pwa/reminder-scheduler";
 
 export default function MainLayout({
   children,
@@ -35,6 +36,9 @@ export default function MainLayout({
 
         {/* PWA Install Prompt Banner */}
         <PwaInstaller />
+
+        {/* Background Reminder Scheduler */}
+        <ReminderScheduler />
       </OfflineSyncProvider>
     </PinLockProvider>
   );
