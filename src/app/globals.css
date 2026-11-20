@@ -100,13 +100,3 @@ body,
   }
 }
 
-/* PWA Safe Area Insets for Mobile Status Bar & Cutout */
-.safe-top-header {
-  padding-top: max(calc(env(safe-area-inset-top, 0px) + 0.65rem), 0.75rem);
-}
-
-@media all and (display-mode: standalone) {
-  .safe-top-header {
-    padding-top: max(calc(env(safe-area-inset-top, 0px) + 0.65rem), 2.75rem);
-  }
-}

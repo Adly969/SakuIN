@@ -71,7 +71,11 @@ export async function getDashboardDataAction() {
 
         if (txMonthKey === currentMonthKey) {
           totalExpense += amt;
-          const catName = tx.category?.name || "Lainnya";
+          let catName = tx.category?.name || "Lainnya";
+          // Jika kategori adalah Kebutuhan Lain / Lainnya dan terdapat customLabel, gunakan customLabel
+          if ((catName === "Kebutuhan Lain" || catName === "Lainnya") && tx.customLabel?.trim()) {
+            catName = tx.customLabel.trim();
+          }
           if (!categoryTotals[catName]) {
             categoryTotals[catName] = { amount: 0, count: 0 };
           }
@@ -167,27 +171,33 @@ export async function getDashboardDataAction() {
     ];
 
     const sortedEntries = Object.entries(categoryTotals)
-      .map(([name, val]) => ({
-        name,
-        amount: val.amount,
-        value: totalExpense > 0 ? Math.round((val.amount / totalExpense) * 100) : 0,
-      }))
+      .map(([name, val]) => {
+        const rawPercent = totalExpense > 0 ? (val.amount / totalExpense) * 100 : 0;
+        const rounded = Math.round(rawPercent);
+        // Pastikan kategori dengan nominal > 0 tidak tertulis 0% jika dibulatkan
+        const displayValue = val.amount > 0 && rounded === 0 ? 1 : rounded;
+        return {
+          name,
+          amount: val.amount,
+          value: displayValue,
+        };
+      })
       .sort((a, b) => b.amount - a.amount);
 
     let donutCategories: { name: string; amount: number; value: number; color: string }[] = [];
-    if (sortedEntries.length <= 4) {
+    if (sortedEntries.length <= 5) {
       donutCategories = sortedEntries.map((item, idx) => ({
         ...item,
         color: categoryPalette[idx % categoryPalette.length],
       }));
     } else {
-      const top3 = sortedEntries.slice(0, 3);
-      const remaining = sortedEntries.slice(3);
+      const top4 = sortedEntries.slice(0, 4);
+      const remaining = sortedEntries.slice(4);
       const remainingAmount = remaining.reduce((sum, item) => sum + item.amount, 0);
-      const remainingValue = totalExpense > 0 ? Math.round((remainingAmount / totalExpense) * 100) : 0;
+      const remainingValue = totalExpense > 0 ? Math.max(1, Math.round((remainingAmount / totalExpense) * 100)) : 0;
 
       donutCategories = [
-        ...top3.map((item, idx) => ({
+        ...top4.map((item, idx) => ({
           ...item,
           color: categoryPalette[idx % categoryPalette.length],
         })),
