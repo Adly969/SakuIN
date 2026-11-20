@@ -3,8 +3,13 @@ name: Build Android APK (SakuIN)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -39,30 +44,33 @@ jobs:
       - name: Build APK (Debug / Standalone)
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
-      - name: Rename APK
+      - name: Prepare APK for Release
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/sakuin.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk sakuin-v1.0.0.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk sakuin.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SakuIN-Android-APK
-          path: android/app/build/outputs/apk/debug/sakuin.apk
+          path: sakuin-v1.0.0.apk
           retention-days: 14
 
-      - name: Create GitHub Release (On Tag)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/sakuin.apk
-          name: SakuIN ${{ github.ref_name }}
+          tag_name: v1.0.0
+          name: SakuIN v1.0.0 (Android APK)
+          files: |
+            sakuin-v1.0.0.apk
+            sakuin.apk
           body: |
-            ## Rilis Resmi SakuIN APK Android (${{ github.ref_name }})
+            ## Rilis Resmi SakuIN APK Android (v1.0.0)
             - Aplikasi Native Android mandiri (didukung Android AlarmManager).
-            - Notifikasi pengingat harian tetap berbunyi meski aplikasi mati atau HP terkunci.
-            - Sangat ringan (~4 MB).
+            - Notifikasi pengingat harian berbunyi tepat waktu meski aplikasi ditutup atau layar HP mati.
+            - Sangat ringan (~4.5 MB), hemat kuota mahasiswa.
             - Login dengan Akun Google didukung penuh.
           draft: false
           prerelease: false
