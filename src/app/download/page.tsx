@@ -84,21 +84,8 @@ export default function DownloadPage() {
       {/* 2. Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 sm:py-14 space-y-10 w-full">
         {/* Hero Section */}
-        <div className="text-center space-y-4 max-w-xl mx-auto">
-          {/* Glowing App Icon Badge */}
-          <div className="relative inline-block mx-auto mb-1">
-            <div className="absolute inset-0 bg-accent/25 blur-2xl rounded-full scale-125 pointer-events-none" />
-            <Image
-              src="/app-icon.png"
-              alt="SakuIN App Icon"
-              width={76}
-              height={76}
-              className="rounded-2xl shadow-2xl border border-border/60 relative z-10 mx-auto"
-              priority
-            />
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-extrabold tracking-wide">
+        <div className="text-center space-y-3.5 max-w-xl mx-auto">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-extrabold tracking-wide">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Versi Resmi {release?.version || "v1.0.0"}</span>
           </div>
