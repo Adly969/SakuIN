@@ -43,24 +43,25 @@ jobs:
 
       - name: Build APK (Debug / Standalone)
         run: |
+          set -o pipefail
           cd android
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee ../gradle_build.log
 
       - name: Prepare APK for Release
         run: |
-          echo "Scanning for APK files in android/..."
-          find android -type f -name "*.apk"
+          echo "Listing all generated APK files:"
+          find android -type f -name "*.apk" || true
           
-          APK_PATH=$(find android -type f -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "Listing output directories:"
+          APK_FILE=$(find android -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::No APK file found after assembleDebug!"
             find android/app/build -maxdepth 4 || true
             exit 1
           fi
           
-          echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" sakuin-v1.0.0.apk
-          cp "$APK_PATH" sakuin.apk
+          echo "Selected APK: $APK_FILE"
+          cp "$APK_FILE" sakuin-v1.0.0.apk
+          cp "$APK_FILE" sakuin.apk
           ls -lh sakuin-v1.0.0.apk
 
       - name: Upload APK Artifact
