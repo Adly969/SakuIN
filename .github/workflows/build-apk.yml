@@ -50,8 +50,10 @@ jobs:
         run: |
           cd android
           if ! ./gradlew :app:assembleDebug --stacktrace --no-daemon > ../build.log 2>&1; then
-            echo "::error::Gradle build failed: $(tail -n 20 ../build.log | tr '\n' ' ' | cut -c 1-500)"
-            cat ../build.log | tail -n 100
+            ERROR_MSG=$(grep -A 10 "FAILURE: Build failed with an exception" ../build.log | tr '\n' ' ' | cut -c 1-450)
+            echo "::error::Gradle: $ERROR_MSG"
+            CAUSED_BY=$(grep -A 5 "Caused by:" ../build.log | head -n 15 | tr '\n' ' ' | cut -c 1-450)
+            echo "::error::CausedBy: $CAUSED_BY"
             exit 1
           fi
           cat ../build.log | tail -n 30
