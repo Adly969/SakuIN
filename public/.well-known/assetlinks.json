@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.vercel.saku_in.twa",
+      "sha256_cert_fingerprints": [
+        "14:6D:E9:7D:0C:52:AB:71:35:45:77:07:66:94:F2:0D:F7:7F:54:1F:B1:9C:50:82:13:B5:46:16:DF:D9:D2:C2"
+      ]
+    }
+  }
+]

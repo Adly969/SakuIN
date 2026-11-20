@@ -30,6 +30,7 @@ import {
   Clock,
   Download,
   Smartphone,
+  ExternalLink,
   FileSpreadsheet,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
@@ -669,6 +670,32 @@ export default function ProfilePage() {
             </button>
           </div>
         )}
+      </section>
+
+      {/* Unduh Aplikasi SakuIN (PRD Minggu 7) */}
+      <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-accent/15 text-accent">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-foreground">
+                Unduh Aplikasi SakuIN
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Pasang APK Android resmi (~2.5 MB) atau gunakan PWA di iPhone
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/download"
+            className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-black hover:brightness-105 transition-all shadow-xs flex items-center gap-1.5"
+          >
+            <span>Unduh</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Link>
+        </div>
       </section>
 
       {/* Ekspor Data CSV (PRD P2 & Section 11) */}

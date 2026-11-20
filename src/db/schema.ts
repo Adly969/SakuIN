@@ -268,6 +268,29 @@ export const debtPayments = pgTable(
   })
 );
 
+// 14. APP RELEASES (Distribusi APK & Info Versi)
+export const appReleases = pgTable(
+  "app_releases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    version: varchar("version", { length: 20 }).notNull(), // e.g. '1.0.0'
+    versionCode: integer("version_code").notNull().default(1),
+    apkUrlPrimary: text("apk_url_primary").notNull(),
+    apkUrlMirror: text("apk_url_mirror"),
+    sha256: varchar("sha256", { length: 64 }),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).default(2621440), // ~2.5 MB
+    releasedAt: timestamp("released_at", { withTimezone: true }).defaultNow().notNull(),
+    changelog: text("changelog"),
+    isLatest: boolean("is_latest").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    versionIdx: uniqueIndex("app_releases_version_idx").on(table.version),
+    latestIdx: index("app_releases_latest_idx").on(table.isLatest),
+  })
+);
+
 // RELATIONS
 export const categoriesRelations = relations(categories, ({ many }) => ({
   transactions: many(transactions),
