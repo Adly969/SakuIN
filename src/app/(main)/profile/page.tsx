@@ -585,6 +585,25 @@ export default function ProfilePage() {
             />
           </button>
         </div>
+
+        <div className="flex items-center justify-between py-1 border-t border-border/60 pt-3">
+          <div>
+            <p className="text-xs font-bold text-foreground">Animasi Splash Screen</p>
+            <p className="text-[11px] text-muted-foreground">
+              Putar ulang animasi pembuka saat membuka aplikasi
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              sessionStorage.removeItem("sakuin_splash_played");
+              window.location.reload();
+            }}
+            className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted border border-border text-foreground text-xs font-bold transition-all"
+          >
+            Putar Ulang
+          </button>
+        </div>
       </section>
 
       {/* Pengingat Harian (Notification Reminder - PRD N1 & R1) */}

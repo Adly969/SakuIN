@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { AnimatedSplashScreen } from "@/components/ui/animated-splash-screen";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -11,7 +12,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       disableTransitionOnChange
     >
-      {children}
+      <AnimatedSplashScreen>
+        {children}
+      </AnimatedSplashScreen>
     </NextThemesProvider>
   );
 }
