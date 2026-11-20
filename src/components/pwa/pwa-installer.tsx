@@ -21,17 +21,26 @@ export function PwaInstaller() {
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsStandalone(isApp);
 
-    // Register Service Worker
+    // Register & Update Service Worker
     if ("serviceWorker" in navigator && process.env.NODE_ENV !== "development") {
       window.addEventListener("load", () => {
         navigator.serviceWorker
           .register("/sw.js")
           .then((reg) => {
             console.log("SakuIN Service Worker terdaftar:", reg.scope);
+            // Paksa periksa versi terbaru
+            reg.update().catch(() => {});
           })
           .catch((err) => {
             console.error("Gagal mendaftarkan Service Worker:", err);
           });
+      });
+
+      // Periksa update ketika tab kembali aktif
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          navigator.serviceWorker.ready.then((reg) => reg.update()).catch(() => {});
+        }
       });
     }
 
@@ -97,11 +106,11 @@ export function PwaInstaller() {
           <button
             type="button"
             onClick={handleInstallClick}
-            style={{ backgroundColor: "#D4FF5A", color: "#1F1F1F" }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black shadow-sm hover:brightness-105 active:scale-95 transition-all !text-[#1F1F1F]"
+            style={{ backgroundColor: "#D4FF5A", color: "#121212" }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black shadow-sm hover:brightness-105 active:scale-95 transition-all !text-neutral-950 font-black cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5 stroke-[2.5]" style={{ color: "#1F1F1F" }} />
-            <span className="font-black" style={{ color: "#1F1F1F" }}>Pasang</span>
+            <Download className="w-3.5 h-3.5 stroke-[2.5]" style={{ color: "#121212", stroke: "#121212" }} />
+            <span className="font-black text-neutral-950" style={{ color: "#121212" }}>Pasang</span>
           </button>
           <button
             type="button"

@@ -95,8 +95,33 @@ export default function RecordPage() {
   const [toastMessage, setToastMessage] = useState("");
   const [todayTransactions, setTodayTransactions] = useState<RecentTx[]>([]);
 
-  // Load Categories & Accounts from DB
+  // Load Categories & Accounts from Cache & DB
   useEffect(() => {
+    // 1. Instant Cache Hydration from localStorage (0ms Frame 0)
+    try {
+      const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
+      if (cachedAcc) {
+        const parsedAcc = JSON.parse(cachedAcc);
+        if (Array.isArray(parsedAcc) && parsedAcc.length > 0) {
+          setAccountsList(parsedAcc);
+          const def = parsedAcc.find((a: any) => a.isDefault) || parsedAcc[0];
+          if (def?.id) setSelectedAccountId(def.id);
+        }
+      }
+      const cachedCat = localStorage.getItem("sakuin_cached_categories");
+      if (cachedCat) {
+        const parsedCat = JSON.parse(cachedCat);
+        if (Array.isArray(parsedCat) && parsedCat.length > 0) {
+          setCategoriesList(parsedCat);
+          const firstExp = parsedCat.find((c: any) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          if (firstExp?.name) setSelectedCategory(firstExp.name);
+        }
+      }
+    } catch (err) {
+      console.warn("Gagal membaca cache lokal:", err);
+    }
+
+    // 2. Fresh Network Sync in background
     async function initData() {
       try {
         const [catRes, accRes] = await Promise.all([
@@ -106,14 +131,20 @@ export default function RecordPage() {
 
         if (catRes.success && catRes.data && catRes.data.length > 0) {
           setCategoriesList(catRes.data);
+          try {
+            localStorage.setItem("sakuin_cached_categories", JSON.stringify(catRes.data));
+          } catch {}
           const firstExp = catRes.data.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
           if (firstExp) setSelectedCategory(firstExp.name);
         }
 
         if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
           setAccountsList(accRes.data.accounts);
+          try {
+            localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data.accounts));
+          } catch {}
           const def = accRes.data.accounts.find((a) => a.isDefault) || accRes.data.accounts[0];
-          setSelectedAccountId(def.id);
+          if (def?.id) setSelectedAccountId(def.id);
         }
       } catch (err) {
         console.error("Gagal inisialisasi data:", err);

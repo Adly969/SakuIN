@@ -1,9 +1,9 @@
 /**
  * SakuIN Service Worker (PWA Shell & Offline Cache)
- * Sesuai PRD Seksi 6 & 14 (Minggu 6)
+ * Version: sakuin-pwa-v6 (Fresh Network-First strategy to eliminate stale page flashes)
  */
 
-const CACHE_NAME = "sakuin-pwa-v3";
+const CACHE_NAME = "sakuin-pwa-v6";
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
@@ -13,23 +13,24 @@ const STATIC_ASSETS = [
   "/icon.png",
 ];
 
-// Install: pre-cache essential static assets
+// 1. Install: Pre-cache core icons and shell
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
     })
   );
-  self.skipWaiting();
 });
 
-// Activate: clean up old caches and take control
+// 2. Activate: Immediately purge all older caches and take control
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log("[SW] Menghapus cache lama:", key);
             return caches.delete(key);
           }
         })
@@ -39,41 +40,48 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: Network-first with cache fallback for navigation, Stale-While-Revalidate for statics
+// 3. Fetch: Network-First for Navigation, Next.js Chunks, and RSC to prevent stale UI
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-
-  // Ignore non-GET and external auth/API mutations
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
 
-  // Skip supabase auth or backend api requests from SW cache
+  // Skip external origins and backend API mutations from SW cache
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
-  // Navigation requests (HTML pages)
-  if (request.mode === "navigate") {
+  // Network-First for Navigation (HTML), Next.js build chunks, and React Server Components (RSC)
+  const isNavigation = request.mode === "navigate";
+  const isNextBundle = url.pathname.startsWith("/_next/");
+  const isRSC = url.searchParams.has("_rsc");
+
+  if (isNavigation || isNextBundle || isRSC) {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, cloned);
-          });
-          return response;
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const cloned = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, cloned);
+            });
+          }
+          return networkResponse;
         })
         .catch(async () => {
           const cached = await caches.match(request);
           if (cached) return cached;
-          const fallback = await caches.match("/");
-          return fallback || Response.error();
+          if (isNavigation) {
+            const fallback = await caches.match("/");
+            return fallback || Response.error();
+          }
+          return Response.error();
         })
     );
     return;
   }
 
-  // Static files: Stale-While-Revalidate
+  // Stale-While-Revalidate only for static image / font assets
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request)
@@ -93,7 +101,7 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Push Notification Handler
+// 4. Push Notification Handler
 self.addEventListener("push", (event) => {
   let data = {
     title: "SakuIN — Waktunya Catat Keuangan!",
@@ -119,7 +127,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// Notification Click Handler (Buka aplikasi ke halaman Catat Transaksi)
+// 5. Notification Click Handler
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 

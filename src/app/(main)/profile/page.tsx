@@ -169,6 +169,9 @@ export default function ProfilePage() {
     const nextVal = !reminderEnabled;
     setReminderEnabled(nextVal);
     localStorage.setItem("sakuin_reminder_enabled", String(nextVal));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("sakuin:reminder-updated"));
+    }
     if (!profile) return;
 
     if (nextVal && typeof window !== "undefined" && "Notification" in window) {
@@ -199,6 +202,9 @@ export default function ProfilePage() {
     localStorage.setItem("sakuin_reminder_time", newTime);
     // Hapus last fired agar waktu baru bisa langsung dites pada hari yang sama
     localStorage.removeItem("sakuin_last_reminder_fired");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("sakuin:reminder-updated"));
+    }
     if (!profile) return;
 
     try {

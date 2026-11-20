@@ -136,6 +136,9 @@ export default function DashboardPage() {
       const res = await getDashboardDataAction();
       if (res.success && res.data) {
         setDashboardData(res.data);
+        try {
+          localStorage.setItem("sakuin_cached_dashboard", JSON.stringify(res.data));
+        } catch {}
         if (res.data.monthlyHistory && res.data.monthlyHistory.length > 0) {
           setActiveMonthData(res.data.monthlyHistory[res.data.monthlyHistory.length - 1]);
         }
@@ -147,6 +150,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setIsMounted(true);
+
+    // Instant Cache Hydration from localStorage (0ms Frame 0)
+    try {
+      const cached = localStorage.getItem("sakuin_cached_dashboard");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === "object") {
+          setDashboardData(parsed);
+          if (parsed.monthlyHistory && parsed.monthlyHistory.length > 0) {
+            setActiveMonthData(parsed.monthlyHistory[parsed.monthlyHistory.length - 1]);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Gagal membaca cache dashboard:", err);
+    }
+
     loadData();
 
     const handleFocus = () => {
