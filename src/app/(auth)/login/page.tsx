@@ -36,7 +36,9 @@ export default function LoginPage() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
-        window.location.href = "/reset-password/confirm";
+        const hash = typeof window !== "undefined" ? window.location.hash : "";
+        const search = typeof window !== "undefined" ? window.location.search : "";
+        window.location.href = `/reset-password/confirm${hash || search}`;
       }
     });
 

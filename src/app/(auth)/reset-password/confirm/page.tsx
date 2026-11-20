@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Eye, EyeOff, CheckCircle2, ArrowRight, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 
 export default function ResetPasswordConfirmPage() {
@@ -18,70 +18,127 @@ export default function ResetPasswordConfirmPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Simpan token recovery untuk re-auth jika cookies browser mobile terblokir
+  const tokenRef = useRef<{ accessToken?: string; refreshToken?: string }>({});
+
   useEffect(() => {
     async function verifyRecoverySession() {
       const supabase = createClient();
 
-      // 1. Cek jika ada error di hash URL
-      if (typeof window !== "undefined") {
-        const hash = window.location.hash;
-        if (hash.includes("error_description")) {
-          const params = new URLSearchParams(hash.replace("#", "?"));
-          const desc = params.get("error_description");
-          if (desc) {
-            setErrorMessage(decodeURIComponent(desc).replace(/\+/g, " "));
+      if (typeof window === "undefined") {
+        setCheckingSession(false);
+        return;
+      }
+
+      // 1. Cek jika URL membawa pesan error spesifik dari Supabase (misal otp_expired)
+      const hashRaw = window.location.hash.startsWith("#")
+        ? window.location.hash.substring(1)
+        : window.location.hash;
+      const searchRaw = window.location.search.startsWith("?")
+        ? window.location.search.substring(1)
+        : window.location.search;
+
+      const hashParams = new URLSearchParams(hashRaw);
+      const searchParams = new URLSearchParams(searchRaw);
+
+      const errorDesc =
+        hashParams.get("error_description") || searchParams.get("error_description");
+      if (errorDesc) {
+        setErrorMessage(decodeURIComponent(errorDesc).replace(/\+/g, " "));
+        setCheckingSession(false);
+        return;
+      }
+
+      // 2. Ekstrak access_token dan refresh_token dari hash URL (Implicit Flow Recovery)
+      const hashAccessToken = hashParams.get("access_token");
+      const hashRefreshToken = hashParams.get("refresh_token");
+
+      if (hashAccessToken && hashRefreshToken) {
+        tokenRef.current = {
+          accessToken: hashAccessToken,
+          refreshToken: hashRefreshToken,
+        };
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          if (!error && data?.session) {
+            setHasValidSession(true);
             setCheckingSession(false);
             return;
           }
-        }
-
-        // 2. Jika ada ?code= di query param (PKCE flow), exchange session di client
-        const searchParams = new URLSearchParams(window.location.search);
-        const code = searchParams.get("code");
-        if (code) {
-          try {
-            const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-            if (!exchangeErr) {
-              setHasValidSession(true);
-              setCheckingSession(false);
-              return;
-            }
-          } catch (e) {
-            console.warn("Exchange code on client:", e);
-          }
+        } catch (setErr) {
+          console.warn("Gagal setSession dari hash:", setErr);
         }
       }
 
-      // 3. Cek apakah session aktif sudah ada (dari recovery token atau hash)
+      // 3. Ekstrak ?code= dari query params (PKCE Flow)
+      const code = searchParams.get("code");
+      if (code) {
+        try {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error && data?.session) {
+            setHasValidSession(true);
+            setCheckingSession(false);
+            return;
+          }
+        } catch (exchangeErr) {
+          console.warn("Gagal exchangeCodeForSession:", exchangeErr);
+        }
+      }
+
+      // 4. Ekstrak token_hash atau token (Verify OTP Flow)
+      const tokenHash = searchParams.get("token_hash") || searchParams.get("token");
+      if (tokenHash) {
+        try {
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery",
+          });
+          if (!error && data?.session) {
+            setHasValidSession(true);
+            setCheckingSession(false);
+            return;
+          }
+        } catch (otpErr) {
+          console.warn("Gagal verifyOtp recovery:", otpErr);
+        }
+      }
+
+      // 5. Cek apakah sudah ada session aktif yang tersimpan
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (session) {
           setHasValidSession(true);
-        } else {
-          // Tunggu onAuthStateChange sesaat untuk hash token parsing
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (event, s) => {
-              if (event === "PASSWORD_RECOVERY" || s) {
-                setHasValidSession(true);
-                setCheckingSession(false);
-              }
-            }
-          );
-
-          // Timeout 2 detik jika benar-benar tidak ada token
-          setTimeout(() => {
-            setCheckingSession(false);
-          }, 2000);
-
-          return () => {
-            subscription.unsubscribe();
-          };
+          setCheckingSession(false);
+          return;
         }
-      } catch (err) {
-        console.error("Gagal memeriksa sesi recovery:", err);
-      } finally {
-        setCheckingSession(false);
+      } catch (sessErr) {
+        console.warn("Gagal cek getSession:", sessErr);
       }
+
+      // 6. Dengarkan event auth perubahan sesaat jika token masih diproses di latar
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event, s) => {
+        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || s) {
+          setHasValidSession(true);
+          setCheckingSession(false);
+        }
+      });
+
+      // Timeout 1.5 detik jika tidak ada sesi valid
+      const timer = setTimeout(() => {
+        setCheckingSession(false);
+      }, 1500);
+
+      return () => {
+        subscription.unsubscribe();
+        clearTimeout(timer);
+      };
     }
 
     verifyRecoverySession();
@@ -104,15 +161,35 @@ export default function ResetPasswordConfirmPage() {
     setLoading(true);
     try {
       const supabase = createClient();
+
+      // Pastikan session aktif sebelum update kata sandi
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      if (!currentSession && tokenRef.current.accessToken && tokenRef.current.refreshToken) {
+        await supabase.auth.setSession({
+          access_token: tokenRef.current.accessToken,
+          refresh_token: tokenRef.current.refreshToken,
+        });
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (error) {
-        setErrorMessage(
-          error.message ||
-            "Gagal memperbarui kata sandi. Tautan mungkin sudah kadaluarsa. Silakan minta tautan baru."
-        );
+        if (
+          error.message?.toLowerCase().includes("auth session missing") ||
+          error.message?.toLowerCase().includes("session")
+        ) {
+          setErrorMessage(
+            "Sesi reset kata sandi telah berakhir atau sudah pernah digunakan. Tautan dari email hanya berlaku 1 kali. Silakan minta tautan baru."
+          );
+          setHasValidSession(false);
+        } else {
+          setErrorMessage(error.message || "Gagal memperbarui kata sandi.");
+        }
         setLoading(false);
         return;
       }
@@ -151,11 +228,18 @@ export default function ResetPasswordConfirmPage() {
         {errorMessage && (
           <div className="p-3 bg-expense/10 border border-expense/30 rounded-xl text-xs text-expense font-semibold flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorMessage}</span>
+            <span className="leading-relaxed">{errorMessage}</span>
           </div>
         )}
 
-        {success ? (
+        {checkingSession ? (
+          <div className="py-10 text-center space-y-3">
+            <Loader2 className="w-7 h-7 text-accent animate-spin mx-auto" />
+            <p className="text-xs font-semibold text-muted-foreground">
+              Memverifikasi sesi reset kata sandi...
+            </p>
+          </div>
+        ) : success ? (
           <div className="p-4 bg-accent/15 border border-accent/40 rounded-xl text-center space-y-3">
             <CheckCircle2 className="w-8 h-8 text-accent mx-auto" />
             <div>
@@ -171,6 +255,25 @@ export default function ResetPasswordConfirmPage() {
               className="inline-flex items-center gap-1.5 text-xs font-bold text-accent hover:underline"
             >
               <span>Langsung ke Halaman Masuk</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        ) : !hasValidSession ? (
+          <div className="p-4 bg-muted/30 border border-border rounded-xl text-center space-y-3">
+            <AlertCircle className="w-7 h-7 text-muted-foreground mx-auto" />
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-foreground">
+                Tautan Tidak Valid atau Sudah Dipakai
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Tautan reset kata sandi hanya berlaku satu kali untuk keamanan akun kamu. Silakan minta tautan baru dan langsung buka tautan terbaru dari email.
+              </p>
+            </div>
+            <Link
+              href="/reset-password"
+              className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-accent text-[#121212] font-black text-xs hover:brightness-105 active:scale-98 transition-all shadow-xs"
+            >
+              <span>Minta Tautan Reset Baru</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
