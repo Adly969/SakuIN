@@ -7,7 +7,14 @@ android {
   }
 }
 
-apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
+try {
+    def cordovaVariables = file("../capacitor-cordova-android-plugins/cordova.variables.gradle")
+    if (cordovaVariables.exists()) {
+        apply from: cordovaVariables
+    }
+} catch(Exception e) {
+    logger.warn("Could not apply cordova.variables.gradle: " + e.message)
+}
 dependencies {
     implementation project(':capacitor-local-notifications')
 
