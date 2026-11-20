@@ -41,10 +41,22 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
+      - name: Accept Android SDK Licenses & Install Platform
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
+
       - name: Build APK (Debug / Standalone)
         run: |
           cd android
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee ../gradle_build.log || {
+            BUILD_STATUS=$?
+            echo "## ❌ Gradle Build Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 ../gradle_build.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $BUILD_STATUS
+          }
 
       - name: Upload Logs on Failure
         if: failure()
