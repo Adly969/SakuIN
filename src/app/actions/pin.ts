@@ -78,13 +78,12 @@ export async function setupPinAction(pin: string) {
       })
       .where(eq(profiles.id, user.id));
 
-    // Langsung buka sesi saat pertama kali setup
+    // Jangan simpan sesi terbuka lama agar selalu terkunci saat aplikasi baru dibuka
     const cookieStore = await cookies();
     cookieStore.set("sakuin_pin_unlocked", "true", {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      maxAge: 60 * 60 * 24, // 24 jam
     });
 
     revalidatePath("/profile");
@@ -129,13 +128,12 @@ export async function verifyPinAction(pin: string) {
       return { success: false, error: "PIN yang kamu masukkan salah" };
     }
 
-    // Set cookie terverifikasi
+    // Set cookie sesi terverifikasi (hanya untuk sesi aktif)
     const cookieStore = await cookies();
     cookieStore.set("sakuin_pin_unlocked", "true", {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      maxAge: 60 * 60 * 24, // 24 jam
     });
 
     revalidatePath("/dashboard");
