@@ -43,13 +43,21 @@ jobs:
 
       - name: Build APK (Debug / Standalone)
         run: |
-          set -o pipefail
           cd android
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee ../gradle_build.log
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Upload Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-failure-reports
+          path: |
+            android/app/build/reports/
+            android/app/build/outputs/
 
       - name: Prepare APK for Release
         run: |
-          echo "Listing all generated APK files:"
+          echo "=== Searching for generated APK files ==="
           find android -type f -name "*.apk" || true
           
           APK_FILE=$(find android -type f -name "*.apk" | head -n 1)
@@ -62,6 +70,7 @@ jobs:
           echo "Selected APK: $APK_FILE"
           cp "$APK_FILE" sakuin-v1.0.0.apk
           cp "$APK_FILE" sakuin.apk
+          cp "$APK_FILE" "sakuin v1.0.0.apk"
           ls -lh sakuin-v1.0.0.apk
 
       - name: Upload APK Artifact
@@ -79,6 +88,7 @@ jobs:
           files: |
             sakuin-v1.0.0.apk
             sakuin.apk
+            sakuin v1.0.0.apk
           body: |
             ## Rilis Resmi SakuIN APK Android (v1.0.0)
             - Aplikasi Native Android mandiri (didukung Android AlarmManager).
