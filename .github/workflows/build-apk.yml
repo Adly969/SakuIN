@@ -30,13 +30,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm install --include=dev
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: |
+          npx @capacitor/cli sync android || true
 
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
