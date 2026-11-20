@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Eye, EyeOff, CheckCircle2, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, ArrowRight, AlertCircle } from "lucide-react";
 import Image from "next/image";
 
 export default function ResetPasswordConfirmPage() {
@@ -13,21 +13,78 @@ export default function ResetPasswordConfirmPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasValidSession, setHasValidSession] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    // Periksa apakah ada error di URL (misal: link kadaluarsa)
-    if (typeof window !== "undefined") {
-      const hash = window.location.hash;
-      if (hash.includes("error_description")) {
-        const params = new URLSearchParams(hash.replace("#", "?"));
-        const desc = params.get("error_description");
-        if (desc) {
-          setErrorMessage(decodeURIComponent(desc).replace(/\+/g, " "));
+    async function verifyRecoverySession() {
+      const supabase = createClient();
+
+      // 1. Cek jika ada error di hash URL
+      if (typeof window !== "undefined") {
+        const hash = window.location.hash;
+        if (hash.includes("error_description")) {
+          const params = new URLSearchParams(hash.replace("#", "?"));
+          const desc = params.get("error_description");
+          if (desc) {
+            setErrorMessage(decodeURIComponent(desc).replace(/\+/g, " "));
+            setCheckingSession(false);
+            return;
+          }
+        }
+
+        // 2. Jika ada ?code= di query param (PKCE flow), exchange session di client
+        const searchParams = new URLSearchParams(window.location.search);
+        const code = searchParams.get("code");
+        if (code) {
+          try {
+            const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+            if (!exchangeErr) {
+              setHasValidSession(true);
+              setCheckingSession(false);
+              return;
+            }
+          } catch (e) {
+            console.warn("Exchange code on client:", e);
+          }
         }
       }
+
+      // 3. Cek apakah session aktif sudah ada (dari recovery token atau hash)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setHasValidSession(true);
+        } else {
+          // Tunggu onAuthStateChange sesaat untuk hash token parsing
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (event, s) => {
+              if (event === "PASSWORD_RECOVERY" || s) {
+                setHasValidSession(true);
+                setCheckingSession(false);
+              }
+            }
+          );
+
+          // Timeout 2 detik jika benar-benar tidak ada token
+          setTimeout(() => {
+            setCheckingSession(false);
+          }, 2000);
+
+          return () => {
+            subscription.unsubscribe();
+          };
+        }
+      } catch (err) {
+        console.error("Gagal memeriksa sesi recovery:", err);
+      } finally {
+        setCheckingSession(false);
+      }
     }
+
+    verifyRecoverySession();
   }, []);
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -52,7 +109,10 @@ export default function ResetPasswordConfirmPage() {
       });
 
       if (error) {
-        setErrorMessage(error.message || "Gagal memperbarui kata sandi. Tautan mungkin sudah kadaluarsa.");
+        setErrorMessage(
+          error.message ||
+            "Gagal memperbarui kata sandi. Tautan mungkin sudah kadaluarsa. Silakan minta tautan baru."
+        );
         setLoading(false);
         return;
       }
@@ -89,8 +149,9 @@ export default function ResetPasswordConfirmPage() {
         </div>
 
         {errorMessage && (
-          <div className="p-3 bg-expense/10 border border-expense/30 rounded-xl text-xs text-expense font-semibold">
-            {errorMessage}
+          <div className="p-3 bg-expense/10 border border-expense/30 rounded-xl text-xs text-expense font-semibold flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -166,6 +227,15 @@ export default function ResetPasswordConfirmPage() {
             </button>
           </form>
         )}
+
+        <div className="text-center pt-2">
+          <Link
+            href="/login"
+            className="text-xs text-muted-foreground hover:text-foreground font-semibold transition-colors"
+          >
+            Kembali ke Halaman Masuk
+          </Link>
+        </div>
       </div>
     </div>
   );
