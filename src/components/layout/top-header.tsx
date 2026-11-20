@@ -10,10 +10,9 @@ export function TopHeader() {
   return (
     <header
       style={{
-        paddingTop: "max(calc(env(safe-area-inset-top) + 14px), 54px)",
-        minHeight: "calc(env(safe-area-inset-top) + 58px)",
+        paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 6px), 12px)",
       }}
-      className="lg:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-3 flex items-center justify-between safe-top-header"
+      className="lg:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-2.5 flex items-center justify-between safe-top-header"
     >
       <Link href="/dashboard" className="flex items-center">
         <BrandLogo height={28} />

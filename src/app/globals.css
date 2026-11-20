@@ -55,18 +55,18 @@ body {
 
 /* Dedicated safe header padding for iOS status bar, notch & Dynamic Island */
 .safe-top-header {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-top: max(calc(env(safe-area-inset-top, 0px) + 6px), 12px);
 }
 
 @supports (-webkit-touch-callout: none) {
   .safe-top-header {
-    padding-top: max(calc(env(safe-area-inset-top) + 14px), 54px);
+    padding-top: max(calc(env(safe-area-inset-top, 0px) + 6px), 12px);
   }
 }
 
 @media all and (display-mode: standalone) {
   .safe-top-header {
-    padding-top: max(calc(env(safe-area-inset-top) + 14px), 54px);
+    padding-top: max(calc(env(safe-area-inset-top, 0px) + 6px), 12px);
   }
 }
 

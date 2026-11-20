@@ -104,7 +104,7 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
       {/* Top Header */}
       <div
         style={{
-          paddingTop: "max(calc(env(safe-area-inset-top) + 14px), 54px)",
+          paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 6px), 12px)",
         }}
         className="w-full flex items-center justify-between max-w-sm pb-2 safe-top-header"
       >
