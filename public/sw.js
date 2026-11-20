@@ -3,10 +3,11 @@
  * Sesuai PRD Seksi 6 & 14 (Minggu 6)
  */
 
-const CACHE_NAME = "sakuin-pwa-v1";
+const CACHE_NAME = "sakuin-pwa-v3";
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
+  "/app-icon.png",
   "/logo-mark.png",
   "/logo.png",
   "/icon.png",

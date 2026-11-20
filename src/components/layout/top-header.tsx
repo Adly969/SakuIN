@@ -8,7 +8,13 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 
 export function TopHeader() {
   return (
-    <header className="lg:hidden sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border px-4 py-3 flex items-center justify-between">
+    <header
+      style={{
+        paddingTop: "max(calc(env(safe-area-inset-top) + 14px), 54px)",
+        minHeight: "calc(env(safe-area-inset-top) + 58px)",
+      }}
+      className="lg:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-3 flex items-center justify-between safe-top-header"
+    >
       <Link href="/dashboard" className="flex items-center">
         <BrandLogo height={28} />
       </Link>

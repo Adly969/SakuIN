@@ -46,11 +46,28 @@ body {
 
 /* Safe area insets for mobile */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 1rem);
+  padding-bottom: max(env(safe-area-inset-bottom), 1rem);
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 1rem);
+  padding-top: max(env(safe-area-inset-top), 1rem);
+}
+
+/* Dedicated safe header padding for iOS status bar, notch & Dynamic Island */
+.safe-top-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+}
+
+@supports (-webkit-touch-callout: none) {
+  .safe-top-header {
+    padding-top: max(calc(env(safe-area-inset-top) + 14px), 54px);
+  }
+}
+
+@media all and (display-mode: standalone) {
+  .safe-top-header {
+    padding-top: max(calc(env(safe-area-inset-top) + 14px), 54px);
+  }
 }
 
 /* Sembunyikan scrollbar di seluruh aplikasi agar tampilan mobile-first tetap bersih */
@@ -80,5 +97,16 @@ body,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* PWA Safe Area Insets for Mobile Status Bar & Cutout */
+.safe-top-header {
+  padding-top: max(calc(env(safe-area-inset-top, 0px) + 0.65rem), 0.75rem);
+}
+
+@media all and (display-mode: standalone) {
+  .safe-top-header {
+    padding-top: max(calc(env(safe-area-inset-top, 0px) + 0.65rem), 2.75rem);
   }
 }

@@ -102,7 +102,12 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
   return (
     <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-xl flex flex-col items-center justify-between p-6 select-none overflow-y-auto">
       {/* Top Header */}
-      <div className="w-full flex items-center justify-between max-w-sm pt-2">
+      <div
+        style={{
+          paddingTop: "max(calc(env(safe-area-inset-top) + 14px), 54px)",
+        }}
+        className="w-full flex items-center justify-between max-w-sm pb-2 safe-top-header"
+      >
         <BrandLogo height={28} />
         <div className="flex items-center gap-1 text-[11px] font-bold text-accent px-2.5 py-1 rounded-full bg-accent/15">
           <ShieldCheck className="w-3.5 h-3.5" />

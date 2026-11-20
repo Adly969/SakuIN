@@ -11,19 +11,19 @@
   "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/logo-mark.png",
+      "src": "/app-icon.png?v=4",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo.png",
+      "src": "/app-icon.png?v=4",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon.png",
+      "src": "/app-icon.png?v=4",
       "sizes": "512x512",
       "type": "image/png"
     }
@@ -34,21 +34,21 @@
       "short_name": "Catat",
       "description": "Catat transaksi baru secepat kilat",
       "url": "/record",
-      "icons": [{ "src": "/logo-mark.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/app-icon.png?v=4", "sizes": "192x192" }]
     },
     {
       "name": "Riwayat Transaksi",
       "short_name": "Riwayat",
       "description": "Lihat mutasi uang saku",
       "url": "/transactions",
-      "icons": [{ "src": "/logo-mark.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/app-icon.png?v=4", "sizes": "192x192" }]
     },
     {
       "name": "Tabungan Impian",
       "short_name": "Tabungan",
       "description": "Pantau target tabungan virtual",
       "url": "/savings",
-      "icons": [{ "src": "/logo-mark.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/app-icon.png?v=4", "sizes": "192x192" }]
     }
   ]
 }
