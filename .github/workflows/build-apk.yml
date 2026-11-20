@@ -44,27 +44,24 @@ jobs:
       - name: Build APK (Debug / Standalone)
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee ../gradle.log || {
-            echo "## ❌ Gradle Build Error" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 80 ../gradle.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit 1
-          }
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
       - name: Prepare APK for Release
         run: |
-          echo "Listing all APK files:"
-          find . -name "*.apk"
-          APK_FILE=$(find . -name "*.apk" | head -n 1)
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: No APK file generated!"
-            find android -type f -name "*debug*"
+          echo "Scanning for APK files in android/..."
+          find android -type f -name "*.apk"
+          
+          APK_PATH=$(find android -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Listing output directories:"
+            find android/app/build -maxdepth 4 || true
             exit 1
           fi
-          echo "Using APK: $APK_FILE"
-          cp "$APK_FILE" sakuin-v1.0.0.apk
-          cp "$APK_FILE" sakuin.apk
+          
+          echo "Found APK: $APK_PATH"
+          cp "$APK_PATH" sakuin-v1.0.0.apk
+          cp "$APK_PATH" sakuin.apk
+          ls -lh sakuin-v1.0.0.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
