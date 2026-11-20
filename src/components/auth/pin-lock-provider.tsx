@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { getPinStatusAction, lockAppAction } from "@/app/actions/pin";
 import { PinLockScreen } from "./pin-lock-screen";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -141,26 +142,7 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
     setIsUnlocked(true);
   };
 
-  // 1. Jika terdeteksi PIN aktif dan belum di-unlock: LANGSUNG tampilkan layar PIN (dashboard tidak pernah di-mount)
-  if (pinEnabled && !isUnlocked) {
-    return (
-      <PinLockContext.Provider
-        value={{
-          pinEnabled,
-          isUnlocked,
-          refreshPinStatus: checkStatus,
-          lockNow,
-        }}
-      >
-        <PinLockScreen
-          userName={userName}
-          onUnlocked={handleUnlocked}
-        />
-      </PinLockContext.Provider>
-    );
-  }
-
-  // 2. Jika belum selesai verifikasi awal dan belum ada hint PIN, tampilkan splash minimal sebentar agar dashboard tidak berkedip
+  // 1. Jika belum selesai verifikasi awal dan belum ada hint PIN sama sekali, tampilkan splash minimal sebentar
   if (!isChecked && !hasPinHint) {
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-center">
@@ -169,7 +151,9 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // 3. Jika sudah di-unlock atau PIN memang tidak aktif: Tampilkan aplikasi (dashboard dsb.)
+  const isLocked = pinEnabled && !isUnlocked;
+
+  // 2. Render children di latar belakang agar fetching data dashboard berjalan paralel saat user mengetik PIN
   return (
     <PinLockContext.Provider
       value={{
@@ -179,7 +163,35 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
         lockNow,
       }}
     >
-      {children}
+      {/* Konten Dashboard / Aplikasi dimuat di background */}
+      <div
+        className={`w-full min-h-screen ${
+          isLocked
+            ? "pointer-events-none select-none opacity-0"
+            : "opacity-100 transition-opacity duration-300"
+        }`}
+        aria-hidden={isLocked}
+      >
+        {children}
+      </div>
+
+      {/* Layar PIN tampil di atas (z-[100]) dengan background 100% solid & transisi halus saat terbuka */}
+      <AnimatePresence>
+        {isLocked && (
+          <motion.div
+            key="pin-overlay"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="fixed inset-0 z-[100] bg-background"
+          >
+            <PinLockScreen
+              userName={userName}
+              onUnlocked={handleUnlocked}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </PinLockContext.Provider>
   );
 }

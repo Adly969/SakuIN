@@ -100,7 +100,7 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-xl flex flex-col items-center justify-between p-6 select-none overflow-y-auto">
+    <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-between p-6 select-none overflow-y-auto">
       {/* Top Header */}
       <div
         style={{
