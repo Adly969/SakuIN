@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SakuIN — Catat Uang Kiriman, Tenang Sampai Akhir Bulan
 
-## Getting Started
+Aplikasi web pencatatan keuangan bulanan untuk mahasiswa perantau berbasis **Next.js 14 (App Router) + TypeScript, Supabase (PostgreSQL + Auth), Drizzle ORM, Tailwind CSS, Recharts, dan Framer Motion**.
 
-First, run the development server:
+Dokumen spesifikasi produk lengkap dapat dibaca di:
+- [PRD.md](file:///c:/ProjectAdly/SakuIN/PRD.md)
+- [docs/PRD.md](file:///c:/ProjectAdly/SakuIN/docs/PRD.md)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Fitur Utama (Berdasarkan PRD v2.0)
+1. **Layar Selamat Datang (*Welcome Screen*)**: Animasi SVG bertema uang saku dan tipografi modern 3 baris.
+2. **Autentikasi Supabase**: Email & password dengan RLS (*Row Level Security*) di semua tabel database.
+3. **Pencatatan Cepat (3 Ketukan < 5 Detik)**: Bottom sheet modern dengan nominal otomatis, chip kategori berikon SVG, dan keypad numerik interaktif.
+4. **Dashboard Dinamis**: Sisa uang kiriman, sisa hari menuju gajian, batas pemakaian harian (`safe`, `warning`, `danger`), dan kutipan motivasi harian acak dari 120 kutipan database.
+5. **Navigasi Bawah Organik (*Mobile Bottom Bar*)**: Bar melengkung dengan kubah dinamis dan elevated active circle ber-ring lime.
+6. **Statistik Pengeluaran & Tren**: Donut chart kategori dan grafik tren 8 bulan yang menyorot *Bulan Terboros*.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Tech Stack
+- **Framework**: Next.js 14.2 (App Router) + TypeScript
+- **Database & Auth**: Supabase PostgreSQL + Supabase SSR
+- **ORM & Migrations**: Drizzle ORM + postgres.js
+- **Styling**: Tailwind CSS (Mode Gelap `#2B2B2B` & `#353535`, Aksen Lime `#D4FF5A`)
+- **Grafik & Animasi**: Recharts + Framer Motion
+- **Iconography**: Lucide React (100% SVG line icons, zero emoji)
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 💻 Menjalankan Proyek Lokal
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Jalankan dev server:
+   ```bash
+   npm run dev
+   ```
+3. Buka di browser:
+   [http://localhost:3000](http://localhost:3000)

@@ -1,26 +1,45 @@
 {
-  "name": "sakuin-app",
-  "version": "0.1.0",
+  "name": "sakuin",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.4",
+    "framer-motion": "^14.14.0",
+    "lucide-react": "^1.74.0",
+    "next": "14.2.18",
+    "next-themes": "^0.4.6",
+    "postgres": "^4.1.1",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.2.18"
+    "recharts": "^3.11.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "typescript": "^5",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "autoprefixer": "^10.6.2",
+    "dotenv": "^18.0.10",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.18",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.18"
+    "tsx": "^4.23.15",
+    "typescript": "^5"
   }
 }
