@@ -17,6 +17,7 @@ import {
   requestNotificationPermission,
   sendInstantNotification,
   isCapacitorNative,
+  REMINDER_SCHEDULE_SLOTS,
 } from "@/lib/native-notifications";
 import {
   LogOut,
@@ -184,10 +185,7 @@ export default function ProfilePage() {
 
     if (nextVal) {
       await requestNotificationPermission();
-      const [h, m] = reminderTime.split(":").map(Number);
-      if (!isNaN(h) && !isNaN(m)) {
-        await scheduleNativeDailyReminder(h, m, profile.name || "Kawan");
-      }
+      await scheduleNativeDailyReminder(profile.name || "Kawan");
     } else {
       await cancelNativeDailyReminder();
     }
@@ -220,10 +218,7 @@ export default function ProfilePage() {
     if (!profile) return;
 
     if (reminderEnabled) {
-      const [h, m] = newTime.split(":").map(Number);
-      if (!isNaN(h) && !isNaN(m)) {
-        await scheduleNativeDailyReminder(h, m, profile.name || "Kawan");
-      }
+      await scheduleNativeDailyReminder(profile.name || "Kawan");
     }
 
     try {
@@ -653,18 +648,45 @@ export default function ProfilePage() {
         </div>
 
         {reminderEnabled && (
-          <div className="space-y-3 pt-3 border-t border-border/60">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>Jam Pengingat</span>
+          <div className="space-y-3.5 pt-3 border-t border-border/60">
+            <div>
+              <div className="flex items-center justify-between pb-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                  <Clock className="w-3.5 h-3.5 text-accent" />
+                  <span>Jadwal Pengingat (Tiap 3 Jam)</span>
+                </div>
+                <span className="text-[10px] text-accent font-black bg-accent/15 px-2 py-0.5 rounded-full">
+                  5 Kali Sehari
+                </span>
               </div>
-              <input
-                type="time"
-                value={reminderTime}
-                onChange={(e) => handleChangeReminderTime(e.target.value)}
-                className="bg-background border border-border px-3 py-1.5 rounded-lg text-xs font-extrabold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-              />
+
+              {/* Grid 5 Slot Jam */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {REMINDER_SCHEDULE_SLOTS.map((slot) => (
+                  <div
+                    key={slot.id}
+                    className="p-2 rounded-lg bg-background/70 border border-border/70 flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="block text-xs font-black text-foreground">
+                        {slot.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-semibold">
+                        {slot.period}
+                      </span>
+                    </div>
+                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Banner Mode Tenang Jam Istirahat */}
+            <div className="p-3 rounded-lg bg-background/40 border border-border/50 text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2">
+              <span className="text-sm">🌙</span>
+              <div>
+                <strong className="text-foreground font-semibold">Mode Hening Istirahat:</strong> Jam 00:00 (tengah malam), 03:00, dan 06:00 pagi otomatis tanpa notifikasi agar tidur dan waktu istirahatmu tidak terganggu.
+              </div>
             </div>
 
             <button

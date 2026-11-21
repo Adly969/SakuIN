@@ -2,7 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import { getProfileAction } from "@/app/actions/profile";
-import { scheduleNativeDailyReminder } from "@/lib/native-notifications";
+import {
+  scheduleNativeDailyReminder,
+  cancelNativeDailyReminder,
+  REMINDER_SCHEDULE_SLOTS,
+} from "@/lib/native-notifications";
 
 export function ReminderScheduler() {
   const isCheckingRef = useRef(false);
@@ -16,19 +20,15 @@ export function ReminderScheduler() {
           if (res.data.reminderEnabled !== undefined) {
             localStorage.setItem("sakuin_reminder_enabled", String(res.data.reminderEnabled));
           }
-          if (res.data.reminderTime) {
-            localStorage.setItem("sakuin_reminder_time", res.data.reminderTime);
-          }
           if (res.data.name) {
             localStorage.setItem("sakuin_user_name", res.data.name);
           }
 
           // Daftarkan ke alarm Android Native jika aktif
-          if (res.data.reminderEnabled && res.data.reminderTime) {
-            const [h, m] = res.data.reminderTime.split(":").map(Number);
-            if (!isNaN(h) && !isNaN(m)) {
-              await scheduleNativeDailyReminder(h, m, res.data.name || "Kawan");
-            }
+          if (res.data.reminderEnabled) {
+            await scheduleNativeDailyReminder(res.data.name || "Kawan");
+          } else {
+            await cancelNativeDailyReminder();
           }
         }
       } catch (err) {
@@ -40,27 +40,24 @@ export function ReminderScheduler() {
     syncFromServer();
 
     // 2. Fungsi pemicu notifikasi
-    const fireNotification = async (userName: string) => {
+    const fireNotification = async (title: string, body: string) => {
       if (typeof window === "undefined" || !("Notification" in window)) return;
       if (Notification.permission !== "granted") return;
-
-      const title = "SakuIN — Waktunya Catat Keuangan!";
-      const body = `Halo ${userName}! Sudah mencatat pengeluaran hari ini? Yuk luangkan 10 detik agar batas harianmu tetap aman!`;
 
       try {
         if ("serviceWorker" in navigator) {
           const reg = await navigator.serviceWorker.ready;
           await reg.showNotification(title, {
             body,
-            icon: "/logo-mark.png",
-            badge: "/logo-mark.png",
+            icon: "/app-icon.png",
+            badge: "/app-icon.png",
             tag: "sakuin-daily-reminder",
             data: { url: "/record" },
           } as any);
         } else {
           new Notification(title, {
             body,
-            icon: "/logo-mark.png",
+            icon: "/app-icon.png",
           });
         }
       } catch (err) {
@@ -68,46 +65,36 @@ export function ReminderScheduler() {
       }
     };
 
-    // 3. Evaluator pengingat real-time
+    // 3. Evaluator pengingat real-time untuk 5 slot (09:00, 12:00, 15:00, 18:00, 21:00)
     const checkReminder = async () => {
       if (isCheckingRef.current) return;
       isCheckingRef.current = true;
 
       try {
         const enabled = localStorage.getItem("sakuin_reminder_enabled") === "true";
-        const time = localStorage.getItem("sakuin_reminder_time") || "20:00";
         const userName = localStorage.getItem("sakuin_user_name") || "Kawan";
 
-        if (!enabled || !time) return;
+        if (!enabled) return;
 
         const now = new Date();
         const nowH = now.getHours();
         const nowM = now.getMinutes();
         const nowTotalMins = nowH * 60 + nowM;
-
-        const parts = time.split(":");
-        const targetH = parseInt(parts[0], 10);
-        const targetM = parseInt(parts[1], 10);
-
-        if (isNaN(targetH) || isNaN(targetM)) return;
-        const targetTotalMins = targetH * 60 + targetM;
-
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-        const fireKey = `${todayStr}_${time}`;
 
-        // Selisih menit dari waktu target
-        const diffMins = nowTotalMins - targetTotalMins;
+        for (const slot of REMINDER_SCHEDULE_SLOTS) {
+          const targetTotalMins = slot.hour * 60 + slot.minute;
+          const diffMins = nowTotalMins - targetTotalMins;
 
-        // Picu jika:
-        // a. Waktu target sudah tiba hari ini (diffMins >= 0)
-        // b. Masih dalam rentang 45 menit (toleransi HP terkunci / sleep mode lalu dibuka)
-        // c. Belum pernah dibunyikan untuk target waktu hari ini
-        if (diffMins >= 0 && diffMins <= 45) {
-          const lastFired = localStorage.getItem("sakuin_last_reminder_fired");
-          if (lastFired === fireKey) return;
+          // Picu jika waktu telah tiba (toleransi 45 menit saat layar dibuka)
+          if (diffMins >= 0 && diffMins <= 45) {
+            const fireKey = `${todayStr}_slot_${slot.id}`;
+            const lastFired = localStorage.getItem(`sakuin_last_reminder_${slot.id}`);
+            if (lastFired === fireKey) continue;
 
-          localStorage.setItem("sakuin_last_reminder_fired", fireKey);
-          await fireNotification(userName);
+            localStorage.setItem(`sakuin_last_reminder_${slot.id}`, fireKey);
+            await fireNotification(slot.title, slot.body(userName));
+          }
         }
       } finally {
         isCheckingRef.current = false;
