@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
- * AnimatedSplashScreen: Splash screen minimalis, bersih, dan profesional
- * Fokus murni pada logo SakuIN, tipografi merek, dan rangkaian animasi halus kelas atas
- * tanpa teks tambahan yang berantakan.
+ * AnimatedSplashScreen: Splash screen murni tipografi (Pure Typography)
+ * Elegan, minimalis, dan profesional tanpa ikon gambar — hanya nama merek "SakuIN"
+ * dengan pendaran neon dinamis, gelombang ripple, dan animasi floating kelas atas.
  */
 export function AnimatedSplashScreen({ children }: { children: React.ReactNode }) {
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -27,7 +26,7 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
       } catch {}
     }
 
-    // Timer transisi keluar (~2.5 detik: memberikan waktu menikmati animasi premium)
+    // Durasi animasi ~2.5 detik sesuai permintaan
     const timer = setTimeout(() => {
       sessionStorage.setItem("sakuin_splash_played", "true");
       setShowSplash(false);
@@ -46,22 +45,22 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
       <AnimatePresence>
         {showSplash && (
           <motion.div
-            key="sakuin-splash-minimal"
+            key="sakuin-splash-typography"
             initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
-            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            exit={{ opacity: 0, scale: 1.06, filter: "blur(12px)" }}
+            transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
             onClick={handleSkip}
             className="fixed inset-0 z-[99999] bg-[#121212] flex flex-col items-center justify-center p-6 select-none overflow-hidden cursor-pointer"
             style={{
-              background: "radial-gradient(circle at 50% 48%, #1c2214 0%, #121212 70%)",
+              background: "radial-gradient(circle at 50% 50%, #1a2212 0%, #121212 70%)",
             }}
           >
             {/* Ambient Pulsing Aura Orbs */}
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{
-                scale: [0.9, 1.25, 1],
-                opacity: [0.35, 0.65, 0.4],
+                scale: [0.9, 1.3, 1],
+                opacity: [0.35, 0.7, 0.4],
               }}
               transition={{
                 duration: 2.2,
@@ -69,108 +68,92 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
                 repeatType: "reverse",
                 ease: "easeInOut",
               }}
-              className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full bg-[#D4FF5A]/20 blur-3xl pointer-events-none"
+              className="absolute w-80 h-80 sm:w-[420px] sm:h-[420px] rounded-full bg-[#D4FF5A]/20 blur-3xl pointer-events-none"
             />
 
             {/* Dual Expanding Ripple Rings Animation */}
             <motion.div
-              initial={{ scale: 0.7, opacity: 0.6 }}
-              animate={{ scale: [0.8, 1.65], opacity: [0.45, 0] }}
+              initial={{ scale: 0.6, opacity: 0.6 }}
+              animate={{ scale: [0.7, 1.8], opacity: [0.45, 0] }}
               transition={{
                 duration: 2.2,
                 repeat: Infinity,
                 ease: "easeOut",
               }}
-              className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-[#D4FF5A]/30 pointer-events-none"
+              className="absolute w-52 h-52 sm:w-64 sm:h-64 rounded-full border border-[#D4FF5A]/30 pointer-events-none"
             />
             <motion.div
-              initial={{ scale: 0.7, opacity: 0.6 }}
-              animate={{ scale: [0.8, 1.65], opacity: [0.45, 0] }}
+              initial={{ scale: 0.6, opacity: 0.6 }}
+              animate={{ scale: [0.7, 1.8], opacity: [0.45, 0] }}
               transition={{
                 duration: 2.2,
                 repeat: Infinity,
                 delay: 0.8,
                 ease: "easeOut",
               }}
-              className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-[#D4FF5A]/20 pointer-events-none"
+              className="absolute w-52 h-52 sm:w-64 sm:h-64 rounded-full border border-[#D4FF5A]/20 pointer-events-none"
             />
 
-            {/* Central Branding Hub */}
+            {/* Central Pure Typography Brand Hero */}
             <div className="relative z-10 flex flex-col items-center text-center">
-              {/* Logo Card with Spring Physics & Floating Levitation */}
+              {/* Brand Title: SakuIN with Breathing Levitation */}
               <motion.div
-                initial={{ scale: 0, rotate: -12, opacity: 0 }}
+                initial={{ opacity: 0, scale: 0.82, letterSpacing: "0.18em" }}
                 animate={{
-                  scale: 1,
-                  rotate: 0,
                   opacity: 1,
+                  scale: 1,
+                  letterSpacing: "-0.03em",
                   y: [0, -6, 0],
                 }}
                 transition={{
-                  scale: { type: "spring", stiffness: 220, damping: 18, delay: 0.08 },
-                  rotate: { type: "spring", stiffness: 200, damping: 20, delay: 0.08 },
-                  opacity: { duration: 0.35, delay: 0.05 },
+                  opacity: { duration: 0.5, ease: "easeOut" },
+                  scale: { type: "spring", stiffness: 180, damping: 18, delay: 0.05 },
+                  letterSpacing: { duration: 0.8, ease: [0.16, 1, 0.3, 1] },
                   y: {
-                    duration: 2.4,
+                    duration: 2.2,
                     repeat: Infinity,
                     repeatType: "reverse",
                     ease: "easeInOut",
-                    delay: 0.4,
+                    delay: 0.3,
                   },
                 }}
-                className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-[#1C1C1C]/90 border border-[#D4FF5A]/40 p-4 shadow-2xl shadow-[#D4FF5A]/25 flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden"
+                className="relative select-none"
               >
-                {/* Shimmer Light Sweep across Logo Card */}
-                <motion.div
-                  initial={{ x: "-150%" }}
-                  animate={{ x: "180%" }}
-                  transition={{
-                    duration: 1.6,
-                    repeat: Infinity,
-                    repeatDelay: 0.6,
-                    ease: "easeInOut",
-                  }}
-                  className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none"
-                />
+                <h1
+                  className="text-5xl sm:text-6xl md:text-7xl font-black text-white tracking-tight flex items-center justify-center drop-shadow-[0_4px_30px_rgba(212,255,90,0.35)]"
+                  style={{ fontFamily: "'Fredoka', 'Plus Jakarta Sans', sans-serif" }}
+                >
+                  <span className="drop-shadow-sm">Saku</span>
+                  <span className="text-[#D4FF5A] ml-1 drop-shadow-[0_0_28px_rgba(212,255,90,0.7)]">
+                    IN
+                  </span>
+                </h1>
 
-                <Image
-                  src="/logo.png"
-                  alt="SakuIN"
-                  width={80}
-                  height={80}
-                  priority
-                  className="object-contain drop-shadow-[0_4px_20px_rgba(212,255,90,0.35)]"
+                {/* Animated Glowing Accent Underline */}
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: "100%", opacity: 1 }}
+                  transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                  className="h-1 bg-gradient-to-r from-transparent via-[#D4FF5A] to-transparent rounded-full mt-2.5 shadow-[0_0_12px_rgba(212,255,90,0.8)] mx-auto"
                 />
               </motion.div>
 
-              {/* Brand Title: SakuIN */}
-              <motion.h1
-                initial={{ opacity: 0, y: 15, letterSpacing: "0.08em" }}
-                animate={{ opacity: 1, y: 0, letterSpacing: "-0.02em" }}
-                transition={{ duration: 0.55, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="text-4xl sm:text-5xl font-black text-white tracking-tight flex items-center drop-shadow-[0_4px_24px_rgba(212,255,90,0.3)]"
-                style={{ fontFamily: "'Fredoka', 'Plus Jakarta Sans', sans-serif" }}
-              >
-                <span>Saku</span>
-                <span className="text-[#D4FF5A] ml-0.5">IN</span>
-              </motion.h1>
-
-              {/* Sleek Minimalist Pulsing Dots (Micro Loader) */}
-              <div className="flex items-center gap-2 mt-6">
+              {/* Sleek Minimalist Pulsing Micro Dots */}
+              <div className="flex items-center gap-2.5 mt-8">
                 {[0, 1, 2].map((i) => (
                   <motion.span
                     key={i}
                     animate={{
-                      scale: [0.8, 1.4, 0.8],
-                      opacity: [0.35, 1, 0.35],
+                      scale: [0.8, 1.45, 0.8],
+                      opacity: [0.3, 1, 0.3],
                     }}
                     transition={{
                       duration: 0.9,
                       repeat: Infinity,
-                      delay: i * 0.2,
+                      delay: i * 0.22,
                       ease: "easeInOut",
                     }}
-                    className="w-2 h-2 rounded-full bg-[#D4FF5A] shadow-[0_0_8px_rgba(212,255,90,0.8)]"
+                    className="w-2.5 h-2.5 rounded-full bg-[#D4FF5A] shadow-[0_0_10px_rgba(212,255,90,0.9)]"
                   />
                 ))}
               </div>
