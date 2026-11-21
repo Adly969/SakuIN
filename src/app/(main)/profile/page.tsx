@@ -15,6 +15,8 @@ import {
   scheduleNativeDailyReminder,
   cancelNativeDailyReminder,
   requestNotificationPermission,
+  sendInstantNotification,
+  isCapacitorNative,
 } from "@/lib/native-notifications";
 import {
   LogOut,
@@ -242,41 +244,30 @@ export default function ProfilePage() {
   };
 
   const handleTestNotification = async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      alert("Browser ini belum mendukung notifikasi web. Jika di iPhone, pastikan SakuIN sudah dipasang ke Layar Utama (Add to Home Screen).");
+    const isNative = await isCapacitorNative();
+    const hasPermission = await requestNotificationPermission();
+
+    if (!hasPermission) {
+      alert("Izin notifikasi diblokir atau belum diaktifkan. Silakan aktifkan izin notifikasi di setelan HP atau browser kamu.");
       return;
     }
 
-    let perm = Notification.permission;
-    if (perm === "default") {
-      perm = await Notification.requestPermission();
-    }
+    const title = "SakuIN — Pengingat Keuangan";
+    const body = `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`;
 
-    if (perm === "granted") {
-      try {
-        if ("serviceWorker" in navigator) {
-          const reg = await navigator.serviceWorker.ready;
-          await reg.showNotification("SakuIN — Pengingat Keuangan", {
-            body: `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`,
-            icon: "/logo-mark.png",
-            badge: "/logo-mark.png",
-          });
-        } else {
-          new Notification("SakuIN — Pengingat Keuangan", {
-            body: `Halo ${profile?.name || "Mahasiswa"}! Sudah catat pengeluaran hari ini? Yuk cek batas harianmu!`,
-            icon: "/logo-mark.png",
-          });
-        }
-        setToastMessage("Notifikasi uji coba berhasil dikirim ke perangkat!");
+    const sent = await sendInstantNotification(title, body);
+    if (sent) {
+      setToastMessage("Notifikasi uji coba berhasil dikirim ke perangkat!");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } else {
+      if (!isNative && !("Notification" in window)) {
+        alert("Browser ini belum mendukung notifikasi web. Jika di iPhone, pastikan SakuIN sudah dipasang ke Layar Utama (Add to Home Screen).");
+      } else {
+        setToastMessage("Pengingat notifikasi siap aktif!");
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
-      } catch (err) {
-        console.error("Gagal kirim notifikasi:", err);
-        setToastMessage("Notifikasi uji coba terkirim!");
-        setShowToast(true);
       }
-    } else {
-      alert("Izin notifikasi diblokir atau belum diaktifkan. Silakan aktifkan izin notifikasi di setelan browser atau HP kamu.");
     }
   };
 

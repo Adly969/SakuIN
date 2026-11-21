@@ -38,6 +38,60 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return false;
 }
 
+export async function sendInstantNotification(
+  title: string,
+  body: string
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  // 1. Jika di Android Native (APK)
+  if (await isCapacitorNative()) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: Math.floor(Math.random() * 10000) + 2000,
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 500) },
+            smallIcon: "ic_stat_icon_config_sample",
+            iconColor: "#D4FF5A",
+          },
+        ],
+      });
+      return true;
+    } catch (e) {
+      console.warn("Gagal kirim native instant notification:", e);
+    }
+  }
+
+  // 2. Jika di Web / PWA
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(title, {
+          body,
+          icon: "/app-icon.png",
+          badge: "/app-icon.png",
+        });
+        return true;
+      } else {
+        new Notification(title, {
+          body,
+          icon: "/app-icon.png",
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn("Gagal showNotification di PWA:", e);
+    }
+  }
+
+  return false;
+}
+
 export async function scheduleNativeDailyReminder(
   hour: number,
   minute: number,
