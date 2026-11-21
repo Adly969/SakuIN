@@ -27,11 +27,11 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
       } catch {}
     }
 
-    // Timer transisi keluar (~1.4 detik: pas, elegan, dan profesional)
+    // Timer transisi keluar (~2.5 detik: memberikan waktu menikmati animasi premium)
     const timer = setTimeout(() => {
       sessionStorage.setItem("sakuin_splash_played", "true");
       setShowSplash(false);
-    }, 1400);
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, []);
@@ -72,16 +72,27 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
               className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full bg-[#D4FF5A]/20 blur-3xl pointer-events-none"
             />
 
-            {/* Expanding Ripple Ring Animation */}
+            {/* Dual Expanding Ripple Rings Animation */}
             <motion.div
               initial={{ scale: 0.7, opacity: 0.6 }}
-              animate={{ scale: [0.8, 1.5], opacity: [0.4, 0] }}
+              animate={{ scale: [0.8, 1.65], opacity: [0.45, 0] }}
               transition={{
-                duration: 1.8,
+                duration: 2.2,
                 repeat: Infinity,
                 ease: "easeOut",
               }}
-              className="absolute w-40 h-40 sm:w-48 sm:h-48 rounded-full border border-[#D4FF5A]/30 pointer-events-none"
+              className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-[#D4FF5A]/30 pointer-events-none"
+            />
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0.6 }}
+              animate={{ scale: [0.8, 1.65], opacity: [0.45, 0] }}
+              transition={{
+                duration: 2.2,
+                repeat: Infinity,
+                delay: 0.8,
+                ease: "easeOut",
+              }}
+              className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-[#D4FF5A]/20 pointer-events-none"
             />
 
             {/* Central Branding Hub */}
