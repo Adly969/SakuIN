@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { motion, AnimatePresence } from "framer-motion";
 import { getPinStatusAction, lockAppAction } from "@/app/actions/pin";
 import { PinLockScreen } from "./pin-lock-screen";
-import { BrandLogo } from "@/components/ui/brand-logo";
+import { BrandText } from "@/components/ui/brand-logo";
 
 interface PinLockContextType {
   pinEnabled: boolean;
@@ -146,7 +146,7 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
   if (!isChecked && !hasPinHint) {
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-center">
-        <BrandLogo height={36} />
+        <BrandText height={32} />
       </div>
     );
   }
