@@ -24,9 +24,9 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
       } catch {}
     }
 
-    // Animasi progress bar 0% -> 100%
+    // Animasi progress bar cepat dan responsif 0% -> 100% (~550ms)
     const startTime = Date.now();
-    const duration = 1400; // 1.4 detik progress
+    const duration = 550;
 
     const timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
@@ -35,16 +35,21 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
 
       if (elapsed >= duration) {
         clearInterval(timer);
-        // Beri jeda 350ms pada 100% sebelum exit fade-out
+        // Jeda sangat singkat (80ms) lalu langsung transisi masuk ke aplikasi
         setTimeout(() => {
           sessionStorage.setItem("sakuin_splash_played", "true");
           setShowSplash(false);
-        }, 350);
+        }, 80);
       }
-    }, 20);
+    }, 16);
 
     return () => clearInterval(timer);
   }, []);
+
+  const handleSkip = () => {
+    sessionStorage.setItem("sakuin_splash_played", "true");
+    setShowSplash(false);
+  };
 
   return (
     <>
@@ -53,9 +58,10 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
           <motion.div
             key="sakuin-splash"
             initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.06, filter: "blur(6px)" }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-0 z-[99999] bg-[#181818] flex flex-col items-center justify-between p-8 select-none overflow-hidden"
+            exit={{ opacity: 0, scale: 1.03, filter: "blur(4px)" }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            onClick={handleSkip}
+            className="fixed inset-0 z-[99999] bg-[#181818] flex flex-col items-center justify-between p-8 select-none overflow-hidden cursor-pointer"
           >
             {/* Top decorative subtle badge */}
             <motion.div

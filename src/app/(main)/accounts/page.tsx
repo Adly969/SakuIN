@@ -61,8 +61,8 @@ export default function AccountsPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const res = await getAccountsAction();
       if (res.success && res.data) {
@@ -72,6 +72,9 @@ export default function AccountsPage() {
           setFromAccountId(res.data.accounts[0].id);
           setToAccountId(res.data.accounts[1].id);
         }
+        try {
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(res.data));
+        } catch {}
       }
     } catch (e) {
       console.error("Gagal load rekening:", e);
@@ -81,7 +84,25 @@ export default function AccountsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem("sakuin_cached_accounts");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.accounts)) {
+          setAccounts(parsed.accounts);
+          setTotalBalance(parsed.totalBalance || 0);
+          if (parsed.accounts.length >= 2) {
+            setFromAccountId(parsed.accounts[0].id);
+            setToAccountId(parsed.accounts[1].id);
+          }
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch {}
+
+    loadData(hasCache);
   }, []);
 
   const handleAddAccount = async (e: React.FormEvent) => {

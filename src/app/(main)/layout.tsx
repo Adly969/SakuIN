@@ -6,6 +6,7 @@ import { PinLockProvider } from "@/components/auth/pin-lock-provider";
 import { OfflineSyncProvider } from "@/components/pwa/offline-sync-provider";
 import { PwaInstaller } from "@/components/pwa/pwa-installer";
 import { ReminderScheduler } from "@/components/pwa/reminder-scheduler";
+import { DataPrefetcher } from "@/components/layout/data-prefetcher";
 
 export default function MainLayout({
   children,
@@ -39,6 +40,9 @@ export default function MainLayout({
 
         {/* Background Reminder Scheduler */}
         <ReminderScheduler />
+
+        {/* Global Background Data Prefetcher for Instant Tab Switching */}
+        <DataPrefetcher />
       </OfflineSyncProvider>
     </PinLockProvider>
   );

@@ -94,13 +94,16 @@ export default function SavingsPage() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastQuote, setToastQuote] = useState("");
 
-  const loadSavings = async () => {
-    setIsLoading(true);
+  const loadSavings = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const res = await getSavingsDataAction();
       if (res.success && res.data) {
         setGoals(res.data.goals);
         setTotalSaved(res.data.totalSaved);
+        try {
+          localStorage.setItem("sakuin_cached_savings", JSON.stringify(res.data));
+        } catch {}
 
         // Update detail goal if open
         if (detailGoal) {
@@ -116,7 +119,21 @@ export default function SavingsPage() {
   };
 
   useEffect(() => {
-    loadSavings();
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem("sakuin_cached_savings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.goals)) {
+          setGoals(parsed.goals);
+          setTotalSaved(parsed.totalSaved || 0);
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch {}
+
+    loadSavings(hasCache);
   }, []);
 
   // Open Create Goal Modal

@@ -102,6 +102,32 @@ function TransactionsContent() {
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Instant Cache Hydration on initial mount (0ms delay)
+  useEffect(() => {
+    try {
+      const cachedTx = localStorage.getItem("sakuin_cached_transactions");
+      const cachedCats = localStorage.getItem("sakuin_cached_categories");
+      let hasCache = false;
+
+      if (cachedTx) {
+        const parsedTx = JSON.parse(cachedTx);
+        if (Array.isArray(parsedTx) && parsedTx.length > 0) {
+          setTransactionsList(parsedTx);
+          hasCache = true;
+        }
+      }
+      if (cachedCats) {
+        const parsedCats = JSON.parse(cachedCats);
+        if (Array.isArray(parsedCats) && parsedCats.length > 0) {
+          setCategoriesList(parsedCats);
+        }
+      }
+      if (hasCache) {
+        setIsLoading(false);
+      }
+    } catch {}
+  }, []);
+
   // Edit / Detail Modal State (PRD T4)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
@@ -119,8 +145,8 @@ function TransactionsContent() {
   const [lastDeletedTx, setLastDeletedTx] = useState<Transaction | null>(null);
 
   // Load Transactions & Categories
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [txRes, catRes] = await Promise.all([
         getTransactionsAction({
@@ -134,11 +160,19 @@ function TransactionsContent() {
 
       if (txRes.success && txRes.data) {
         setTransactionsList(txRes.data);
+        if (filterMonth === currentMonthStr && filterType === "all" && filterCategory === "all" && !searchQuery.trim()) {
+          try {
+            localStorage.setItem("sakuin_cached_transactions", JSON.stringify(txRes.data));
+          } catch {}
+        }
       }
 
       if (catRes.success && catRes.data) {
         const catNames = Array.from(new Set(catRes.data.map((c) => c.name)));
         setCategoriesList(catNames);
+        try {
+          localStorage.setItem("sakuin_cached_categories", JSON.stringify(catNames));
+        } catch {}
       }
     } catch (err) {
       console.error("Gagal memuat riwayat transaksi:", err);
@@ -148,10 +182,18 @@ function TransactionsContent() {
   };
 
   useEffect(() => {
-    loadData();
+    // Jika filter default dan sudah ada cache, load silently di latar belakang
+    const isDefaultFilter =
+      filterMonth === currentMonthStr &&
+      filterType === "all" &&
+      filterCategory === "all" &&
+      !searchQuery.trim();
+
+    const hasData = transactionsList.length > 0;
+    loadData(isDefaultFilter && hasData);
 
     const handleSyncComplete = () => {
-      loadData();
+      loadData(true);
     };
     window.addEventListener("sakuin:sync-complete", handleSyncComplete);
     return () => {

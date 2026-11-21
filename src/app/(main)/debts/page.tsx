@@ -74,8 +74,8 @@ export default function DebtsPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [debtRes, accRes] = await Promise.all([
         getDebtsAction(),
@@ -86,6 +86,9 @@ export default function DebtsPage() {
         setDebts(debtRes.data.debts);
         setTotalReceivable(debtRes.data.totalReceivable);
         setTotalPayable(debtRes.data.totalPayable);
+        try {
+          localStorage.setItem("sakuin_cached_debts", JSON.stringify(debtRes.data));
+        } catch {}
       }
 
       if (accRes.success && accRes.data) {
@@ -94,6 +97,9 @@ export default function DebtsPage() {
           setNewAccountId(accRes.data.accounts[0].id);
           setPayAccountId(accRes.data.accounts[0].id);
         }
+        try {
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
+        } catch {}
       }
     } catch (e) {
       console.error("Gagal load utang piutang:", e);
@@ -103,7 +109,22 @@ export default function DebtsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem("sakuin_cached_debts");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.debts)) {
+          setDebts(parsed.debts);
+          setTotalReceivable(parsed.totalReceivable || 0);
+          setTotalPayable(parsed.totalPayable || 0);
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch {}
+
+    loadData(hasCache);
   }, []);
 
   const handleAddDebt = async (e: React.FormEvent) => {

@@ -48,8 +48,38 @@ export default function StatisticsPage() {
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
 
+  // Instant Cache Hydration on initial mount (0ms delay)
+  useEffect(() => {
+    setIsMounted(true);
+    const today = new Date();
+    const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    setSelectedMonthKey(curMonthKey);
+
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem("sakuin_cached_statistics");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === "object") {
+          setStatsData(parsed);
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch {}
+
+    loadData("month", curMonthKey, today.getFullYear(), "expense", hasCache);
+  }, []);
+
   // Load statistics data
-  const loadData = (p: "month" | "year", mKey: string, y: number, t: "expense" | "income" | "savings") => {
+  const loadData = (
+    p: "month" | "year",
+    mKey: string,
+    y: number,
+    t: "expense" | "income" | "savings",
+    silent = false
+  ) => {
+    if (!silent) setIsLoading(true);
     startTransition(async () => {
       try {
         const res = await getStatisticsDataAction({
@@ -63,6 +93,11 @@ export default function StatisticsPage() {
           if (!selectedMonthKey) {
             setSelectedMonthKey(res.data.selectedMonthKey);
           }
+          if (p === "month" && t === "expense") {
+            try {
+              localStorage.setItem("sakuin_cached_statistics", JSON.stringify(res.data));
+            } catch {}
+          }
         }
       } catch (err) {
         console.error("Gagal memuat statistik:", err);
@@ -71,14 +106,6 @@ export default function StatisticsPage() {
       }
     });
   };
-
-  useEffect(() => {
-    setIsMounted(true);
-    const today = new Date();
-    const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-    setSelectedMonthKey(curMonthKey);
-    loadData("month", curMonthKey, today.getFullYear(), "expense");
-  }, []);
 
   const handlePeriodChange = (newPeriod: "month" | "year") => {
     setPeriod(newPeriod);
