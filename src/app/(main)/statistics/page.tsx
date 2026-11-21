@@ -475,7 +475,7 @@ export default function StatisticsPage() {
                       ? "bg-accent/15 text-accent"
                       : insight.type === "warning"
                       ? "bg-expense/15 text-expense"
-                      : "bg-blue-500/15 text-blue-400"
+                      : "bg-muted text-foreground border border-border/60"
                   }`}
                 >
                   {insight.type === "positive" ? (

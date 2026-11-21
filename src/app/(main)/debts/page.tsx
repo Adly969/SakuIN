@@ -239,8 +239,8 @@ export default function DebtsPage() {
             <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
               Teman Ngutang ke Saya (Piutang)
             </span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
-              <ArrowDownLeft className="w-4 h-4 stroke-[2.5]" />
+            <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center">
+              <ArrowDownLeft className="w-4 h-4 stroke-[2]" />
             </div>
           </div>
           <h3 className="text-2xl font-black text-emerald-400 tracking-tight">
@@ -324,17 +324,11 @@ export default function DebtsPage() {
                   {/* Top Bar: Nama & Badge */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          isReceivable
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-expense/15 text-expense"
-                        }`}
-                      >
+                      <div className="w-9 h-9 rounded-xl bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
                         {isReceivable ? (
-                          <ArrowDownLeft className="w-4 h-4 stroke-[2.5]" />
+                          <ArrowDownLeft className="w-4 h-4 stroke-[2]" />
                         ) : (
-                          <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                          <ArrowUpRight className="w-4 h-4 stroke-[2]" />
                         )}
                       </div>
                       <div className="min-w-0">
@@ -351,10 +345,8 @@ export default function DebtsPage() {
                     <span
                       className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                         isPaid
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : item.status === "partial"
-                          ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                          : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          ? "bg-accent/20 text-accent border-accent/40"
+                          : "bg-muted text-muted-foreground border-border"
                       }`}
                     >
                       {isPaid ? "Lunas" : item.status === "partial" ? "Dicicil" : "Belum Lunas"}

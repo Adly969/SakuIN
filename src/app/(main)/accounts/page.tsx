@@ -217,11 +217,11 @@ export default function AccountsPage() {
   const getTypeBadge = (type: string) => {
     switch (type) {
       case "bank":
-        return { label: "Bank", bg: "bg-blue-500/15 text-blue-400 border-blue-500/30" };
+        return { label: "Bank", bg: "bg-muted text-foreground border-border" };
       case "ewallet":
-        return { label: "E-Wallet", bg: "bg-amber-500/15 text-amber-400 border-amber-500/30" };
+        return { label: "E-Wallet", bg: "bg-muted text-foreground border-border" };
       default:
-        return { label: "Tunai", bg: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+        return { label: "Tunai", bg: "bg-muted text-foreground border-border" };
     }
   };
 
@@ -412,11 +412,34 @@ export default function AccountsPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Misal: BCA, Mandiri, GoPay, Dompet Fisik"
+                  placeholder="Misal: GoPay, DANA, BCA, Dompet Fisik"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-base sm:text-xs font-bold focus:outline-none focus:ring-2 focus:ring-accent"
                 />
+
+                {/* Preset Cepat Nama Rekening / E-Wallet */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(newType === "ewallet"
+                    ? ["GoPay", "DANA", "ShopeePay", "OVO"]
+                    : newType === "bank"
+                    ? ["BCA", "BRI", "Mandiri", "BNI", "BSI"]
+                    : ["Dompet Fisik", "Uang Kos", "Amplop"]
+                  ).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setNewName(preset)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                        newName === preset
+                          ? "bg-accent/20 border-accent text-foreground"
+                          : "bg-muted/60 border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      +{preset}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Nomor Rekening (Optional) */}

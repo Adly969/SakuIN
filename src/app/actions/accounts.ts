@@ -62,7 +62,7 @@ export async function getAccountsAction() {
         },
         {
           userId,
-          name: "Rekening Bank (BCA / Mandiri)",
+          name: "Rekening Bank",
           type: "bank",
           color: "#8CCBFF",
           icon: "Landmark",
@@ -71,7 +71,7 @@ export async function getAccountsAction() {
         },
         {
           userId,
-          name: "E-Wallet (GoPay / DANA)",
+          name: "GoPay",
           type: "ewallet",
           color: "#FFB04A",
           icon: "Smartphone",
@@ -84,6 +84,17 @@ export async function getAccountsAction() {
         where: eq(accounts.userId, userId),
         orderBy: [accounts.isDefault, accounts.createdAt],
       });
+    }
+
+    // Otomatis rapikan nama rekening lawas yang terlalu panjang di database
+    for (const acc of userAccounts) {
+      if (acc.name === "E-Wallet (GoPay / DANA)") {
+        await db.update(accounts).set({ name: "GoPay" }).where(eq(accounts.id, acc.id));
+        acc.name = "GoPay";
+      } else if (acc.name === "Rekening Bank (BCA / Mandiri)") {
+        await db.update(accounts).set({ name: "Rekening Bank" }).where(eq(accounts.id, acc.id));
+        acc.name = "Rekening Bank";
+      }
     }
 
     const totalBalance = userAccounts.reduce((sum, acc) => sum + Number(acc.balance), 0);

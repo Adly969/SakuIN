@@ -459,8 +459,8 @@ export default function ProfilePage() {
             className="p-3.5 bg-background hover:bg-muted/50 border border-border rounded-xl flex items-center justify-between gap-2 group transition-all"
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                <Wallet className="w-4 h-4 stroke-[2.2]" />
+              <div className="w-8 h-8 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
+                <Wallet className="w-4 h-4 stroke-[2]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
@@ -475,8 +475,8 @@ export default function ProfilePage() {
             className="p-3.5 bg-background hover:bg-muted/50 border border-border rounded-xl flex items-center justify-between gap-2 group transition-all"
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                <HandCoins className="w-4 h-4 stroke-[2.2]" />
+              <div className="w-8 h-8 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
+                <HandCoins className="w-4 h-4 stroke-[2]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>

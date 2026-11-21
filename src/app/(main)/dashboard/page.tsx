@@ -491,7 +491,7 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 truncate">
-                          <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0">
                             <AccIcon className="w-3.5 h-3.5" />
                           </div>
                           <span className="text-xs font-bold text-foreground truncate">
@@ -521,8 +521,8 @@ export default function DashboardPage() {
               href="/accounts"
               className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
             >
-              <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Wallet className="w-4 h-4 stroke-[2.2]" />
+              <div className="w-9 h-9 rounded-xl bg-muted border border-border/70 text-foreground flex items-center justify-center shrink-0 group-hover:border-accent/50 transition-all">
+                <Wallet className="w-4 h-4 stroke-[2]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
@@ -534,8 +534,8 @@ export default function DashboardPage() {
               href="/debts"
               className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
             >
-              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <HandCoins className="w-4 h-4 stroke-[2.2]" />
+              <div className="w-9 h-9 rounded-xl bg-muted border border-border/70 text-foreground flex items-center justify-center shrink-0 group-hover:border-accent/50 transition-all">
+                <HandCoins className="w-4 h-4 stroke-[2]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>

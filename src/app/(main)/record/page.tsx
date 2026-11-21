@@ -102,9 +102,10 @@ export default function RecordPage() {
       const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
       if (cachedAcc) {
         const parsedAcc = JSON.parse(cachedAcc);
-        if (Array.isArray(parsedAcc) && parsedAcc.length > 0) {
-          setAccountsList(parsedAcc);
-          const def = parsedAcc.find((a: any) => a.isDefault) || parsedAcc[0];
+        const list = Array.isArray(parsedAcc) ? parsedAcc : parsedAcc?.accounts || [];
+        if (list.length > 0) {
+          setAccountsList(list);
+          const def = list.find((a: any) => a.isDefault) || list[0];
           if (def?.id) setSelectedAccountId(def.id);
         }
       }
@@ -112,9 +113,25 @@ export default function RecordPage() {
       if (cachedCat) {
         const parsedCat = JSON.parse(cachedCat);
         if (Array.isArray(parsedCat) && parsedCat.length > 0) {
-          setCategoriesList(parsedCat);
-          const firstExp = parsedCat.find((c: any) => c.type === "expense" && c.name !== "Kebutuhan Lain");
-          if (firstExp?.name) setSelectedCategory(firstExp.name);
+          if (typeof parsedCat[0] === "string") {
+            const mapped = parsedCat.map((cName: string, idx: number) => ({
+              id: `cat-${idx}`,
+              name: cName,
+              type: "expense",
+              icon: "Tag",
+              color: "#A3A3A3",
+              requiresLabel: false,
+            }));
+            setCategoriesList(mapped);
+          } else {
+            setCategoriesList(parsedCat);
+          }
+          const firstExp = parsedCat.find((c: any) =>
+            typeof c === "string" ? c !== "Kebutuhan Lain" : c.type === "expense" && c.name !== "Kebutuhan Lain"
+          );
+          if (firstExp) {
+            setSelectedCategory(typeof firstExp === "string" ? firstExp : firstExp.name);
+          }
         }
       }
     } catch (err) {
@@ -295,7 +312,7 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-xl mx-auto pb-12">
+    <div className="space-y-5 max-w-[480px] mx-auto pb-32 md:pb-12">
       {/* 1. Header Halaman */}
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
@@ -418,7 +435,7 @@ export default function RecordPage() {
                 key={q.label}
                 type="button"
                 onClick={() => setAmount((prev) => Math.min(999999999, prev + q.value))}
-                className="px-3 py-1 rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
+                className="px-3.5 py-1.5 min-h-[38px] rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all flex items-center justify-center"
               >
                 {q.label}
               </button>
@@ -445,7 +462,7 @@ export default function RecordPage() {
                     setIsCustomCategory(false);
                     setCustomCategory("");
                   }}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
+                  className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-bold border transition-all text-left min-h-[44px] ${
                     isSelected
                       ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent scale-[1.02]"
                       : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
@@ -465,7 +482,7 @@ export default function RecordPage() {
               setIsCustomCategory(true);
               setSelectedCategory("");
             }}
-            className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
+            className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 min-h-[44px] ${
               isCustomCategory
                 ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent"
                 : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
@@ -509,7 +526,17 @@ export default function RecordPage() {
               <span>{recordType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
               <span className="text-[10px] text-muted-foreground">Saldo otomatis terupdate</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div
+              className={`grid gap-2 ${
+                accountsList.length === 1
+                  ? "grid-cols-1"
+                  : accountsList.length === 2
+                  ? "grid-cols-2"
+                  : accountsList.length === 3
+                  ? "grid-cols-3"
+                  : "grid-cols-2 sm:grid-cols-4"
+              }`}
+            >
               {accountsList.map((acc) => {
                 const isSelected = selectedAccountId === acc.id;
                 const AccIcon =
@@ -520,17 +547,19 @@ export default function RecordPage() {
                     key={acc.id}
                     type="button"
                     onClick={() => setSelectedAccountId(acc.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 ${
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 min-h-[56px] ${
                       isSelected
                         ? "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
                         : "border-border bg-background text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <AccIcon className="w-3.5 h-3.5 shrink-0 text-accent" />
-                      <span className="text-xs font-bold truncate">{acc.name}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-md bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
+                        <AccIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                     </div>
-                    <span className="text-[10px] font-semibold text-muted-foreground truncate">
+                    <span className="text-[11px] font-semibold text-muted-foreground truncate pl-0.5">
                       {formatRupiah(acc.balance)}
                     </span>
                   </button>
@@ -552,7 +581,7 @@ export default function RecordPage() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Contoh: Warteg bu joko, bensin shell, beli di minimarket..."
-            className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent min-h-[44px]"
           />
         </div>
 
@@ -562,12 +591,14 @@ export default function RecordPage() {
             <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
             <span>Tanggal Transaksi</span>
           </label>
-          <input
-            type="date"
-            value={txDate}
-            onChange={(e) => setTxDate(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-accent"
-          />
+          <div className="relative">
+            <input
+              type="date"
+              value={txDate}
+              onChange={(e) => setTxDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent text-left [&::-webkit-date-and-time-value]:text-left cursor-pointer min-h-[44px]"
+            />
+          </div>
         </div>
 
         {/* Tombol Simpan Transaksi */}
