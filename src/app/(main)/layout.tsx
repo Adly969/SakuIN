@@ -16,21 +16,21 @@ export default function MainLayout({
   return (
     <PinLockProvider>
       <OfflineSyncProvider>
-        <div className="min-h-screen bg-background flex flex-col lg:flex-row">
-          {/* Desktop Sidebar (>= 1024px) */}
+        <div className="min-h-[100dvh] bg-background flex flex-col md:flex-row">
+          {/* Desktop / Tablet Sidebar (>= 768px) */}
           <DesktopSidebar />
 
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col min-w-0">
-            {/* Mobile Header (< 1024px) */}
+            {/* Mobile Header (< 768px) */}
             <TopHeader />
 
-            {/* Content Container (max ~1200px) */}
-            <main className="flex-1 w-full max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">
+            {/* Content Container (max ~1100px, centered) */}
+            <main className="flex-1 w-full max-w-[1100px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
               {children}
             </main>
 
-            {/* Mobile Bottom Navigation Bar (< 1024px) */}
+            {/* Mobile Bottom Navigation Bar (< 768px) */}
             <MobileBottomBar />
           </div>
         </div>

@@ -39,8 +39,10 @@ import {
 } from "recharts";
 import { formatRupiah } from "@/lib/utils";
 import { getDashboardDataAction, getNextMotivationAction } from "@/app/actions/dashboard";
+import { getAccountsAction } from "@/app/actions/accounts";
 import { BrandText } from "@/components/ui/brand-logo";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
+import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
 
 interface MonthHistoryItem {
   month: string;
@@ -124,6 +126,7 @@ export default function DashboardPage() {
   const [selectedType, setSelectedType] = useState<"expense" | "income" | "savings">("expense");
   const [trendType, setTrendType] = useState<"expense" | "income">("expense");
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [accountsList, setAccountsList] = useState<any[]>([]);
   const [activeMonthData, setActiveMonthData] = useState<MonthHistoryItem | null>(null);
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number>(0);
   const [showMotivation, setShowMotivation] = useState(true);
@@ -133,15 +136,23 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const res = await getDashboardDataAction();
-      if (res.success && res.data) {
-        setDashboardData(res.data);
+      const [dashRes, accRes] = await Promise.allSettled([
+        getDashboardDataAction(),
+        getAccountsAction(),
+      ]);
+
+      if (dashRes.status === "fulfilled" && dashRes.value.success && dashRes.value.data) {
+        setDashboardData(dashRes.value.data);
         try {
-          localStorage.setItem("sakuin_cached_dashboard", JSON.stringify(res.data));
+          localStorage.setItem("sakuin_cached_dashboard", JSON.stringify(dashRes.value.data));
         } catch {}
-        if (res.data.monthlyHistory && res.data.monthlyHistory.length > 0) {
-          setActiveMonthData(res.data.monthlyHistory[res.data.monthlyHistory.length - 1]);
+        if (dashRes.value.data.monthlyHistory && dashRes.value.data.monthlyHistory.length > 0) {
+          setActiveMonthData(dashRes.value.data.monthlyHistory[dashRes.value.data.monthlyHistory.length - 1]);
         }
+      }
+
+      if (accRes.status === "fulfilled" && accRes.value.success && accRes.value.data) {
+        setAccountsList(accRes.value.data.accounts || []);
       }
     } catch (e) {
       console.error("Gagal load dashboard data:", e);
@@ -161,6 +172,14 @@ export default function DashboardPage() {
           if (parsed.monthlyHistory && parsed.monthlyHistory.length > 0) {
             setActiveMonthData(parsed.monthlyHistory[parsed.monthlyHistory.length - 1]);
           }
+        }
+      }
+
+      const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
+      if (cachedAcc) {
+        const parsedAcc = JSON.parse(cachedAcc);
+        if (parsedAcc && Array.isArray(parsedAcc.accounts)) {
+          setAccountsList(parsedAcc.accounts);
         }
       }
     } catch (err) {
@@ -266,646 +285,724 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="space-y-5 max-w-xl mx-auto pb-2">
-      {/* 0. Header Tanggal Dinamis & Sapaan */}
-      <div className="flex items-center justify-between px-1">
-        <div>
-          <div className="flex items-center gap-1.5 text-accent text-[11px] font-black uppercase tracking-wider">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>{dateInfo?.full || "Rabu, 18 November 2026"}</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight mt-0.5">
-            Halo, {dashboardData?.userName || "Mahasiswa"}
-          </h1>
-        </div>
-
-        <div className="text-right">
-          <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
-            Bulan {dateInfo?.monthName || "November"}
-          </span>
-        </div>
-      </div>
-
-      {/* 1. Kartu Motivasi Harian (PRD 7.7, 8.7 & Bagian 17) */}
-      {showMotivation && (
-        <motion.div
-          initial={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-card border border-border rounded-xl p-3.5 shadow-sm flex items-start justify-between gap-3"
-        >
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-lg bg-accent/20 text-accent shrink-0 mt-0.5">
-              <Quote className="w-3.5 h-3.5 fill-accent" />
+    <div className="w-full max-w-[1100px] mx-auto space-y-6 pb-6">
+      {/* 0 & 1: Top Hero Section (Full width on all screens) */}
+      <div className="space-y-4">
+        {/* 0. Header Tanggal Dinamis & Sapaan */}
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <div className="flex items-center gap-1.5 text-accent text-[11px] font-black uppercase tracking-wider">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{dateInfo?.full || "Rabu, 18 November 2026"}</span>
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
-                <span>Motivasi SakuIN</span>
-                <Sparkles className="w-3 h-3 text-accent" />
-              </p>
-              <p className="text-xs font-semibold text-foreground leading-snug mt-0.5">
-                &ldquo;
-                {dashboardData?.motivation?.text ||
-                  "Menabung Rp5.000 hari ini lebih baik daripada menyesal di akhir bulan."}
-                &rdquo;
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={handleRefreshQuote}
-              title="Ganti kutipan motivasi"
-              className={`p-1.5 text-muted-foreground hover:text-foreground transition-transform rounded-md hover:bg-muted ${
-                isRefreshingQuote ? "animate-spin" : ""
-              }`}
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMotivation(false)}
-              title="Tutup kartu motivasi"
-              className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* 2. Kartu Saldo SakuIN & Batas Harian (PRD B1-B4, G1) */}
-      <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-        {/* Card Header & Sisa Uang Kiriman */}
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <BrandText height={20} />
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
-                Debit
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground font-medium">
-              Sisa Uang Kiriman
-            </p>
+            <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight mt-0.5">
+              Halo, {dashboardData?.userName || "Mahasiswa"}
+            </h1>
           </div>
 
           <div className="text-right">
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
-              {dashboardData ? formatRupiah(dashboardData.remainingBalance) : "Rp ..."}
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
+              Bulan {dateInfo?.monthName || "November"}
+            </span>
+          </div>
+        </div>
+
+        {/* 1. Kartu Motivasi Harian (PRD 7.7, 8.7 & Bagian 17) */}
+        {showMotivation && (
+          <motion.div
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-xl p-3.5 shadow-sm flex items-start justify-between gap-3"
+          >
+            <div className="flex items-start gap-2.5">
+              <div className="p-1.5 rounded-lg bg-accent/20 text-accent shrink-0 mt-0.5">
+                <Quote className="w-3.5 h-3.5 fill-accent" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+                  <span>Motivasi SakuIN</span>
+                  <Sparkles className="w-3 h-3 text-accent" />
+                </p>
+                <p className="text-xs font-semibold text-foreground leading-snug mt-0.5">
+                  &ldquo;
+                  {dashboardData?.motivation?.text ||
+                    "Menabung Rp5.000 hari ini lebih baik daripada menyesal di akhir bulan."}
+                  &rdquo;
+                </p>
+              </div>
             </div>
-            <span className="text-[11px] font-semibold text-muted-foreground">
-              Tersedia Bulan Ini
-            </span>
-          </div>
-        </div>
-
-        {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
-            <span>
-              Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
-            </span>
-            <span>
-              {formatRupiah(dashboardData?.totalExpense || 0)} / {formatRupiah(dashboardData?.allowance || 0)}
-            </span>
-          </div>
-          <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                (dashboardData?.budgetUsedPercent || 0) >= 100
-                  ? "bg-expense"
-                  : (dashboardData?.budgetUsedPercent || 0) >= 80
-                  ? "bg-[#FFB04A]"
-                  : "bg-accent"
-              }`}
-              style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
-            />
-          </div>
-          {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
-            <p className="text-[10px] font-bold text-[#FFB04A] flex items-center gap-1">
-              <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
-            </p>
-          )}
-        </div>
-
-        {/* Card Footer: Batas Per Hari & Siklus Kiriman */}
-        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs">
-          <div>
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
-              Batas per Hari
-            </span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="font-extrabold text-accent text-sm sm:text-base">
-                {dashboardData ? formatRupiah(dashboardData.dailyLimit) : "Rp ..."}
-              </span>
-              <span
-                className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                  dashboardData?.status?.status === "safe"
-                    ? "bg-accent/20 text-accent"
-                    : dashboardData?.status?.status === "warning"
-                    ? "bg-[#FFB04A]/20 text-[#FFB04A]"
-                    : "bg-expense/20 text-expense"
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleRefreshQuote}
+                title="Ganti kutipan motivasi"
+                className={`w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground transition-transform rounded-md hover:bg-muted ${
+                  isRefreshingQuote ? "animate-spin" : ""
                 }`}
               >
-                {dashboardData?.status?.label || "Aman"}
-              </span>
+                <RotateCw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMotivation(false)}
+                title="Tutup kartu motivasi"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Main Responsive Grid: 1 col on mobile, 2 cols on lg (>=1024px) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (lg:col-span-6 space-y-5) */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* 2. Kartu Saldo SakuIN & Batas Harian (PRD B1-B4, G1) */}
+          <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
+            {/* Card Header & Sisa Uang Kiriman */}
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <BrandText height={20} />
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
+                    Debit
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Sisa Uang Kiriman
+                </p>
+              </div>
+
+              <div className="text-right">
+                <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
+                  {dashboardData ? formatRupiah(dashboardData.remainingBalance) : "Rp ..."}
+                </div>
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  Tersedia Bulan Ini
+                </span>
+              </div>
+            </div>
+
+            {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                <span>
+                  Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
+                </span>
+                <span>
+                  {formatRupiah(dashboardData?.totalExpense || 0)} / {formatRupiah(dashboardData?.allowance || 0)}
+                </span>
+              </div>
+              <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    (dashboardData?.budgetUsedPercent || 0) >= 100
+                      ? "bg-expense"
+                      : (dashboardData?.budgetUsedPercent || 0) >= 80
+                      ? "bg-[#FFB04A]"
+                      : "bg-accent"
+                  }`}
+                  style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
+                />
+              </div>
+              {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
+                <p className="text-[10px] font-bold text-[#FFB04A] flex items-center gap-1">
+                  <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
+                </p>
+              )}
+            </div>
+
+            {/* Card Footer: Batas Per Hari & Siklus Kiriman */}
+            <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs">
+              <div>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
+                  Batas per Hari
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="font-extrabold text-accent text-sm sm:text-base">
+                    {dashboardData ? formatRupiah(dashboardData.dailyLimit) : "Rp ..."}
+                  </span>
+                  <span
+                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                      dashboardData?.status?.status === "safe"
+                        ? "bg-accent/20 text-accent"
+                        : dashboardData?.status?.status === "warning"
+                        ? "bg-[#FFB04A]/20 text-[#FFB04A]"
+                        : "bg-expense/20 text-expense"
+                    }`}
+                  >
+                    {dashboardData?.status?.label || "Aman"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
+                  Siklus Bulanan
+                </span>
+                <span className="font-bold text-foreground text-xs mt-0.5 block">
+                  Sisa {dashboardData?.remainingDays ?? "..."} Hari (Kiriman Tgl {dashboardData?.paydayDay ?? 1})
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* 2.2 Kartu Rekening (HP: horizontal snap, md ke atas: grid 2-3 kolom) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-accent" />
+                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  Rekening & Dompet
+                </h2>
+              </div>
+              <Link
+                href="/accounts"
+                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2"
+              >
+                <span>Kelola</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {accountsList.length === 0 ? (
+              <div className="p-4 rounded-xl bg-card border border-border text-center text-xs text-muted-foreground">
+                Belum ada rekening aktif.{" "}
+                <Link href="/accounts" className="text-accent font-bold underline">
+                  Tambah Rekening
+                </Link>
+              </div>
+            ) : (
+              <div className="flex md:grid md:grid-cols-2 gap-3 overflow-x-auto pb-2 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-1 px-1">
+                {accountsList.map((acc: any) => {
+                  const AccIcon =
+                    acc.type === "bank"
+                      ? Landmark
+                      : acc.type === "ewallet"
+                      ? PhoneIcon
+                      : Banknote;
+                  return (
+                    <Link
+                      key={acc.id}
+                      href="/accounts"
+                      className="min-w-[220px] md:min-w-0 flex-shrink-0 snap-start bg-card border border-border rounded-xl p-3.5 shadow-xs hover:border-accent/40 transition-all flex flex-col justify-between group"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 truncate">
+                          <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                            <AccIcon className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-bold text-foreground truncate">
+                            {acc.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                          {acc.type === "bank" ? "Bank" : acc.type === "ewallet" ? "E-Wallet" : "Tunai"}
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <p className="text-[10px] text-muted-foreground">Saldo</p>
+                        <p className="text-sm font-black text-foreground group-hover:text-accent transition-colors">
+                          {formatRupiah(acc.balance || 0)}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 2.5 Akses Cepat: Multi Rekening & Utang Piutang */}
+          <div className="grid grid-cols-2 gap-3">
+            <Link
+              href="/accounts"
+              className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Wallet className="w-4 h-4 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
+                <p className="text-[10px] text-muted-foreground truncate">Bank, E-Wallet, Tunai</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/debts"
+              className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <HandCoins className="w-4 h-4 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
+                <p className="text-[10px] text-muted-foreground truncate">Catat Utang Teman</p>
+              </div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Right Column (lg:col-span-6 space-y-5) */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* 3. Filter Controls: Dropdown Pill on Left & Month/Year Segmented Toggle on Right */}
+          <div className="flex items-center justify-between px-1">
+            {/* Left Pill Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedType((prev) =>
+                    prev === "expense" ? "income" : prev === "income" ? "savings" : "expense"
+                  )
+                }
+                className="flex items-center gap-2 bg-card hover:bg-muted border border-border px-4 py-2.5 min-h-[44px] rounded-full text-xs font-bold text-foreground shadow-sm transition-all"
+              >
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    selectedType === "expense"
+                      ? "bg-expense"
+                      : selectedType === "income"
+                      ? "bg-accent"
+                      : "bg-savings"
+                  }`}
+                />
+                <span className="capitalize">
+                  {selectedType === "expense"
+                    ? "Pengeluaran"
+                    : selectedType === "income"
+                    ? "Pemasukan"
+                    : "Tabungan"}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Right Segmented Toggle: Month | Year */}
+            <div className="inline-flex p-1 bg-card border border-border rounded-full text-xs font-semibold shadow-sm min-h-[44px] items-center">
+              <button
+                type="button"
+                onClick={() => setPeriod("month")}
+                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${
+                  period === "month"
+                    ? "bg-foreground text-background font-bold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Bulan
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriod("year")}
+                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${
+                  period === "year"
+                    ? "bg-foreground text-background font-bold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Tahun
+              </button>
             </div>
           </div>
 
-          <div className="text-right">
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
-              Siklus Bulanan
-            </span>
-            <span className="font-bold text-foreground text-xs mt-0.5 block">
-              Sisa {dashboardData?.remainingDays ?? "..."} Hari (Kiriman Tgl {dashboardData?.paydayDay ?? 1})
-            </span>
-          </div>
-        </div>
-      </section>
+          {/* 4. Bagian Grafik Donut & Komposisi */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Left Card: Donut Chart with Large Percentage in Center */}
+            <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
+              <div className="relative w-full h-36 flex items-center justify-center">
+                {donutData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center p-2">
+                    <span className="text-2xl font-black text-muted-foreground/30">0%</span>
+                    <p className="text-[11px] font-bold text-muted-foreground mt-1">Belum ada pengeluaran</p>
+                    <p className="text-[9px] text-muted-foreground/70">Bulan {dateInfo?.monthName || "ini"}</p>
+                  </div>
+                ) : (
+                  <>
+                    {isMounted && (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RePieChart>
+                          <Pie
+                            data={donutData}
+                            dataKey="value"
+                            innerRadius={44}
+                            outerRadius={58}
+                            paddingAngle={4}
+                            cornerRadius={6}
+                            stroke="none"
+                            onClick={(_, idx) => setActiveCategoryIndex(idx)}
+                            className="cursor-pointer"
+                          >
+                            {donutData.map((entry: CategoryItem, index: number) => (
+                              <Cell
+                                key={`donut-${index}`}
+                                fill={entry.color}
+                                opacity={activeCategoryIndex === index ? 1 : 0.85}
+                              />
+                            ))}
+                          </Pie>
+                        </RePieChart>
+                      </ResponsiveContainer>
+                    )}
 
-      {/* 2.5 Akses Cepat: Multi Rekening & Utang Piutang */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/accounts"
-          className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3 shadow-xs transition-all flex items-center gap-2.5 group"
-        >
-          <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-            <Wallet className="w-4 h-4 stroke-[2.2]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
-            <p className="text-[10px] text-muted-foreground truncate">Bank, E-Wallet, Tunai</p>
-          </div>
-        </Link>
-
-        <Link
-          href="/debts"
-          className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3 shadow-xs transition-all flex items-center gap-2.5 group"
-        >
-          <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-            <HandCoins className="w-4 h-4 stroke-[2.2]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
-            <p className="text-[10px] text-muted-foreground truncate">Catat Utang Teman</p>
-          </div>
-        </Link>
-      </div>
-
-      {/* 3. Filter Controls: Dropdown Pill on Left & Month/Year Segmented Toggle on Right */}
-      <div className="flex items-center justify-between px-1">
-        {/* Left Pill Dropdown */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() =>
-              setSelectedType((prev) =>
-                prev === "expense" ? "income" : prev === "income" ? "savings" : "expense"
-              )
-            }
-            className="flex items-center gap-2 bg-card hover:bg-muted border border-border px-4 py-2 rounded-full text-xs font-bold text-foreground shadow-sm transition-all"
-          >
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                selectedType === "expense"
-                  ? "bg-expense"
-                  : selectedType === "income"
-                  ? "bg-accent"
-                  : "bg-savings"
-              }`}
-            />
-            <span className="capitalize">
-              {selectedType === "expense"
-                ? "Pengeluaran"
-                : selectedType === "income"
-                ? "Pemasukan"
-                : "Tabungan"}
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
-
-        {/* Right Segmented Toggle: Month | Year */}
-        <div className="inline-flex p-1 bg-card border border-border rounded-full text-xs font-semibold shadow-sm">
-          <button
-            type="button"
-            onClick={() => setPeriod("month")}
-            className={`px-3.5 py-1.5 rounded-full transition-all ${
-              period === "month"
-                ? "bg-foreground text-background font-bold shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Bulan
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod("year")}
-            className={`px-3.5 py-1.5 rounded-full transition-all ${
-              period === "year"
-                ? "bg-foreground text-background font-bold shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Tahun
-          </button>
-        </div>
-      </div>
-
-      {/* 4. Bagian Grafik Donut & Komposisi */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Left Card: Donut Chart with Large Percentage in Center */}
-        <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
-          <div className="relative w-full h-36 flex items-center justify-center">
-            {donutData.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-2">
-                <span className="text-2xl font-black text-muted-foreground/30">0%</span>
-                <p className="text-[11px] font-bold text-muted-foreground mt-1">Belum ada pengeluaran</p>
-                <p className="text-[9px] text-muted-foreground/70">Bulan {dateInfo?.monthName || "ini"}</p>
+                    {/* Large Bold Percentage in Center (Interactive) */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-2xl font-black tracking-tight text-foreground">
+                        {(donutData[activeCategoryIndex] || donutData[0])?.value || 0}%
+                      </span>
+                      <span className="text-[10px] font-semibold text-muted-foreground -mt-0.5 truncate max-w-[80px]">
+                        {(donutData[activeCategoryIndex] || donutData[0])?.name || "-"}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
-            ) : (
-              <>
+
+              {/* Donut Legend Items */}
+              <div className="space-y-1 pt-3 border-t border-border/60">
+                {donutData.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-1">
+                    Kategori akan muncul setelah mencatat transaksi
+                  </p>
+                ) : (
+                  donutData.map((cat: CategoryItem, idx: number) => {
+                    const isSelected = activeCategoryIndex === idx;
+                    return (
+                      <button
+                        key={cat.name}
+                        type="button"
+                        onClick={() => setActiveCategoryIndex(idx)}
+                        className={`w-full flex items-center justify-between text-[11px] font-semibold px-2 py-1.5 rounded-md transition-all text-left ${
+                          isSelected
+                            ? "bg-muted text-foreground"
+                            : "hover:bg-muted/40 text-muted-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate max-w-[75%]">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          <span className="truncate">{cat.name}</span>
+                        </div>
+                        <span className="text-foreground font-bold shrink-0">{cat.value}%</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            {/* Right Card: Monthly Composition Pie Chart */}
+            <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
+              <div className="text-center pb-1">
+                <h3 className="text-sm font-bold text-foreground">
+                  {dateInfo?.monthName || "November"}
+                </h3>
+              </div>
+
+              <div className="relative w-full h-28 flex items-center justify-center">
                 {isMounted && (
                   <ResponsiveContainer width="100%" height="100%">
                     <RePieChart>
                       <Pie
-                        data={donutData}
+                        data={compositionData}
                         dataKey="value"
-                        innerRadius={44}
-                        outerRadius={58}
-                        paddingAngle={4}
-                        cornerRadius={6}
+                        innerRadius={0}
+                        outerRadius={50}
+                        paddingAngle={3}
+                        cornerRadius={4}
                         stroke="none"
-                        onClick={(_, idx) => setActiveCategoryIndex(idx)}
-                        className="cursor-pointer"
                       >
-                        {donutData.map((entry: CategoryItem, index: number) => (
-                          <Cell
-                            key={`donut-${index}`}
-                            fill={entry.color}
-                            opacity={activeCategoryIndex === index ? 1 : 0.85}
-                          />
+                        {compositionData.map((entry: CategoryItem, index: number) => (
+                          <Cell key={`comp-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                     </RePieChart>
                   </ResponsiveContainer>
                 )}
+              </div>
 
-                {/* Large Bold Percentage in Center (Interactive) */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-2xl font-black tracking-tight text-foreground">
-                    {(donutData[activeCategoryIndex] || donutData[0])?.value || 0}%
-                  </span>
-                  <span className="text-[10px] font-semibold text-muted-foreground -mt-0.5 truncate max-w-[80px]">
-                    {(donutData[activeCategoryIndex] || donutData[0])?.name || "-"}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Donut Legend Items */}
-          <div className="space-y-1 pt-3 border-t border-border/60">
-            {donutData.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground text-center py-1">
-                Kategori akan muncul setelah mencatat transaksi
-              </p>
-            ) : (
-              donutData.map((cat: CategoryItem, idx: number) => {
-                const isSelected = activeCategoryIndex === idx;
-                return (
-                  <button
-                    key={cat.name}
-                    type="button"
-                    onClick={() => setActiveCategoryIndex(idx)}
-                    className={`w-full flex items-center justify-between text-[11px] font-semibold px-1.5 py-0.5 rounded-md transition-all text-left ${
-                      isSelected
-                        ? "bg-muted text-foreground"
-                        : "hover:bg-muted/40 text-muted-foreground"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate max-w-[75%]">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: cat.color }}
-                      />
-                      <span className="truncate">{cat.name}</span>
+              <div className="space-y-1.5 pt-3 border-t border-border/60">
+                {compositionData.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-1">
+                    Data komposisi akan muncul setelah ada uang kiriman/transaksi
+                  </p>
+                ) : (
+                  compositionData.map((item: CategoryItem) => (
+                    <div
+                      key={item.name}
+                      className="flex items-center justify-between text-[11px] font-semibold"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="text-muted-foreground">{item.name}</span>
+                      </div>
+                      <span className="text-foreground font-bold">{item.value}%</span>
                     </div>
-                    <span className="text-foreground font-bold shrink-0">{cat.value}%</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        {/* Right Card: Monthly Composition Pie Chart */}
-        <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
-          <div className="text-center pb-1">
-            <h3 className="text-sm font-bold text-foreground">
-              {dateInfo?.monthName || "November"}
-            </h3>
+                  ))
+                )}
+              </div>
+            </section>
           </div>
 
-          <div className="relative w-full h-28 flex items-center justify-center">
-            {isMounted && (
-              <ResponsiveContainer width="100%" height="100%">
-                <RePieChart>
-                  <Pie
-                    data={compositionData}
-                    dataKey="value"
-                    innerRadius={0}
-                    outerRadius={50}
-                    paddingAngle={3}
-                    cornerRadius={4}
-                    stroke="none"
-                  >
-                    {compositionData.map((entry: CategoryItem, index: number) => (
-                      <Cell key={`comp-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </RePieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          {/* 5. Pengeluaran Terbanyak Bulan Ini (PRD G1 & G6) */}
+          {topExpenses.length > 0 && (
+            <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="w-4 h-4 text-expense" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                    Pengeluaran Terbanyak Bulan Ini
+                  </h2>
+                </div>
+                <span className="text-[10px] font-bold text-muted-foreground">
+                  Top {topExpenses.length} Kategori
+                </span>
+              </div>
 
-          <div className="space-y-1.5 pt-3 border-t border-border/60">
-            {compositionData.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground text-center py-1">
-                Data komposisi akan muncul setelah ada uang kiriman/transaksi
-              </p>
-            ) : (
-              compositionData.map((item: CategoryItem) => (
+              <div className="space-y-3">
+                {topExpenses.map((exp, idx) => (
+                  <div key={exp.name} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-[10px] font-black text-muted-foreground">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-foreground">{exp.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-expense">{formatRupiah(exp.amount)}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1.5">({exp.percentage}%)</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/60">
+                      <div
+                        className="h-full bg-expense rounded-full transition-all duration-500"
+                        style={{ width: `${exp.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 6. Riwayat Pengeluaran Tiap Bulan & Deteksi Bulan Terboros (PRD G5) */}
+          <section className="bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setTrendType((prev) => (prev === "expense" ? "income" : "expense"))}
+                className="flex items-center gap-2 bg-background hover:bg-muted border border-border px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold text-foreground transition-all"
+              >
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    trendType === "expense" ? "bg-expense" : "bg-accent"
+                  }`}
+                />
+                <span>{trendType === "expense" ? "Pengeluaran" : "Pemasukan"}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-muted-foreground">
+                  {activeMonthData?.month || dateInfo?.monthShort || "Bulan Ini"}
+                </span>
                 <div
-                  key={item.name}
-                  className="flex items-center justify-between text-[11px] font-semibold"
+                  className={`px-3 py-1.5 rounded-full font-black text-xs shadow-md ${
+                    activeMonthData?.isHighest && (activeMonthData.amount || 0) > 0
+                      ? "bg-expense text-white"
+                      : "bg-accent text-[#1F1F1F]"
+                  }`}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-muted-foreground">{item.name}</span>
-                  </div>
-                  <span className="text-foreground font-bold">{item.value}%</span>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* 5. Pengeluaran Terbanyak Bulan Ini (PRD G1 & G6) */}
-      {topExpenses.length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-expense" />
-              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-                Pengeluaran Terbanyak Bulan Ini
-              </h2>
-            </div>
-            <span className="text-[10px] font-bold text-muted-foreground">
-              Top {topExpenses.length} Kategori
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {topExpenses.map((exp, idx) => (
-              <div key={exp.name} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-[10px] font-black text-muted-foreground">
-                      {idx + 1}
-                    </span>
-                    <span className="font-bold text-foreground">{exp.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-black text-expense">{formatRupiah(exp.amount)}</span>
-                    <span className="text-[10px] text-muted-foreground ml-1.5">({exp.percentage}%)</span>
-                  </div>
-                </div>
-                <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/60">
-                  <div
-                    className="h-full bg-expense rounded-full transition-all duration-500"
-                    style={{ width: `${exp.percentage}%` }}
-                  />
+                  {formatRupiah(activeMonthData?.amount || 0)}
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 6. Riwayat Pengeluaran Tiap Bulan & Deteksi Bulan Terboros (PRD G5) */}
-      <section className="bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setTrendType((prev) => (prev === "expense" ? "income" : "expense"))}
-            className="flex items-center gap-2 bg-background hover:bg-muted border border-border px-3.5 py-1.5 rounded-full text-xs font-bold text-foreground transition-all"
-          >
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                trendType === "expense" ? "bg-expense" : "bg-accent"
-              }`}
-            />
-            <span>{trendType === "expense" ? "Pengeluaran" : "Pemasukan"}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-muted-foreground">
-              {activeMonthData?.month || dateInfo?.monthShort || "Bulan Ini"}
-            </span>
-            <div
-              className={`px-3 py-1 rounded-full font-black text-xs shadow-md ${
-                activeMonthData?.isHighest && (activeMonthData.amount || 0) > 0
-                  ? "bg-expense text-white"
-                  : "bg-accent text-[#1F1F1F]"
-              }`}
-            >
-              {formatRupiah(activeMonthData?.amount || 0)}
             </div>
-          </div>
-        </div>
 
-        {/* Insight: Bulan Terboros Highlight */}
-        <div className="p-3 bg-background/80 rounded-lg border border-border flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-expense shrink-0" />
-            <span className="text-muted-foreground">
-              {highestMonth && highestMonth.amount > 0 ? (
-                <>
-                  Bulan Terboros:{" "}
-                  <strong className="text-expense font-black">
-                    {highestMonth.month} ({formatRupiah(highestMonth.amount)})
-                  </strong>
-                </>
-              ) : (
-                "Belum ada riwayat pengeluaran yang tercatat"
+            {/* Insight: Bulan Terboros Highlight */}
+            <div className="p-3 bg-background/80 rounded-lg border border-border flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-expense shrink-0" />
+                <span className="text-muted-foreground">
+                  {highestMonth && highestMonth.amount > 0 ? (
+                    <>
+                      Bulan Terboros:{" "}
+                      <strong className="text-expense font-black">
+                        {highestMonth.month} ({formatRupiah(highestMonth.amount)})
+                      </strong>
+                    </>
+                  ) : (
+                    "Belum ada riwayat pengeluaran yang tercatat"
+                  )}
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-accent bg-accent/15 px-2.5 py-0.5 rounded-full">
+                {highestMonth && highestMonth.amount > 0 ? "Terkontrol" : "Bersih"}
+              </span>
+            </div>
+
+            {/* Interactive Smooth Trend Wave */}
+            <div className="w-full h-32 pt-2">
+              {isMounted && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={monthlyHistory}
+                    margin={{ top: 10, right: 12, left: 12, bottom: 5 }}
+                    onClick={(nextState) => {
+                      const state = nextState as unknown as {
+                        activePayload?: Array<{ payload: MonthHistoryItem }>;
+                      };
+                      if (state?.activePayload?.[0]?.payload) {
+                        setActiveMonthData(state.activePayload[0].payload);
+                      }
+                    }}
+                  >
+                    <XAxis
+                      dataKey="month"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={({ x, y, payload }) => {
+                        const isSelected = activeMonthData?.month === payload.value;
+                        const isMax = payload.value === highestMonth?.month;
+                        return (
+                          <text
+                            x={x}
+                            y={Number(y) + 12}
+                            textAnchor="middle"
+                            className={`text-[11px] cursor-pointer font-bold ${
+                              isSelected
+                                ? "fill-accent font-black"
+                                : isMax
+                                ? "fill-expense font-black"
+                                : "fill-muted-foreground"
+                            }`}
+                          >
+                            {payload.value}
+                          </text>
+                        );
+                      }}
+                    />
+                    <Tooltip
+                      cursor={false}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-card border border-border rounded-xl px-2.5 py-1.5 shadow-xl text-[11px] font-bold text-foreground">
+                              {data.month}: {formatRupiah(data.amount)}
+                              {data.isHighest && " (Terboros)"}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="amount"
+                      stroke="#D4FF5A"
+                      strokeWidth={3.5}
+                      dot={({ cx, cy, payload }) => {
+                        const isSelected = activeMonthData?.month === payload.month;
+                        const isMax = payload.isHighest;
+                        return (
+                          <circle
+                            key={payload.month}
+                            cx={cx}
+                            cy={cy}
+                            r={isSelected ? 6 : isMax ? 5 : 3.5}
+                            fill={isMax ? "#FF7B7B" : "#D4FF5A"}
+                            stroke="#1F1F1F"
+                            strokeWidth={2}
+                            className="cursor-pointer transition-all"
+                            onClick={() => setActiveMonthData(payload)}
+                          />
+                        );
+                      }}
+                      activeDot={{ r: 7, fill: "#D4FF5A", stroke: "#1F1F1F", strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               )}
-            </span>
-          </div>
-          <span className="text-[11px] font-bold text-accent bg-accent/15 px-2.5 py-0.5 rounded-full">
-            {highestMonth && highestMonth.amount > 0 ? "Terkontrol" : "Bersih"}
-          </span>
-        </div>
+            </div>
+          </section>
 
-        {/* Interactive Smooth Trend Wave */}
-        <div className="w-full h-32 pt-2">
-          {isMounted && (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={monthlyHistory}
-                margin={{ top: 10, right: 12, left: 12, bottom: 5 }}
-                onClick={(nextState) => {
-                  const state = nextState as unknown as {
-                    activePayload?: Array<{ payload: MonthHistoryItem }>;
-                  };
-                  if (state?.activePayload?.[0]?.payload) {
-                    setActiveMonthData(state.activePayload[0].payload);
-                  }
-                }}
-              >
-                <XAxis
-                  dataKey="month"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={({ x, y, payload }) => {
-                    const isSelected = activeMonthData?.month === payload.value;
-                    const isMax = payload.value === highestMonth?.month;
-                    return (
-                      <text
-                        x={x}
-                        y={Number(y) + 12}
-                        textAnchor="middle"
-                        className={`text-[11px] cursor-pointer font-bold ${
-                          isSelected
-                            ? "fill-accent font-black"
-                            : isMax
-                            ? "fill-expense font-black"
-                            : "fill-muted-foreground"
+          {/* 7. Transaksi Terbaru (PRD G1) */}
+          {recentTransactions.length > 0 && (
+            <section className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  Transaksi Terbaru
+                </h2>
+                <Link
+                  href="/transactions"
+                  className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-1"
+                >
+                  <span>Lihat Semua di Riwayat</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                {recentTransactions.map((tx) => {
+                  const Icon = getCategoryIcon(tx.category);
+                  return (
+                    <Link
+                      key={tx.id}
+                      href="/transactions"
+                      className="flex items-center justify-between p-3 min-h-[44px] rounded-lg bg-background border border-border hover:border-accent/40 transition-colors text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            tx.type === "expense"
+                              ? "bg-expense/15 text-expense"
+                              : "bg-accent/20 text-accent"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 stroke-[2.2]" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-foreground truncate">{tx.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {tx.category} • {tx.date}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`font-black shrink-0 ${
+                          tx.type === "expense" ? "text-expense" : "text-accent"
                         }`}
                       >
-                        {payload.value}
-                      </text>
-                    );
-                  }}
-                />
-                <Tooltip
-                  cursor={false}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-card border border-border rounded-xl px-2.5 py-1.5 shadow-xl text-[11px] font-bold text-foreground">
-                          {data.month}: {formatRupiah(data.amount)}
-                          {data.isHighest && " (Terboros)"}
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  stroke="#D4FF5A"
-                  strokeWidth={3.5}
-                  dot={({ cx, cy, payload }) => {
-                    const isSelected = activeMonthData?.month === payload.month;
-                    const isMax = payload.isHighest;
-                    return (
-                      <circle
-                        key={payload.month}
-                        cx={cx}
-                        cy={cy}
-                        r={isSelected ? 6 : isMax ? 5 : 3.5}
-                        fill={isMax ? "#FF7B7B" : "#D4FF5A"}
-                        stroke="#1F1F1F"
-                        strokeWidth={2}
-                        className="cursor-pointer transition-all"
-                        onClick={() => setActiveMonthData(payload)}
-                      />
-                    );
-                  }}
-                  activeDot={{ r: 7, fill: "#D4FF5A", stroke: "#1F1F1F", strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                        {tx.type === "expense" ? "-" : "+"}
+                        {formatRupiah(tx.amount)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
           )}
-        </div>
-      </section>
 
-      {/* 7. Transaksi Terbaru (PRD G1) */}
-      {recentTransactions.length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-              Transaksi Terbaru
-            </h2>
+          {/* Quick Action Button to Add Transaction */}
+          <div className="pt-1 text-center">
             <Link
-              href="/transactions"
-              className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
+              href="/record"
+              className="inline-flex items-center gap-2 bg-accent hover:brightness-110 text-[#1F1F1F] font-black text-xs px-6 py-3.5 min-h-[44px] rounded-full shadow-lg shadow-accent/20 transition-all hover:scale-105 active:scale-95"
             >
-              <span>Lihat Semua di Riwayat</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Tambah Transaksi Baru</span>
+              <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
             </Link>
           </div>
-
-          <div className="space-y-2">
-            {recentTransactions.map((tx) => {
-              const Icon = getCategoryIcon(tx.category);
-              return (
-                <Link
-                  key={tx.id}
-                  href="/transactions"
-                  className="flex items-center justify-between p-3 rounded-lg bg-background border border-border hover:border-accent/40 transition-colors text-xs"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        tx.type === "expense"
-                          ? "bg-expense/15 text-expense"
-                          : "bg-accent/20 text-accent"
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 stroke-[2.2]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-foreground truncate">{tx.title}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">
-                        {tx.category} • {tx.date}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`font-black shrink-0 ${
-                      tx.type === "expense" ? "text-expense" : "text-accent"
-                    }`}
-                  >
-                    {tx.type === "expense" ? "-" : "+"}
-                    {formatRupiah(tx.amount)}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Quick Action Button to Add Transaction */}
-      <div className="pt-1 text-center">
-        <Link
-          href="/record"
-          className="inline-flex items-center gap-2 bg-accent hover:brightness-110 text-[#1F1F1F] font-black text-xs px-6 py-3 rounded-full shadow-lg shadow-accent/20 transition-all hover:scale-105 active:scale-95"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Tambah Transaksi Baru</span>
-          <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
-        </Link>
+        </div>
       </div>
     </div>
   );

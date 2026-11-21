@@ -42,7 +42,7 @@ export function DesktopSidebar() {
   return (
     <aside
       aria-label="Sidebar Desktop"
-      className="hidden lg:flex flex-col justify-between w-64 h-screen sticky top-0 bg-card border-r border-border p-6 select-none"
+      className="hidden md:flex flex-col justify-between w-60 lg:w-64 h-[100dvh] sticky top-0 bg-card border-r border-border p-5 lg:p-6 select-none shrink-0 overflow-y-auto"
     >
       <div className="space-y-8">
         {/* Brand Logo */}

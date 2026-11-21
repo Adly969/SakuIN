@@ -12,20 +12,20 @@ export function TopHeader() {
       style={{
         paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 6px), 12px)",
       }}
-      className="lg:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-2.5 flex items-center justify-between safe-top-header"
+      className="md:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 pb-2.5 flex items-center justify-between safe-top-header"
     >
-      <Link href="/dashboard" className="flex items-center">
+      <Link href="/dashboard" className="flex items-center min-h-[44px]">
         <BrandLogo height={28} />
       </Link>
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
         <ThemeToggle />
         <Link
           href="/profile"
           aria-label="Buka Profil"
-          className="w-8 h-8 rounded-full bg-card border border-border flex items-center justify-center text-foreground hover:border-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-card border border-border flex items-center justify-center text-foreground hover:border-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <User className="w-4 h-4" />
+          <User className="w-5 h-5" />
         </Link>
       </div>
     </header>
