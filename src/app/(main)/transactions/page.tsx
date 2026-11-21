@@ -350,7 +350,7 @@ function TransactionsContent() {
   const activeCategories = editType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   return (
-    <div className="space-y-5 max-w-xl mx-auto pb-2">
+    <div className="space-y-5 max-w-xl mx-auto pb-28 md:pb-12">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
         <div>

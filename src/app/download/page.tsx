@@ -82,10 +82,10 @@ export default function DownloadPage() {
       </header>
 
       {/* 2. Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8 sm:py-14 space-y-10 w-full">
+      <main className="max-w-4xl mx-auto px-4 py-5 sm:py-10 space-y-7 w-full">
         {/* Hero Section */}
-        <div className="text-center space-y-3.5 max-w-xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-extrabold tracking-wide">
+        <div className="text-center space-y-3 max-w-xl mx-auto">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-extrabold tracking-wide">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Versi Resmi {release?.version || "v1.0.0"}</span>
           </div>
@@ -94,12 +94,32 @@ export default function DownloadPage() {
             Pasang SakuIN di HP Kamu
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            Aplikasi pencatatan keuangan bulanan mahasiswa perantau. Notifikasi alarm harian tepat waktu, siap dipakai offline, dan sangat hemat kuota.
+            Aplikasi pencatatan keuangan bulanan mahasiswa perantau. Siap offline, hemat kuota, dan bebas cemas.
           </p>
+
+          {/* Dua Tombol Besar Langsung Terlihat Tanpa Scroll (Lolos Uji 390px) */}
+          <div className="flex flex-col gap-2.5 max-w-sm mx-auto w-full pt-2">
+            <a
+              href={primaryDownloadUrl}
+              download
+              className="w-full py-3.5 px-5 rounded-xl bg-accent text-[#121212] font-black text-sm flex items-center justify-center gap-2.5 hover:brightness-105 active:scale-98 transition-all shadow-md shadow-accent/25 cursor-pointer min-h-[48px]"
+            >
+              <Download className="w-4 h-4 stroke-[2.5]" />
+              <span>Unduh File APK (~4.5 MB)</span>
+            </a>
+
+            <a
+              href="#install-guide"
+              className="w-full py-3 px-5 rounded-xl bg-card border border-border text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-muted active:scale-98 transition-all min-h-[44px]"
+            >
+              <Smartphone className="w-4 h-4 text-accent" />
+              <span>Pasang di HP (PWA / iPhone)</span>
+            </a>
+          </div>
         </div>
 
         {/* Cards Grid: Android APK vs iOS PWA */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+        <div id="install-guide" className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch scroll-mt-20">
           {/* Card 1: Android APK */}
           <div className="bg-card border-2 border-accent/50 rounded-2xl p-5 sm:p-7 shadow-xl flex flex-col justify-between relative overflow-hidden">
             <div className="absolute top-0 right-0 bg-accent text-[#121212] text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-wider">
