@@ -409,6 +409,17 @@ export async function getUserCategoriesAction() {
       orderBy: [categories.sortOrder, categories.name],
     });
 
+    // Otomatis pastikan kategori pemasukan bawaan bertipe income di database
+    const knownIncomeNames = ["uang kiriman", "gaji / upah", "gaji", "upah", "beasiswa", "kerja sambilan", "sambilan", "part time", "hadiah", "pemasukan"];
+    for (const c of cats) {
+      const lower = (c.name || "").toLowerCase().trim();
+      const shouldBeIncome = knownIncomeNames.some((inc) => lower.includes(inc));
+      if (shouldBeIncome && c.type !== "income") {
+        await db.update(categories).set({ type: "income" }).where(eq(categories.id, c.id));
+        c.type = "income";
+      }
+    }
+
     return {
       success: true,
       data: cats.map((c) => ({

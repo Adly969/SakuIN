@@ -475,7 +475,17 @@ export default function DashboardPage() {
                 </Link>
               </div>
             ) : (
-              <div className="flex md:grid md:grid-cols-2 gap-3 overflow-x-auto pb-2 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-1 px-1">
+              <div
+                className={`grid gap-2.5 sm:gap-3 ${
+                  accountsList.length === 1
+                    ? "grid-cols-1"
+                    : accountsList.length === 2
+                    ? "grid-cols-2"
+                    : accountsList.length === 3
+                    ? "grid-cols-2 sm:grid-cols-3"
+                    : "grid-cols-2 sm:grid-cols-3"
+                }`}
+              >
                 {accountsList.map((acc: any) => {
                   const AccIcon =
                     acc.type === "bank"
@@ -487,24 +497,24 @@ export default function DashboardPage() {
                     <Link
                       key={acc.id}
                       href="/accounts"
-                      className="min-w-[220px] md:min-w-0 flex-shrink-0 snap-start bg-card border border-border rounded-xl p-3.5 shadow-xs hover:border-accent/40 transition-all flex flex-col justify-between group"
+                      className="w-full bg-card border border-border rounded-xl p-3 sm:p-3.5 shadow-xs hover:border-accent/40 transition-all flex flex-col justify-between group min-h-[88px]"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 truncate">
-                          <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0">
+                      <div className="flex items-center justify-between gap-1.5 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
                             <AccIcon className="w-3.5 h-3.5" />
                           </div>
                           <span className="text-xs font-bold text-foreground truncate">
                             {acc.name}
                           </span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/40">
                           {acc.type === "bank" ? "Bank" : acc.type === "ewallet" ? "E-Wallet" : "Tunai"}
                         </span>
                       </div>
-                      <div className="mt-3">
-                        <p className="text-[10px] text-muted-foreground">Saldo</p>
-                        <p className="text-sm font-black text-foreground group-hover:text-accent transition-colors">
+                      <div className="mt-2.5">
+                        <p className="text-[10px] text-muted-foreground font-medium">Saldo</p>
+                        <p className="text-xs sm:text-sm font-black text-foreground group-hover:text-accent transition-colors truncate">
                           {formatRupiah(acc.balance || 0)}
                         </p>
                       </div>

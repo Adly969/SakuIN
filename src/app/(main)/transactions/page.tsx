@@ -119,7 +119,8 @@ function TransactionsContent() {
       if (cachedCats) {
         const parsedCats = JSON.parse(cachedCats);
         if (Array.isArray(parsedCats) && parsedCats.length > 0) {
-          setCategoriesList(parsedCats);
+          const names = typeof parsedCats[0] === "string" ? parsedCats : parsedCats.map((c: any) => c.name);
+          setCategoriesList(names);
         }
       }
       if (hasCache) {
@@ -171,7 +172,7 @@ function TransactionsContent() {
         const catNames = Array.from(new Set(catRes.data.map((c) => c.name)));
         setCategoriesList(catNames);
         try {
-          localStorage.setItem("sakuin_cached_categories", JSON.stringify(catNames));
+          localStorage.setItem("sakuin_cached_categories", JSON.stringify(catRes.data));
         } catch {}
       }
     } catch (err) {

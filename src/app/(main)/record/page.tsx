@@ -97,6 +97,22 @@ export default function RecordPage() {
 
   // Load Categories & Accounts from Cache & DB
   useEffect(() => {
+    // Helper untuk mendeteksi kategori pemasukan secara andal
+    const isKnownIncome = (name: string) => {
+      const n = (name || "").toLowerCase().trim();
+      return (
+        n.includes("uang kiriman") ||
+        n.includes("gaji") ||
+        n.includes("upah") ||
+        n.includes("beasiswa") ||
+        n.includes("sambilan") ||
+        n.includes("part time") ||
+        n.includes("hadiah") ||
+        n.includes("pemasukan") ||
+        n.includes("kiriman")
+      );
+    };
+
     // 1. Instant Cache Hydration from localStorage (0ms Frame 0)
     try {
       const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
@@ -109,28 +125,34 @@ export default function RecordPage() {
           if (def?.id) setSelectedAccountId(def.id);
         }
       }
+
       const cachedCat = localStorage.getItem("sakuin_cached_categories");
       if (cachedCat) {
         const parsedCat = JSON.parse(cachedCat);
         if (Array.isArray(parsedCat) && parsedCat.length > 0) {
-          if (typeof parsedCat[0] === "string") {
-            const mapped = parsedCat.map((cName: string, idx: number) => ({
-              id: `cat-${idx}`,
-              name: cName,
-              type: "expense",
-              icon: "Tag",
-              color: "#A3A3A3",
-              requiresLabel: false,
-            }));
-            setCategoriesList(mapped);
-          } else {
-            setCategoriesList(parsedCat);
-          }
-          const firstExp = parsedCat.find((c: any) =>
-            typeof c === "string" ? c !== "Kebutuhan Lain" : c.type === "expense" && c.name !== "Kebutuhan Lain"
-          );
+          const normalizedList: CategoryItem[] = parsedCat.map((item: any, idx: number) => {
+            if (typeof item === "string") {
+              const income = isKnownIncome(item);
+              return {
+                id: `cat-${idx}`,
+                name: item,
+                type: income ? "income" : "expense",
+                icon: income ? "Wallet" : "Tag",
+                color: income ? "#D4FF5A" : "#8CCBFF",
+                requiresLabel: false,
+              };
+            }
+            return {
+              ...item,
+              type: isKnownIncome(item.name) ? "income" : (item.type || "expense"),
+            };
+          });
+
+          setCategoriesList(normalizedList);
+
+          const firstExp = normalizedList.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
           if (firstExp) {
-            setSelectedCategory(typeof firstExp === "string" ? firstExp : firstExp.name);
+            setSelectedCategory(firstExp.name);
           }
         }
       }
@@ -147,11 +169,16 @@ export default function RecordPage() {
         ]);
 
         if (catRes.success && catRes.data && catRes.data.length > 0) {
-          setCategoriesList(catRes.data);
+          const normalizedData: CategoryItem[] = catRes.data.map((c) => ({
+            ...c,
+            type: isKnownIncome(c.name) ? "income" : (c.type || "expense"),
+          }));
+
+          setCategoriesList(normalizedData);
           try {
-            localStorage.setItem("sakuin_cached_categories", JSON.stringify(catRes.data));
+            localStorage.setItem("sakuin_cached_categories", JSON.stringify(normalizedData));
           } catch {}
-          const firstExp = catRes.data.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          const firstExp = normalizedData.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
           if (firstExp) setSelectedCategory(firstExp.name);
         }
 
@@ -190,20 +217,20 @@ export default function RecordPage() {
   }, [showToast]);
 
   const getCategoryIconComponent = (name: string, iconStr?: string) => {
-    const key = (iconStr || name).toLowerCase();
-    if (key.includes("makan") || key === "utensils") return Utensils;
-    if (key.includes("nongkrong") || key.includes("kopi") || key === "coffee") return Coffee;
-    if (key.includes("bensin") || key.includes("transport") || key === "bike") return Bike;
-    if (key.includes("jajan") || key.includes("cemilan") || key === "cookie") return Cookie;
-    if (key.includes("kuota") || key.includes("internet") || key === "wifi") return Wifi;
-    if (key.includes("kos") || key === "shoppingbag") return ShoppingBag;
-    if (key.includes("laundry") || key === "shirt") return Shirt;
-    if (key.includes("listrik") || key === "zap") return Zap;
-    if (key.includes("kuliah") || key.includes("fotokopi") || key.includes("beasiswa") || key === "graduationcap")
+    const key = `${name || ""} ${iconStr || ""}`.toLowerCase();
+    if (key.includes("makan") || key.includes("utensils")) return Utensils;
+    if (key.includes("nongkrong") || key.includes("kopi") || key.includes("coffee")) return Coffee;
+    if (key.includes("bensin") || key.includes("transport") || key.includes("bike")) return Bike;
+    if (key.includes("jajan") || key.includes("cemilan") || key.includes("cookie")) return Cookie;
+    if (key.includes("kuota") || key.includes("internet") || key.includes("wifi")) return Wifi;
+    if (key.includes("kos") || key.includes("shoppingbag")) return ShoppingBag;
+    if (key.includes("laundry") || key.includes("shirt")) return Shirt;
+    if (key.includes("listrik") || key.includes("zap")) return Zap;
+    if (key.includes("kuliah") || key.includes("fotokopi") || key.includes("beasiswa") || key.includes("graduationcap"))
       return GraduationCap;
-    if (key.includes("rokok") || key.includes("vape") || key === "flame" || key === "cigarette") return Flame;
-    if (key.includes("kiriman") || key === "wallet") return Wallet;
-    if (key.includes("gaji") || key.includes("kerja") || key === "briefcase") return Briefcase;
+    if (key.includes("rokok") || key.includes("vape") || key.includes("flame") || key.includes("cigarette")) return Flame;
+    if (key.includes("kiriman") || key.includes("wallet")) return Wallet;
+    if (key.includes("gaji") || key.includes("kerja") || key.includes("upah") || key.includes("briefcase")) return Briefcase;
     return Tag;
   };
 
@@ -355,7 +382,8 @@ export default function RecordPage() {
             type="button"
             onClick={() => {
               setRecordType("expense");
-              setSelectedCategory("Makan");
+              const firstExp = categoriesList.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+              setSelectedCategory(firstExp?.name || "Makan");
               setIsCustomCategory(false);
               setCustomCategory("");
             }}
@@ -372,7 +400,8 @@ export default function RecordPage() {
             type="button"
             onClick={() => {
               setRecordType("income");
-              setSelectedCategory("Uang Kiriman");
+              const firstInc = categoriesList.find((c) => c.type === "income" && c.name !== "Lainnya");
+              setSelectedCategory(firstInc?.name || "Uang Kiriman");
               setIsCustomCategory(false);
               setCustomCategory("");
             }}

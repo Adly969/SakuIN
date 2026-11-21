@@ -49,11 +49,10 @@ export function DataPrefetcher() {
         } catch {}
       }
 
-      // 2. Categories Cache
+      // 2. Categories Cache (simpan objek lengkap dengan type: expense / income)
       if (results[1].status === "fulfilled" && results[1].value.success && results[1].value.data) {
         try {
-          const catNames = Array.from(new Set(results[1].value.data.map((c) => c.name)));
-          localStorage.setItem("sakuin_cached_categories", JSON.stringify(catNames));
+          localStorage.setItem("sakuin_cached_categories", JSON.stringify(results[1].value.data));
         } catch {}
       }
 
