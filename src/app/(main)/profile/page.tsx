@@ -197,7 +197,7 @@ export default function ProfilePage() {
         paydayDay: profile.payday,
         showMotivation,
         reminderEnabled: nextVal,
-        reminderTime,
+        reminderTime: "09:00",
       });
       setToastMessage(nextVal ? "Pengingat harian aktif!" : "Pengingat dinonaktifkan");
       setShowToast(true);
