@@ -3,20 +3,14 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, Sparkles } from "lucide-react";
 
 /**
- * AnimatedSplashScreen: Splash screen kelas profesional standar aplikasi Fintech modern
- * (GoPay, Blu, Revolut).
- * 
- * - Durasi ideal: ~1.4 detik (cukup waktu untuk memperlihatkan branding elegan tanpa membuat user bosan)
- * - Animasi masuk: Spring physics halus & ambient glow
- * - Progress bar: Sleek minimalist neon track dengan cubic-bezier easing
- * - Tap to skip: Tetap aktif jika pengguna ingin langsung masuk seketika
+ * AnimatedSplashScreen: Splash screen minimalis, bersih, dan profesional
+ * Fokus murni pada logo SakuIN, tipografi merek, dan rangkaian animasi halus kelas atas
+ * tanpa teks tambahan yang berantakan.
  */
 export function AnimatedSplashScreen({ children }: { children: React.ReactNode }) {
   const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [progress, setProgress] = useState<number>(0);
 
   useEffect(() => {
     // Cek apakah splash sudah pernah diputar dalam sesi browser saat ini
@@ -29,32 +23,17 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
     // Vibrasi haptic halus di HP jika didukung
     if (typeof window !== "undefined" && "vibrate" in navigator) {
       try {
-        navigator.vibrate([15, 30, 20]);
+        navigator.vibrate([15, 25]);
       } catch {}
     }
 
-    // Durasi total 1350ms dengan cubic easing
-    const startTime = Date.now();
-    const duration = 1350;
+    // Timer transisi keluar (~1.4 detik: pas, elegan, dan profesional)
+    const timer = setTimeout(() => {
+      sessionStorage.setItem("sakuin_splash_played", "true");
+      setShowSplash(false);
+    }, 1400);
 
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const linearPct = Math.min(1, elapsed / duration);
-      // Easing out cubic: 1 - pow(1 - t, 3)
-      const easedPct = Math.round((1 - Math.pow(1 - linearPct, 3)) * 100);
-      setProgress(easedPct);
-
-      if (elapsed >= duration) {
-        clearInterval(timer);
-        // Jeda sangat halus (180ms) setelah 100% lalu transisi masuk ke aplikasi
-        setTimeout(() => {
-          sessionStorage.setItem("sakuin_splash_played", "true");
-          setShowSplash(false);
-        }, 180);
-      }
-    }, 16);
-
-    return () => clearInterval(timer);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleSkip = () => {
@@ -67,129 +46,124 @@ export function AnimatedSplashScreen({ children }: { children: React.ReactNode }
       <AnimatePresence>
         {showSplash && (
           <motion.div
-            key="sakuin-splash"
+            key="sakuin-splash-minimal"
             initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.04, filter: "blur(6px)" }}
-            transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
             onClick={handleSkip}
-            className="fixed inset-0 z-[99999] bg-[#121212] flex flex-col items-center justify-between p-6 sm:p-8 select-none overflow-hidden cursor-pointer"
+            className="fixed inset-0 z-[99999] bg-[#121212] flex flex-col items-center justify-center p-6 select-none overflow-hidden cursor-pointer"
             style={{
-              background: "radial-gradient(ellipse at 50% 40%, #1e2417 0%, #121212 75%)",
+              background: "radial-gradient(circle at 50% 48%, #1c2214 0%, #121212 70%)",
             }}
           >
-            {/* Top decorative subtle badge */}
+            {/* Ambient Pulsing Aura Orbs */}
             <motion.div
-              initial={{ opacity: 0, y: -16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1, duration: 0.6, ease: "easeOut" }}
-              style={{
-                paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 8px), 16px)",
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{
+                scale: [0.9, 1.25, 1],
+                opacity: [0.35, 0.65, 0.4],
               }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-[10.5px] font-bold text-[#D4FF5A] tracking-wider uppercase backdrop-blur-md shadow-xs"
-            >
-              <Sparkles className="w-3 h-3 text-[#D4FF5A]" />
-              <span>Personal Finance for Students</span>
-            </motion.div>
+              transition={{
+                duration: 2.2,
+                repeat: Infinity,
+                repeatType: "reverse",
+                ease: "easeInOut",
+              }}
+              className="absolute w-72 h-72 sm:w-96 sm:h-96 rounded-full bg-[#D4FF5A]/20 blur-3xl pointer-events-none"
+            />
 
-            {/* Center Logo & Branding Animation */}
-            <div className="flex flex-col items-center text-center my-auto relative">
-              {/* Glowing Ambient Light Aura */}
+            {/* Expanding Ripple Ring Animation */}
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0.6 }}
+              animate={{ scale: [0.8, 1.5], opacity: [0.4, 0] }}
+              transition={{
+                duration: 1.8,
+                repeat: Infinity,
+                ease: "easeOut",
+              }}
+              className="absolute w-40 h-40 sm:w-48 sm:h-48 rounded-full border border-[#D4FF5A]/30 pointer-events-none"
+            />
+
+            {/* Central Branding Hub */}
+            <div className="relative z-10 flex flex-col items-center text-center">
+              {/* Logo Card with Spring Physics & Floating Levitation */}
               <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
+                initial={{ scale: 0, rotate: -12, opacity: 0 }}
                 animate={{
-                  scale: [0.9, 1.2, 1.05],
-                  opacity: [0.35, 0.6, 0.45],
+                  scale: 1,
+                  rotate: 0,
+                  opacity: 1,
+                  y: [0, -6, 0],
                 }}
                 transition={{
-                  duration: 2.4,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                  ease: "easeInOut",
+                  scale: { type: "spring", stiffness: 220, damping: 18, delay: 0.08 },
+                  rotate: { type: "spring", stiffness: 200, damping: 20, delay: 0.08 },
+                  opacity: { duration: 0.35, delay: 0.05 },
+                  y: {
+                    duration: 2.4,
+                    repeat: Infinity,
+                    repeatType: "reverse",
+                    ease: "easeInOut",
+                    delay: 0.4,
+                  },
                 }}
-                className="absolute w-56 h-56 rounded-full bg-[#D4FF5A]/20 blur-3xl pointer-events-none -top-8"
-              />
-
-              {/* Logo Card with Smooth Spring Physics */}
-              <motion.div
-                initial={{ scale: 0.7, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 20,
-                  delay: 0.12,
-                }}
-                className="relative z-10 w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-[#1C1C1C] border border-[#D4FF5A]/35 p-4 shadow-2xl shadow-[#D4FF5A]/15 flex items-center justify-center mb-5 backdrop-blur-sm"
+                className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-[#1C1C1C]/90 border border-[#D4FF5A]/40 p-4 shadow-2xl shadow-[#D4FF5A]/25 flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden"
               >
+                {/* Shimmer Light Sweep across Logo Card */}
+                <motion.div
+                  initial={{ x: "-150%" }}
+                  animate={{ x: "180%" }}
+                  transition={{
+                    duration: 1.6,
+                    repeat: Infinity,
+                    repeatDelay: 0.6,
+                    ease: "easeInOut",
+                  }}
+                  className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none"
+                />
+
                 <Image
                   src="/logo.png"
                   alt="SakuIN"
                   width={80}
                   height={80}
                   priority
-                  className="object-contain drop-shadow-[0_4px_16px_rgba(212,255,90,0.3)]"
+                  className="object-contain drop-shadow-[0_4px_20px_rgba(212,255,90,0.35)]"
                 />
               </motion.div>
 
-              {/* Brand Title */}
+              {/* Brand Title: SakuIN */}
               <motion.h1
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.28, ease: "easeOut" }}
-                className="text-3xl sm:text-4xl font-black text-white tracking-tight"
+                initial={{ opacity: 0, y: 15, letterSpacing: "0.08em" }}
+                animate={{ opacity: 1, y: 0, letterSpacing: "-0.02em" }}
+                transition={{ duration: 0.55, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="text-4xl sm:text-5xl font-black text-white tracking-tight flex items-center drop-shadow-[0_4px_24px_rgba(212,255,90,0.3)]"
                 style={{ fontFamily: "'Fredoka', 'Plus Jakarta Sans', sans-serif" }}
               >
-                Saku<span className="text-[#D4FF5A]">IN</span>
+                <span>Saku</span>
+                <span className="text-[#D4FF5A] ml-0.5">IN</span>
               </motion.h1>
 
-              {/* Tagline */}
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.42, ease: "easeOut" }}
-                className="text-xs sm:text-sm font-semibold text-neutral-400 mt-1 tracking-tight"
-              >
-                Tenang Sampai Akhir Bulan
-              </motion.p>
+              {/* Sleek Minimalist Pulsing Dots (Micro Loader) */}
+              <div className="flex items-center gap-2 mt-6">
+                {[0, 1, 2].map((i) => (
+                  <motion.span
+                    key={i}
+                    animate={{
+                      scale: [0.8, 1.4, 0.8],
+                      opacity: [0.35, 1, 0.35],
+                    }}
+                    transition={{
+                      duration: 0.9,
+                      repeat: Infinity,
+                      delay: i * 0.2,
+                      ease: "easeInOut",
+                    }}
+                    className="w-2 h-2 rounded-full bg-[#D4FF5A] shadow-[0_0_8px_rgba(212,255,90,0.8)]"
+                  />
+                ))}
+              </div>
             </div>
-
-            {/* Bottom Progress Bar & Loading Indicator */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35, duration: 0.5 }}
-              style={{
-                paddingBottom: "max(calc(env(safe-area-inset-bottom, 0px) + 8px), 16px)",
-              }}
-              className="w-full max-w-[260px] space-y-3 text-center"
-            >
-              {/* Minimalist Progress Track */}
-              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden p-0.5 backdrop-blur-sm">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-[#B5E63B] via-[#D4FF5A] to-[#E8FFA1] rounded-full shadow-[0_0_12px_rgba(212,255,90,0.6)]"
-                  style={{ width: `${progress}%` }}
-                  transition={{ ease: "easeOut" }}
-                />
-              </div>
-
-              {/* Status and Percentage */}
-              <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-400 px-1">
-                <span className="tracking-wide">
-                  {progress < 40
-                    ? "Menyiapkan dompet pintar..."
-                    : progress < 85
-                    ? "Menyelaraskan data finansial..."
-                    : "Siap digunakan!"}
-                </span>
-                <span className="text-[#D4FF5A] font-bold font-mono">{progress}%</span>
-              </div>
-
-              {/* Security Footnote */}
-              <div className="pt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-neutral-500">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#D4FF5A]/70" />
-                <span>Terenkripsi & Aman • SakuIN v1.0</span>
-              </div>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
