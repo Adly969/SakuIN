@@ -7,6 +7,7 @@ const config: CapacitorConfig = {
   server: {
     url: "https://saku-in.vercel.app",
     cleartext: true,
+    androidScheme: "https",
   },
   plugins: {
     LocalNotifications: {
