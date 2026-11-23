@@ -61,6 +61,7 @@ interface CategoryItem {
   icon: string;
   color: string;
   requiresLabel: boolean;
+  isDefault?: boolean;
 }
 
 interface AccountItem {
@@ -148,9 +149,19 @@ export default function RecordPage() {
             };
           });
 
-          setCategoriesList(normalizedList);
+          const cleanCached = normalizedList.filter(
+            (c) =>
+              c.isDefault ||
+              [
+                "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
+                "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
+                "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
+              ].includes(c.name.toLowerCase().trim())
+          );
 
-          const firstExp = normalizedList.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          setCategoriesList(cleanCached);
+
+          const firstExp = cleanCached.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
           if (firstExp) {
             setSelectedCategory(firstExp.name);
           }
@@ -174,11 +185,21 @@ export default function RecordPage() {
             type: isKnownIncome(c.name) ? "income" : (c.type || "expense"),
           }));
 
-          setCategoriesList(normalizedData);
+          const cleanData = normalizedData.filter(
+            (c) =>
+              c.isDefault ||
+              [
+                "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
+                "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
+                "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
+              ].includes(c.name.toLowerCase().trim())
+          );
+
+          setCategoriesList(cleanData);
           try {
-            localStorage.setItem("sakuin_cached_categories", JSON.stringify(normalizedData));
+            localStorage.setItem("sakuin_cached_categories", JSON.stringify(cleanData));
           } catch {}
-          const firstExp = normalizedData.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          const firstExp = cleanData.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
           if (firstExp) setSelectedCategory(firstExp.name);
         }
 
@@ -234,8 +255,18 @@ export default function RecordPage() {
     return Tag;
   };
 
+  const OFFICIAL_CATEGORY_NAMES = [
+    "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
+    "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
+    "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah"
+  ];
+
   const currentCategories = categoriesList.filter(
-    (c) => c.type === recordType && c.name !== "Kebutuhan Lain" && c.name !== "Lainnya"
+    (c) =>
+      c.type === recordType &&
+      c.name !== "Kebutuhan Lain" &&
+      c.name !== "Lainnya" &&
+      OFFICIAL_CATEGORY_NAMES.includes(c.name.toLowerCase().trim())
   );
 
   // Fallback if dbCategories empty yet
@@ -266,8 +297,13 @@ export default function RecordPage() {
     if (!isCustomCategory && !selectedCategory) return;
 
     setIsSaving(true);
-    const finalCategory = isCustomCategory ? customCategory.trim() : selectedCategory;
-    const itemTitle = note.trim() || finalCategory;
+    // Kategori kustom diarahkan ke Kebutuhan Lain / Lainnya sesuai PRD (tidak membuat kategori permanen baru)
+    const finalCategory = isCustomCategory
+      ? (recordType === "expense" ? "Kebutuhan Lain" : "Lainnya")
+      : selectedCategory;
+    const itemTitle = isCustomCategory
+      ? customCategory.trim()
+      : (note.trim() || selectedCategory);
 
     // Offline Queue
     if (typeof window !== "undefined" && !navigator.onLine) {

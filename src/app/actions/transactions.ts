@@ -66,7 +66,7 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
       return { success: false, error: "Pengguna belum login" };
     }
 
-    // Cari atau buat kategori
+    // Cari kategori resmi pengguna
     let category = await db.query.categories.findFirst({
       where: and(
         eq(categories.userId, userId),
@@ -74,21 +74,34 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
       ),
     });
 
+    // Jika kategori tidak ditemukan, arahkan ke Kebutuhan Lain / Lainnya agar tidak mengotori tabel kategori
     if (!category) {
-      const [newCat] = await db
-        .insert(categories)
-        .values({
-          userId: userId,
-          name: input.categoryName,
-          type: input.type,
-          icon: input.categoryName.toLowerCase(),
-          color: input.type === "expense" ? "#FF7B7B" : "#D4FF5A",
-          requiresLabel: input.categoryName === "Kebutuhan Lain",
-        })
-        .returning();
-      category = newCat;
+      const fallbackName = input.type === "expense" ? "Kebutuhan Lain" : "Lainnya";
+      category = await db.query.categories.findFirst({
+        where: and(
+          eq(categories.userId, userId),
+          eq(categories.name, fallbackName)
+        ),
+      });
+
+      if (!category) {
+        const [newCat] = await db
+          .insert(categories)
+          .values({
+            userId: userId,
+            name: fallbackName,
+            type: input.type,
+            icon: "MoreHorizontal",
+            color: "#8A8A8A",
+            requiresLabel: true,
+            isDefault: true,
+          })
+          .returning();
+        category = newCat;
+      }
     }
 
+    const finalCustomLabel = input.customLabel || (input.categoryName !== category.name ? input.categoryName : null);
     const dateStr = input.occurredOn || new Date().toISOString().split("T")[0];
 
     const [newTransaction] = await db
@@ -100,7 +113,7 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
         amount: BigInt(input.amount),
         occurredOn: dateStr,
         note: input.note || null,
-        customLabel: input.customLabel || null,
+        customLabel: finalCustomLabel,
         accountId: input.accountId || null,
       })
       .returning();
@@ -188,7 +201,7 @@ export async function updateTransactionAction(
       return { success: false, error: "Transaksi tidak ditemukan" };
     }
 
-    // Cari atau buat kategori
+    // Cari kategori resmi pengguna
     let category = await db.query.categories.findFirst({
       where: and(
         eq(categories.userId, userId),
@@ -197,20 +210,32 @@ export async function updateTransactionAction(
     });
 
     if (!category) {
-      const [newCat] = await db
-        .insert(categories)
-        .values({
-          userId: userId,
-          name: input.categoryName,
-          type: input.type,
-          icon: input.categoryName.toLowerCase(),
-          color: input.type === "expense" ? "#FF7B7B" : "#D4FF5A",
-          requiresLabel: input.categoryName === "Kebutuhan Lain",
-        })
-        .returning();
-      category = newCat;
+      const fallbackName = input.type === "expense" ? "Kebutuhan Lain" : "Lainnya";
+      category = await db.query.categories.findFirst({
+        where: and(
+          eq(categories.userId, userId),
+          eq(categories.name, fallbackName)
+        ),
+      });
+
+      if (!category) {
+        const [newCat] = await db
+          .insert(categories)
+          .values({
+            userId: userId,
+            name: fallbackName,
+            type: input.type,
+            icon: "MoreHorizontal",
+            color: "#8A8A8A",
+            requiresLabel: true,
+            isDefault: true,
+          })
+          .returning();
+        category = newCat;
+      }
     }
 
+    const finalCustomLabel = input.customLabel || (input.categoryName !== category.name ? input.categoryName : null);
     const dateStr = input.occurredOn || existing.occurredOn;
 
     await db
@@ -221,7 +246,7 @@ export async function updateTransactionAction(
         amount: BigInt(input.amount),
         occurredOn: dateStr,
         note: input.note || null,
-        customLabel: input.customLabel || null,
+        customLabel: finalCustomLabel,
         updatedAt: new Date(),
       })
       .where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
@@ -420,9 +445,17 @@ export async function getUserCategoriesAction() {
       }
     }
 
+    // Saring hanya kategori resmi agar catatan satu kali (one-off custom notes) tidak menjadi tombol permanen
+    const officialNames = [
+      "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
+      "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
+      "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
+    ];
+    const cleanCats = cats.filter((c) => c.isDefault || officialNames.includes(c.name.toLowerCase().trim()));
+
     return {
       success: true,
-      data: cats.map((c) => ({
+      data: cleanCats.map((c) => ({
         id: c.id,
         name: c.name,
         type: c.type,
