@@ -11,6 +11,7 @@ import {
   restoreTransactionAction,
   getUserCategoriesAction,
 } from "@/app/actions/transactions";
+import { getAccountsAction } from "@/app/actions/accounts";
 import {
   Search,
   Plus,
@@ -35,6 +36,9 @@ import {
   ChevronRight,
   Filter,
   Download,
+  Banknote,
+  Landmark,
+  AlertCircle,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 
@@ -47,6 +51,15 @@ interface Transaction {
   date: string;
   note: string;
   customLabel?: string;
+  accountId?: string;
+  accountName?: string;
+}
+
+interface AccountItem {
+  id: string;
+  name: string;
+  type: "bank" | "ewallet" | "cash";
+  balance: number;
 }
 
 const EXPENSE_CATEGORIES = [
@@ -100,6 +113,7 @@ function TransactionsContent() {
   // Data States
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [accountsList, setAccountsList] = useState<AccountItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Instant Cache Hydration on initial mount (0ms delay)
@@ -107,6 +121,7 @@ function TransactionsContent() {
     try {
       const cachedTx = localStorage.getItem("sakuin_cached_transactions");
       const cachedCats = localStorage.getItem("sakuin_cached_categories");
+      const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
       let hasCache = false;
 
       if (cachedTx) {
@@ -123,6 +138,13 @@ function TransactionsContent() {
           setCategoriesList(names);
         }
       }
+      if (cachedAcc) {
+        const parsedAcc = JSON.parse(cachedAcc);
+        const list = Array.isArray(parsedAcc) ? parsedAcc : parsedAcc?.accounts || [];
+        if (list.length > 0) {
+          setAccountsList(list);
+        }
+      }
       if (hasCache) {
         setIsLoading(false);
       }
@@ -136,6 +158,7 @@ function TransactionsContent() {
   const [editCategory, setEditCategory] = useState("");
   const [isCustomEditCategory, setIsCustomEditCategory] = useState(false);
   const [customEditCategory, setCustomEditCategory] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editDate, setEditDate] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -145,11 +168,11 @@ function TransactionsContent() {
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [lastDeletedTx, setLastDeletedTx] = useState<Transaction | null>(null);
 
-  // Load Transactions & Categories
+  // Load Transactions, Categories & Accounts
   const loadData = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const [txRes, catRes] = await Promise.all([
+      const [txRes, catRes, accRes] = await Promise.all([
         getTransactionsAction({
           month: filterMonth === "all" ? undefined : filterMonth,
           type: filterType === "all" ? undefined : filterType,
@@ -157,6 +180,7 @@ function TransactionsContent() {
           query: searchQuery.trim() || undefined,
         }),
         getUserCategoriesAction(),
+        getAccountsAction(),
       ]);
 
       if (txRes.success && txRes.data) {
@@ -173,6 +197,14 @@ function TransactionsContent() {
         setCategoriesList(catNames);
         try {
           localStorage.setItem("sakuin_cached_categories", JSON.stringify(catRes.data));
+        } catch {}
+      }
+
+      if (accRes.success && accRes.data) {
+        const accs = accRes.data.accounts || [];
+        setAccountsList(accs);
+        try {
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accs));
         } catch {}
       }
     } catch (err) {
@@ -235,6 +267,7 @@ function TransactionsContent() {
     setEditingTx(tx);
     setEditAmount(tx.amount);
     setEditType(tx.type);
+    setEditAccountId(tx.accountId || (accountsList[0]?.id || ""));
 
     const presetList = tx.type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
     const isPreset = presetList.some((c) => c.name === tx.category);
@@ -260,10 +293,29 @@ function TransactionsContent() {
     setIsDeleting(false);
   };
 
+  const selectedEditAccount = accountsList.find((a) => a.id === editAccountId);
+  const effectiveEditBalance = useMemo(() => {
+    if (!selectedEditAccount) return 0;
+    if (!editingTx) return selectedEditAccount.balance;
+    if (editingTx.accountId === selectedEditAccount.id) {
+      return (
+        selectedEditAccount.balance +
+        (editingTx.type === "expense" ? editingTx.amount : -editingTx.amount)
+      );
+    }
+    return selectedEditAccount.balance;
+  }, [selectedEditAccount, editingTx]);
+
+  const isEditInsufficient =
+    editType === "expense" &&
+    selectedEditAccount !== undefined &&
+    editAmount > 0 &&
+    effectiveEditBalance < editAmount;
+
   // Handle Update Transaction
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTx || editAmount <= 0 || isUpdating) return;
+    if (!editingTx || editAmount <= 0 || isUpdating || isEditInsufficient) return;
 
     if (isCustomEditCategory && !customEditCategory.trim()) return;
     if (!isCustomEditCategory && !editCategory) return;
@@ -280,12 +332,13 @@ function TransactionsContent() {
         categoryName: finalCategory,
         note: editNote.trim() || undefined,
         customLabel: isCustomEditCategory ? customEditCategory.trim() : (editNote.trim() || undefined),
+        accountId: editAccountId || undefined,
         occurredOn: editDate,
       });
 
       if (res.success) {
         closeEditModal();
-        await loadData();
+        await loadData(true);
       } else {
         alert(res.error || "Gagal memperbarui transaksi");
       }
@@ -560,6 +613,11 @@ function TransactionsContent() {
                       {item.title}
                     </h3>
                     <div className="flex items-center gap-2 mt-0.5">
+                      {item.accountName && (
+                        <span className="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20 shrink-0">
+                          {item.accountName}
+                        </span>
+                      )}
                       <span className="text-[11px] text-muted-foreground font-medium truncate">
                         {item.category}
                       </span>
@@ -594,21 +652,21 @@ function TransactionsContent() {
       {/* Detail & Edit Modal (PRD T4) */}
       <AnimatePresence>
         {editingTx && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto scrollbar-none"
+              className="bg-card border border-border rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl my-auto max-h-[88vh] flex flex-col"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between pb-1 border-b border-border">
+              <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-foreground">
                     Ubah Catatan Transaksi
                   </h2>
                   <p className="text-[11px] text-muted-foreground">
-                    Perbarui nominal, kategori, atau hapus catatan
+                    Perbarui nominal, kategori, rekening pembayaran, atau hapus
                   </p>
                 </div>
                 <button
@@ -621,7 +679,7 @@ function TransactionsContent() {
               </div>
 
               {/* Form Update */}
-              <form onSubmit={handleUpdate} className="space-y-4">
+              <form onSubmit={handleUpdate} className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8 scrollbar-thin">
                 {/* Tipe Toggle: Pengeluaran vs Pemasukan */}
                 <div className="grid grid-cols-2 p-1 bg-background rounded-full border border-border text-xs font-bold">
                   <button
@@ -722,7 +780,6 @@ function TransactionsContent() {
                   <div className="grid grid-cols-3 gap-2">
                     {activeCategories.map((cat) => {
                       const Icon = cat.icon;
-                      // Kategori preset hanya terpilih jika TIDAK dalam mode kategori lain
                       const isSelected = !isCustomEditCategory && editCategory === cat.name;
 
                       return (
@@ -791,6 +848,82 @@ function TransactionsContent() {
                   </AnimatePresence>
                 </div>
 
+                {/* Pilih Rekening Pembayaran / Sumber Dana (PRD Multi Rekening) */}
+                {accountsList.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                      <span>{editType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
+                      <span className="text-[10px] text-muted-foreground">Saldo disesuaikan otomatis</span>
+                    </label>
+                    <div
+                      className={`grid gap-2 ${
+                        accountsList.length === 1
+                          ? "grid-cols-1"
+                          : accountsList.length === 2
+                          ? "grid-cols-2"
+                          : accountsList.length === 3
+                          ? "grid-cols-3"
+                          : "grid-cols-2 sm:grid-cols-4"
+                      }`}
+                    >
+                      {accountsList.map((acc) => {
+                        const isSelected = editAccountId === acc.id;
+                        // Saldo efektif jika ini rekening transaksi sebelumnya
+                        const effectiveBal =
+                          editingTx?.accountId === acc.id
+                            ? (acc.balance + (editingTx.type === "expense" ? editingTx.amount : -editingTx.amount))
+                            : acc.balance;
+                        const isInsufficient = editType === "expense" && editAmount > 0 && effectiveBal < editAmount;
+                        const AccIcon =
+                          acc.type === "bank" ? Landmark : acc.type === "ewallet" ? Smartphone : Banknote;
+
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => setEditAccountId(acc.id)}
+                            className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 min-h-[54px] ${
+                              isSelected
+                                ? isInsufficient
+                                  ? "border-expense bg-expense/10 text-expense ring-1 ring-expense"
+                                  : "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
+                                : isInsufficient
+                                ? "border-border/60 bg-background/50 text-muted-foreground opacity-60 hover:opacity-100"
+                                : "border-border bg-background text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="w-5 h-5 rounded bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/50">
+                                <AccIcon className="w-3 h-3" />
+                              </div>
+                              <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between w-full">
+                              <span className="text-[10px] font-semibold text-muted-foreground truncate pl-0.5">
+                                {formatRupiah(effectiveBal)}
+                              </span>
+                              {isInsufficient && (
+                                <span className="text-[9px] font-bold text-expense bg-expense/15 px-1 rounded shrink-0">
+                                  Kurang
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {isEditInsufficient && selectedEditAccount && (
+                      <div className="flex items-center gap-2 p-2 rounded-lg bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold mt-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          Saldo <strong>{selectedEditAccount.name}</strong> ({formatRupiah(effectiveEditBalance)}) tidak cukup untuk nominal baru ({formatRupiah(editAmount)}).
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Kolom Catatan Terpisah */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
@@ -822,28 +955,35 @@ function TransactionsContent() {
                 </div>
 
                 {/* Action Buttons: Simpan & Hapus */}
-                <div className="pt-2 space-y-2">
+                <div className="pt-2 space-y-2.5">
                   <button
                     type="submit"
                     disabled={
                       editAmount <= 0 ||
                       isUpdating ||
+                      isEditInsufficient ||
                       (isCustomEditCategory ? !customEditCategory.trim() : !editCategory)
                     }
                     className="w-full py-3 bg-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] font-black rounded-full text-xs sm:text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4 stroke-[3]" />
-                    <span>{isUpdating ? "Memperbarui..." : "Simpan Catatan"}</span>
+                    <span>
+                      {isUpdating
+                        ? "Memperbarui..."
+                        : isEditInsufficient
+                        ? `Saldo ${selectedEditAccount?.name || "Rekening"} Kurang`
+                        : "Simpan Perubahan"}
+                    </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleDelete}
                     disabled={isDeleting}
-                    className="w-full py-2.5 border border-expense/30 hover:border-expense hover:bg-expense/10 text-expense font-bold rounded-full text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 border border-expense/40 bg-expense/5 hover:bg-expense/15 text-expense font-black rounded-full text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>{isDeleting ? "Menghapus..." : "Hapus Transaksi Ini"}</span>
+                    <Trash2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                    <span>{isDeleting ? "Menghapus transaksi..." : "Hapus Transaksi Ini"}</span>
                   </button>
                 </div>
               </form>

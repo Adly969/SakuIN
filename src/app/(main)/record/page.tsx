@@ -27,6 +27,7 @@ import {
   ShoppingBag,
   Banknote,
   Landmark,
+  AlertCircle,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
@@ -288,9 +289,21 @@ export default function RecordPage() {
           { id: "9", name: "Beasiswa", type: "income", icon: "GraduationCap", color: "#5BAA6B", requiresLabel: false },
         ];
 
+  const selectedAccount = accountsList.find((a) => a.id === selectedAccountId);
+  const isInsufficientBalance =
+    recordType === "expense" &&
+    selectedAccount !== undefined &&
+    amount > 0 &&
+    selectedAccount.balance < amount;
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (amount <= 0 || isSaving) return;
+
+    if (isInsufficientBalance) {
+      alert(`Saldo ${selectedAccount?.name || "rekening"} tidak mencukupi untuk pengeluaran ini.`);
+      return;
+    }
 
     // Validasi kategori
     if (isCustomCategory && !customCategory.trim()) return;
@@ -343,6 +356,19 @@ export default function RecordPage() {
       if (res.success) {
         setToastMessage(`${itemTitle} (${formatRupiah(amount)}) berhasil dicatat!`);
         setShowToast(true);
+
+        // Optimistically update account balance in local state
+        if (selectedAccountId) {
+          setAccountsList((prev) =>
+            prev.map((acc) => {
+              if (acc.id === selectedAccountId) {
+                const diff = recordType === "expense" ? -amount : amount;
+                return { ...acc, balance: acc.balance + diff };
+              }
+              return acc;
+            })
+          );
+        }
 
         setAmount(0);
         setIsCustomCategory(false);
@@ -604,6 +630,7 @@ export default function RecordPage() {
             >
               {accountsList.map((acc) => {
                 const isSelected = selectedAccountId === acc.id;
+                const isAccInsufficient = recordType === "expense" && amount > 0 && acc.balance < amount;
                 const AccIcon =
                   acc.type === "bank" ? Landmark : acc.type === "ewallet" ? Smartphone : Banknote;
 
@@ -614,7 +641,11 @@ export default function RecordPage() {
                     onClick={() => setSelectedAccountId(acc.id)}
                     className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 min-h-[56px] ${
                       isSelected
-                        ? "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
+                        ? isAccInsufficient
+                          ? "border-expense bg-expense/10 text-expense ring-1 ring-expense"
+                          : "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
+                        : isAccInsufficient
+                        ? "border-border/60 bg-background/50 text-muted-foreground opacity-60 hover:opacity-100"
                         : "border-border bg-background text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -624,13 +655,30 @@ export default function RecordPage() {
                       </div>
                       <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                     </div>
-                    <span className="text-[11px] font-semibold text-muted-foreground truncate pl-0.5">
-                      {formatRupiah(acc.balance)}
-                    </span>
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[11px] font-semibold text-muted-foreground truncate pl-0.5">
+                        {formatRupiah(acc.balance)}
+                      </span>
+                      {isAccInsufficient && (
+                        <span className="text-[9px] font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
+                          Kurang
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
             </div>
+
+            {/* Peringatan Saldo Tidak Cukup */}
+            {isInsufficientBalance && selectedAccount && (
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-expense/10 border border-expense/30 text-expense text-xs font-semibold mt-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>
+                  Saldo <strong>{selectedAccount.name}</strong> ({formatRupiah(selectedAccount.balance)}) tidak cukup untuk pengeluaran {formatRupiah(amount)}. Silakan pilih rekening lain.
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -669,15 +717,27 @@ export default function RecordPage() {
         {/* Tombol Simpan Transaksi */}
         <button
           type="submit"
-          disabled={amount <= 0 || isSaving || (isCustomCategory && !customCategory.trim())}
+          disabled={
+            amount <= 0 ||
+            isSaving ||
+            (isCustomCategory && !customCategory.trim()) ||
+            isInsufficientBalance
+          }
           className={`w-full py-3.5 rounded-pill text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md ${
-            amount > 0 && (!isCustomCategory || customCategory.trim())
+            isInsufficientBalance
+              ? "bg-expense/15 border border-expense/40 text-expense cursor-not-allowed"
+              : amount > 0 && (!isCustomCategory || customCategory.trim())
               ? "bg-accent hover:bg-accent-hover text-[#1F1F1F] active:scale-[0.98] shadow-accent/20 cursor-pointer"
               : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
           }`}
         >
           {isSaving ? (
             <span>Menyimpan transaksi...</span>
+          ) : isInsufficientBalance ? (
+            <>
+              <AlertCircle className="w-4 h-4" />
+              <span>Saldo {selectedAccount?.name} Tidak Mencukupi</span>
+            </>
           ) : (
             <>
               <Check className="w-4 h-4 stroke-[3]" />

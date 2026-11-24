@@ -16,10 +16,10 @@ const createTransactionSchema = z
       .max(1000000000, "Nominal melebihi batas wajar"),
     type: z.enum(["expense", "income"]),
     categoryName: z.string().min(1, "Kategori wajib dipilih"),
-    note: z.string().max(200, "Catatan maksimal 200 karakter").optional(),
-    customLabel: z.string().max(60, "Keterangan maksimal 60 karakter").optional(),
-    accountId: z.string().uuid().optional(),
-    occurredOn: z.string().optional(),
+    note: z.string().max(200, "Catatan maksimal 200 karakter").optional().nullable(),
+    customLabel: z.string().max(60, "Keterangan maksimal 60 karakter").optional().nullable(),
+    accountId: z.string().uuid().nullish().or(z.literal("")),
+    occurredOn: z.string().optional().nullable(),
   })
   .refine(
     (data) => {
@@ -103,6 +103,23 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
 
     const finalCustomLabel = input.customLabel || (input.categoryName !== category.name ? input.categoryName : null);
     const dateStr = input.occurredOn || new Date().toISOString().split("T")[0];
+    const targetAccountId = input.accountId && input.accountId.trim() ? input.accountId : null;
+
+    // Validasi saldo rekening jika pengeluaran memakai rekening tertentu
+    if (targetAccountId && input.type === "expense") {
+      const selectedAcc = await db.query.accounts.findFirst({
+        where: and(eq(accounts.id, targetAccountId), eq(accounts.userId, userId)),
+      });
+      if (!selectedAcc) {
+        return { success: false, error: "Rekening pembayaran tidak ditemukan" };
+      }
+      if (Number(selectedAcc.balance) < input.amount) {
+        return {
+          success: false,
+          error: `Saldo ${selectedAcc.name} tidak mencukupi (Saldo: Rp ${Number(selectedAcc.balance).toLocaleString("id-ID")}, Pengeluaran: Rp ${input.amount.toLocaleString("id-ID")})`,
+        };
+      }
+    }
 
     const [newTransaction] = await db
       .insert(transactions)
@@ -114,12 +131,12 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
         occurredOn: dateStr,
         note: input.note || null,
         customLabel: finalCustomLabel,
-        accountId: input.accountId || null,
+        accountId: targetAccountId,
       })
       .returning();
 
     // Update saldo rekening jika dipilih
-    if (input.accountId) {
+    if (targetAccountId) {
       if (input.type === "expense") {
         await db
           .update(accounts)
@@ -127,7 +144,7 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
             balance: sql`${accounts.balance} - ${BigInt(input.amount)}`,
             updatedAt: new Date(),
           })
-          .where(eq(accounts.id, input.accountId));
+          .where(eq(accounts.id, targetAccountId));
       } else {
         await db
           .update(accounts)
@@ -135,7 +152,7 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
             balance: sql`${accounts.balance} + ${BigInt(input.amount)}`,
             updatedAt: new Date(),
           })
-          .where(eq(accounts.id, input.accountId));
+          .where(eq(accounts.id, targetAccountId));
       }
     }
 
@@ -237,16 +254,91 @@ export async function updateTransactionAction(
 
     const finalCustomLabel = input.customLabel || (input.categoryName !== category.name ? input.categoryName : null);
     const dateStr = input.occurredOn || existing.occurredOn;
+    const targetAccountId = input.accountId && input.accountId.trim() ? input.accountId : null;
+    const oldAccountId = existing.accountId;
+    const oldAmount = BigInt(existing.amount);
+    const newAmount = BigInt(input.amount);
 
+    // Cek saldo jika transaksi baru adalah pengeluaran memakai rekening
+    if (targetAccountId && input.type === "expense") {
+      const targetAcc = await db.query.accounts.findFirst({
+        where: and(eq(accounts.id, targetAccountId), eq(accounts.userId, userId)),
+      });
+      if (!targetAcc) {
+        return { success: false, error: "Rekening pembayaran tidak ditemukan" };
+      }
+
+      // Hitung saldo efektif rekening tujuan jika rekening lama dan baru sama
+      let effectiveBalance = Number(targetAcc.balance);
+      if (oldAccountId === targetAccountId) {
+        if (existing.type === "expense") {
+          effectiveBalance += Number(oldAmount); // kembalikan nominal pengeluaran lama dulu
+        } else {
+          effectiveBalance -= Number(oldAmount); // kurangi pemasukan lama dulu
+        }
+      }
+
+      if (effectiveBalance < input.amount) {
+        return {
+          success: false,
+          error: `Saldo ${targetAcc.name} tidak mencukupi untuk nominal baru ini (Tersedia: Rp ${effectiveBalance.toLocaleString("id-ID")}, Dibutuhkan: Rp ${input.amount.toLocaleString("id-ID")})`,
+        };
+      }
+    }
+
+    // 1. Batalkan efek transaksi lama terhadap saldo rekening sebelumnya (reversal)
+    if (oldAccountId) {
+      if (existing.type === "expense") {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} + ${oldAmount}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, oldAccountId));
+      } else {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} - ${oldAmount}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, oldAccountId));
+      }
+    }
+
+    // 2. Terapkan efek transaksi baru ke rekening baru
+    if (targetAccountId) {
+      if (input.type === "expense") {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} - ${newAmount}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, targetAccountId));
+      } else {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} + ${newAmount}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, targetAccountId));
+      }
+    }
+
+    // 3. Simpan perubahan transaksi
     await db
       .update(transactions)
       .set({
         categoryId: category.id,
         type: input.type,
-        amount: BigInt(input.amount),
+        amount: newAmount,
         occurredOn: dateStr,
         note: input.note || null,
         customLabel: finalCustomLabel,
+        accountId: targetAccountId,
         updatedAt: new Date(),
       })
       .where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
@@ -255,6 +347,7 @@ export async function updateTransactionAction(
     revalidatePath("/record");
     revalidatePath("/transactions");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
     return { success: true };
   } catch (error) {
@@ -328,6 +421,7 @@ export async function getTransactionsAction(filter?: GetTransactionsFilter) {
       orderBy: [desc(transactions.occurredOn), desc(transactions.createdAt)],
       with: {
         category: true,
+        account: true,
       },
       limit: 100,
     });
@@ -341,6 +435,8 @@ export async function getTransactionsAction(filter?: GetTransactionsFilter) {
       date: t.occurredOn,
       note: t.note || "",
       customLabel: t.customLabel || "",
+      accountId: t.accountId || undefined,
+      accountName: t.account?.name || undefined,
     }));
 
     return { success: true, data: formatted };
@@ -351,7 +447,7 @@ export async function getTransactionsAction(filter?: GetTransactionsFilter) {
 }
 
 /**
- * 4. Hapus Transaksi (Soft Delete) (PRD T4)
+ * 4. Hapus Transaksi (Soft Delete) dan Kembalikan Saldo Rekening (PRD T4)
  */
 export async function deleteTransactionAction(id: string) {
   try {
@@ -365,6 +461,41 @@ export async function deleteTransactionAction(id: string) {
       return { success: false, error: "Pengguna belum login" };
     }
 
+    const existing = await db.query.transactions.findFirst({
+      where: and(
+        eq(transactions.id, id),
+        eq(transactions.userId, userId),
+        isNull(transactions.deletedAt)
+      ),
+    });
+
+    if (!existing) {
+      return { success: false, error: "Transaksi tidak ditemukan" };
+    }
+
+    // Kembalikan saldo rekening jika transaksi ini terikat rekening
+    if (existing.accountId) {
+      if (existing.type === "expense") {
+        // Pengeluaran dihapus -> saldo dikembalikan (tambah kembali)
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} + ${BigInt(existing.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, existing.accountId));
+      } else {
+        // Pemasukan dihapus -> saldo ditarik kembali (dikurangi)
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} - ${BigInt(existing.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, existing.accountId));
+      }
+    }
+
     await db
       .update(transactions)
       .set({ deletedAt: new Date() })
@@ -374,6 +505,7 @@ export async function deleteTransactionAction(id: string) {
     revalidatePath("/record");
     revalidatePath("/transactions");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
     return { success: true };
   } catch (error) {
@@ -397,6 +529,38 @@ export async function restoreTransactionAction(id: string) {
       return { success: false, error: "Pengguna belum login" };
     }
 
+    const existing = await db.query.transactions.findFirst({
+      where: and(
+        eq(transactions.id, id),
+        eq(transactions.userId, userId)
+      ),
+    });
+
+    if (!existing) {
+      return { success: false, error: "Transaksi tidak ditemukan" };
+    }
+
+    // Terapkan kembali efek transaksi ke rekening
+    if (existing.accountId) {
+      if (existing.type === "expense") {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} - ${BigInt(existing.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, existing.accountId));
+      } else {
+        await db
+          .update(accounts)
+          .set({
+            balance: sql`${accounts.balance} + ${BigInt(existing.amount)}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(accounts.id, existing.accountId));
+      }
+    }
+
     await db
       .update(transactions)
       .set({ deletedAt: null })
@@ -406,6 +570,7 @@ export async function restoreTransactionAction(id: string) {
     revalidatePath("/record");
     revalidatePath("/transactions");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
     return { success: true };
   } catch (error) {
