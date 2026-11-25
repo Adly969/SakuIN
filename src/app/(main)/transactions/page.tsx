@@ -204,7 +204,7 @@ function TransactionsContent() {
         const accs = accRes.data.accounts || [];
         setAccountsList(accs);
         try {
-          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accs));
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
         } catch {}
       }
     } catch (err) {
@@ -339,6 +339,7 @@ function TransactionsContent() {
       if (res.success) {
         closeEditModal();
         await loadData(true);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
         alert(res.error || "Gagal memperbarui transaksi");
       }
@@ -367,6 +368,8 @@ function TransactionsContent() {
         setLastDeletedTx(targetTx);
         setShowUndoToast(true);
         closeEditModal();
+        await loadData(true);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
 
         // Auto hide toast after 6 seconds
         setTimeout(() => {
@@ -394,7 +397,8 @@ function TransactionsContent() {
       const res = await restoreTransactionAction(txToRestore.id);
       if (res.success) {
         setTransactionsList((prev) => [txToRestore, ...prev]);
-        await loadData();
+        await loadData(true);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       }
     } catch (err) {
       console.error("Gagal memulihkan transaksi:", err);

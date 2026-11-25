@@ -83,6 +83,14 @@ interface DashboardData {
   paydayDay: number;
   remainingDays: number;
   remainingBalance: number;
+  remainingBudget?: number;
+  totalAccountsBalance?: number;
+  hasAccountsData?: boolean;
+  accountBreakdown?: {
+    bank: number;
+    ewallet: number;
+    cash: number;
+  };
   dailyLimit: number;
   status: {
     status: "safe" | "warning" | "danger";
@@ -145,7 +153,7 @@ export default function DashboardPage() {
         setDashboardData(dashRes.value.data);
         try {
           localStorage.setItem("sakuin_cached_dashboard", JSON.stringify(dashRes.value.data));
-        } catch {}
+        } catch { }
         if (dashRes.value.data.monthlyHistory && dashRes.value.data.monthlyHistory.length > 0) {
           setActiveMonthData(dashRes.value.data.monthlyHistory[dashRes.value.data.monthlyHistory.length - 1]);
         }
@@ -153,6 +161,9 @@ export default function DashboardPage() {
 
       if (accRes.status === "fulfilled" && accRes.value.success && accRes.value.data) {
         setAccountsList(accRes.value.data.accounts || []);
+        try {
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.value.data));
+        } catch { }
       }
     } catch (e) {
       console.error("Gagal load dashboard data:", e);
@@ -178,8 +189,9 @@ export default function DashboardPage() {
       const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
       if (cachedAcc) {
         const parsedAcc = JSON.parse(cachedAcc);
-        if (parsedAcc && Array.isArray(parsedAcc.accounts)) {
-          setAccountsList(parsedAcc.accounts);
+        const accList = Array.isArray(parsedAcc) ? parsedAcc : parsedAcc?.accounts;
+        if (Array.isArray(accList)) {
+          setAccountsList(accList);
         }
       }
     } catch (err) {
@@ -198,9 +210,13 @@ export default function DashboardPage() {
 
     window.addEventListener("focus", handleFocus);
     window.addEventListener("sakuin:sync-complete", handleSync);
+    window.addEventListener("sakuin:data-invalidated", handleSync);
+    window.addEventListener("sakuin:transaction-added", handleSync);
     return () => {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("sakuin:sync-complete", handleSync);
+      window.removeEventListener("sakuin:data-invalidated", handleSync);
+      window.removeEventListener("sakuin:transaction-added", handleSync);
     };
   }, []);
 
@@ -212,12 +228,12 @@ export default function DashboardPage() {
       setDashboardData((prev) =>
         prev
           ? {
-              ...prev,
-              motivation: {
-                text: offlineQ.text,
-                category: offlineQ.category,
-              },
-            }
+            ...prev,
+            motivation: {
+              text: offlineQ.text,
+              category: offlineQ.category,
+            },
+          }
           : null
       );
       setTimeout(() => setIsRefreshingQuote(false), 350);
@@ -230,9 +246,9 @@ export default function DashboardPage() {
         setDashboardData((prev) =>
           prev
             ? {
-                ...prev,
-                motivation: res.data,
-              }
+              ...prev,
+              motivation: res.data,
+            }
             : null
         );
       } else {
@@ -240,12 +256,12 @@ export default function DashboardPage() {
         setDashboardData((prev) =>
           prev
             ? {
-                ...prev,
-                motivation: {
-                  text: offlineQ.text,
-                  category: offlineQ.category,
-                },
-              }
+              ...prev,
+              motivation: {
+                text: offlineQ.text,
+                category: offlineQ.category,
+              },
+            }
             : null
         );
       }
@@ -254,12 +270,12 @@ export default function DashboardPage() {
       setDashboardData((prev) =>
         prev
           ? {
-              ...prev,
-              motivation: {
-                text: offlineQ.text,
-                category: offlineQ.category,
-              },
-            }
+            ...prev,
+            motivation: {
+              text: offlineQ.text,
+              category: offlineQ.category,
+            },
+          }
           : null
       );
     } finally {
@@ -274,14 +290,35 @@ export default function DashboardPage() {
   const recentTransactions = dashboardData?.recentTransactions || [];
   const dateInfo = dashboardData?.dateInfo;
 
+  // Hitung Total Saldo Riil (Rekening Bank + E-Wallet + Dompet Fisik) secara langsung & sinkron
+  const liveAccountsTotal =
+    accountsList.length > 0
+      ? accountsList.reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
+      : (dashboardData?.totalAccountsBalance ?? 0);
+  const isUsingAccounts =
+    Boolean(dashboardData?.hasAccountsData) ||
+    accountsList.some((acc) => Number(acc.balance || 0) !== 0);
+  const heroMainBalance = isUsingAccounts
+    ? Math.max(0, liveAccountsTotal)
+    : (dashboardData?.remainingBalance ?? 0);
+  const heroDailyLimit = dashboardData
+    ? Math.floor(heroMainBalance / Math.max(1, dashboardData.remainingDays))
+    : 0;
+  const heroStatus =
+    heroDailyLimit >= 65000
+      ? { status: "safe" as const, label: "Aman" }
+      : heroDailyLimit >= 30000
+      ? { status: "warning" as const, label: "Waspada" }
+      : { status: "danger" as const, label: "Kritis" };
+
   // Deteksi Bulan Terboros (PRD G5)
   const highestMonth =
     monthlyHistory.length > 0
       ? monthlyHistory.reduce(
-          (prev: MonthHistoryItem, curr: MonthHistoryItem) =>
-            curr.amount > prev.amount ? curr : prev,
-          monthlyHistory[0]
-        )
+        (prev: MonthHistoryItem, curr: MonthHistoryItem) =>
+          curr.amount > prev.amount ? curr : prev,
+        monthlyHistory[0]
+      )
       : null;
 
   return (
@@ -336,9 +373,8 @@ export default function DashboardPage() {
                 type="button"
                 onClick={handleRefreshQuote}
                 title="Ganti kutipan motivasi"
-                className={`w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground transition-transform rounded-md hover:bg-muted ${
-                  isRefreshingQuote ? "animate-spin" : ""
-                }`}
+                className={`w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground transition-transform rounded-md hover:bg-muted ${isRefreshingQuote ? "animate-spin" : ""
+                  }`}
               >
                 <RotateCw className="w-4 h-4" />
               </button>
@@ -371,16 +407,16 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground font-medium">
-                  Sisa Uang Kiriman
+                  {isUsingAccounts ? "Total Saldo Semua Dompet" : "Sisa Uang Kiriman"}
                 </p>
               </div>
 
               <div className="text-right">
                 <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
-                  {dashboardData ? formatRupiah(dashboardData.remainingBalance) : "Rp ..."}
+                  {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
                 </div>
                 <span className="text-[11px] font-semibold text-muted-foreground">
-                  Tersedia Bulan Ini
+                  {isUsingAccounts ? "Bank, E-Wallet & Tunai" : "Tersedia Bulan Ini"}
                 </span>
               </div>
             </div>
@@ -397,13 +433,12 @@ export default function DashboardPage() {
               </div>
               <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    (dashboardData?.budgetUsedPercent || 0) >= 100
-                      ? "bg-expense"
-                      : (dashboardData?.budgetUsedPercent || 0) >= 80
+                  className={`h-full rounded-full transition-all duration-500 ${(dashboardData?.budgetUsedPercent || 0) >= 100
+                    ? "bg-expense"
+                    : (dashboardData?.budgetUsedPercent || 0) >= 80
                       ? "bg-[#FFB04A]"
                       : "bg-accent"
-                  }`}
+                    }`}
                   style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
                 />
               </div>
@@ -422,18 +457,17 @@ export default function DashboardPage() {
                 </span>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="font-extrabold text-accent text-sm sm:text-base">
-                    {dashboardData ? formatRupiah(dashboardData.dailyLimit) : "Rp ..."}
+                    {dashboardData || accountsList.length > 0 ? formatRupiah(heroDailyLimit) : "Rp ..."}
                   </span>
                   <span
-                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                      dashboardData?.status?.status === "safe"
-                        ? "bg-accent/20 text-accent"
-                        : dashboardData?.status?.status === "warning"
+                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
+                      ? "bg-accent/20 text-accent"
+                      : heroStatus.status === "warning"
                         ? "bg-[#FFB04A]/20 text-[#FFB04A]"
                         : "bg-expense/20 text-expense"
-                    }`}
+                      }`}
                   >
-                    {dashboardData?.status?.label || "Aman"}
+                    {heroStatus.label}
                   </span>
                 </div>
               </div>
@@ -451,16 +485,21 @@ export default function DashboardPage() {
 
           {/* 2.2 Kartu Rekening (HP: horizontal snap, md ke atas: grid 2-3 kolom) */}
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-accent" />
-                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+            <div className="flex items-center justify-between px-1 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Wallet className="w-4 h-4 text-accent shrink-0" />
+                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground truncate">
                   Rekening & Dompet
                 </h2>
+                {accountsList.length > 0 && (
+                  <span className="text-[11px] font-black text-accent bg-accent/15 px-2 py-0.5 rounded-full border border-accent/25 shrink-0">
+                    Total {formatRupiah(liveAccountsTotal)}
+                  </span>
+                )}
               </div>
               <Link
                 href="/accounts"
-                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2"
+                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2 shrink-0"
               >
                 <span>Kelola</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -476,23 +515,22 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div
-                className={`grid gap-2.5 sm:gap-3 ${
-                  accountsList.length === 1
-                    ? "grid-cols-1"
-                    : accountsList.length === 2
+                className={`grid gap-2.5 sm:gap-3 ${accountsList.length === 1
+                  ? "grid-cols-1"
+                  : accountsList.length === 2
                     ? "grid-cols-2"
                     : accountsList.length === 3
-                    ? "grid-cols-2 sm:grid-cols-3"
-                    : "grid-cols-2 sm:grid-cols-3"
-                }`}
+                      ? "grid-cols-2 sm:grid-cols-3"
+                      : "grid-cols-2 sm:grid-cols-3"
+                  }`}
               >
                 {accountsList.map((acc: any) => {
                   const AccIcon =
                     acc.type === "bank"
                       ? Landmark
                       : acc.type === "ewallet"
-                      ? PhoneIcon
-                      : Banknote;
+                        ? PhoneIcon
+                        : Banknote;
                   return (
                     <Link
                       key={acc.id}
@@ -571,20 +609,19 @@ export default function DashboardPage() {
                 className="flex items-center gap-2 bg-card hover:bg-muted border border-border px-4 py-2.5 min-h-[44px] rounded-full text-xs font-bold text-foreground shadow-sm transition-all"
               >
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    selectedType === "expense"
-                      ? "bg-expense"
-                      : selectedType === "income"
+                  className={`w-2.5 h-2.5 rounded-full ${selectedType === "expense"
+                    ? "bg-expense"
+                    : selectedType === "income"
                       ? "bg-accent"
                       : "bg-savings"
-                  }`}
+                    }`}
                 />
                 <span className="capitalize">
                   {selectedType === "expense"
                     ? "Pengeluaran"
                     : selectedType === "income"
-                    ? "Pemasukan"
-                    : "Tabungan"}
+                      ? "Pemasukan"
+                      : "Tabungan"}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
@@ -595,22 +632,20 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setPeriod("month")}
-                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${
-                  period === "month"
-                    ? "bg-foreground text-background font-bold shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${period === "month"
+                  ? "bg-foreground text-background font-bold shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 Bulan
               </button>
               <button
                 type="button"
                 onClick={() => setPeriod("year")}
-                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${
-                  period === "year"
-                    ? "bg-foreground text-background font-bold shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${period === "year"
+                  ? "bg-foreground text-background font-bold shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 Tahun
               </button>
@@ -683,11 +718,10 @@ export default function DashboardPage() {
                         key={cat.name}
                         type="button"
                         onClick={() => setActiveCategoryIndex(idx)}
-                        className={`w-full flex items-center justify-between text-[11px] font-semibold px-2 py-1.5 rounded-md transition-all text-left ${
-                          isSelected
-                            ? "bg-muted text-foreground"
-                            : "hover:bg-muted/40 text-muted-foreground"
-                        }`}
+                        className={`w-full flex items-center justify-between text-[11px] font-semibold px-2 py-1.5 rounded-md transition-all text-left ${isSelected
+                          ? "bg-muted text-foreground"
+                          : "hover:bg-muted/40 text-muted-foreground"
+                          }`}
                       >
                         <div className="flex items-center gap-1.5 truncate max-w-[75%]">
                           <span
@@ -811,9 +845,8 @@ export default function DashboardPage() {
                 className="flex items-center gap-2 bg-background hover:bg-muted border border-border px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold text-foreground transition-all"
               >
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    trendType === "expense" ? "bg-expense" : "bg-accent"
-                  }`}
+                  className={`w-2.5 h-2.5 rounded-full ${trendType === "expense" ? "bg-expense" : "bg-accent"
+                    }`}
                 />
                 <span>{trendType === "expense" ? "Pengeluaran" : "Pemasukan"}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -824,11 +857,10 @@ export default function DashboardPage() {
                   {activeMonthData?.month || dateInfo?.monthShort || "Bulan Ini"}
                 </span>
                 <div
-                  className={`px-3 py-1.5 rounded-full font-black text-xs shadow-md ${
-                    activeMonthData?.isHighest && (activeMonthData.amount || 0) > 0
-                      ? "bg-expense text-white"
-                      : "bg-accent text-[#1F1F1F]"
-                  }`}
+                  className={`px-3 py-1.5 rounded-full font-black text-xs shadow-md ${activeMonthData?.isHighest && (activeMonthData.amount || 0) > 0
+                    ? "bg-expense text-white"
+                    : "bg-accent text-[#1F1F1F]"
+                    }`}
                 >
                   {formatRupiah(activeMonthData?.amount || 0)}
                 </div>
@@ -885,13 +917,12 @@ export default function DashboardPage() {
                             x={x}
                             y={Number(y) + 12}
                             textAnchor="middle"
-                            className={`text-[11px] cursor-pointer font-bold ${
-                              isSelected
-                                ? "fill-accent font-black"
-                                : isMax
+                            className={`text-[11px] cursor-pointer font-bold ${isSelected
+                              ? "fill-accent font-black"
+                              : isMax
                                 ? "fill-expense font-black"
                                 : "fill-muted-foreground"
-                            }`}
+                              }`}
                           >
                             {payload.value}
                           </text>
@@ -970,11 +1001,10 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            tx.type === "expense"
-                              ? "bg-expense/15 text-expense"
-                              : "bg-accent/20 text-accent"
-                          }`}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tx.type === "expense"
+                            ? "bg-expense/15 text-expense"
+                            : "bg-accent/20 text-accent"
+                            }`}
                         >
                           <Icon className="w-4 h-4 stroke-[2.2]" />
                         </div>
@@ -987,9 +1017,8 @@ export default function DashboardPage() {
                       </div>
 
                       <span
-                        className={`font-black shrink-0 ${
-                          tx.type === "expense" ? "text-expense" : "text-accent"
-                        }`}
+                        className={`font-black shrink-0 ${tx.type === "expense" ? "text-expense" : "text-accent"
+                          }`}
                       >
                         {tx.type === "expense" ? "-" : "+"}
                         {formatRupiah(tx.amount)}

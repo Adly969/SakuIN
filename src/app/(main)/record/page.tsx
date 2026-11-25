@@ -207,7 +207,7 @@ export default function RecordPage() {
         if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
           setAccountsList(accRes.data.accounts);
           try {
-            localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data.accounts));
+            localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
           } catch {}
           const def = accRes.data.accounts.find((a) => a.isDefault) || accRes.data.accounts[0];
           if (def?.id) setSelectedAccountId(def.id);
@@ -357,18 +357,24 @@ export default function RecordPage() {
         setToastMessage(`${itemTitle} (${formatRupiah(amount)}) berhasil dicatat!`);
         setShowToast(true);
 
-        // Optimistically update account balance in local state
+        // Optimistically update account balance in local state & localStorage
         if (selectedAccountId) {
-          setAccountsList((prev) =>
-            prev.map((acc) => {
+          setAccountsList((prev) => {
+            const updated = prev.map((acc) => {
               if (acc.id === selectedAccountId) {
                 const diff = recordType === "expense" ? -amount : amount;
                 return { ...acc, balance: acc.balance + diff };
               }
               return acc;
-            })
-          );
+            });
+            try {
+              const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
+              localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
+            } catch {}
+            return updated;
+          });
         }
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
 
         setAmount(0);
         setIsCustomCategory(false);

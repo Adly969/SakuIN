@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { profiles, transactions, savingsEntries, motivations } from "@/db/schema";
+import { profiles, transactions, savingsEntries, motivations, accounts } from "@/db/schema";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import {
   formatIndonesianDate,
@@ -105,9 +105,39 @@ export async function getDashboardDataAction() {
       });
     }
 
-    // 6. Kalkulasi Sisa Uang & Batas Per Hari Riil (PRD B4 & 6)
-    // Sisa = Uang Kiriman - Total Pengeluaran Bulan Ini - Total Setoran Tabungan
-    const remainingBalance = Math.max(0, allowance - totalExpense - Math.max(0, totalSavedMonth));
+    // 6. Hitung Total Saldo Riil dari Semua Rekening, E-Wallet, dan Dompet Fisik
+    let totalAccountsBalance = 0;
+    let bankBalance = 0;
+    let ewalletBalance = 0;
+    let cashBalance = 0;
+    let hasAccountsData = false;
+
+    if (userId) {
+      const userAccounts = await db.query.accounts.findMany({
+        where: eq(accounts.userId, userId),
+      });
+
+      userAccounts.forEach((acc) => {
+        const bal = Number(acc.balance || 0);
+        totalAccountsBalance += bal;
+        if (acc.type === "bank") bankBalance += bal;
+        else if (acc.type === "ewallet") ewalletBalance += bal;
+        else cashBalance += bal;
+      });
+
+      hasAccountsData =
+        userAccounts.some((a) => Number(a.balance || 0) !== 0) ||
+        userTransactions.some((t) => Boolean(t.accountId));
+    }
+
+    // Sisa anggaran bulanan (Uang Kiriman + Pemasukan - Pengeluaran - Setoran Tabungan)
+    const remainingBudget = Math.max(
+      0,
+      allowance + totalIncome - totalExpense - Math.max(0, totalSavedMonth)
+    );
+
+    // Saldo Utama: jika user menggunakan Multi-Rekening, gunakan total seluruh saldo rekening/e-wallet/dompet fisik
+    const remainingBalance = hasAccountsData ? Math.max(0, totalAccountsBalance) : remainingBudget;
     const dailyLimit = calculateDailyLimit(remainingBalance, remainingDays);
     const status = getSpendingStatus(dailyLimit);
 
@@ -291,6 +321,14 @@ export async function getDashboardDataAction() {
         paydayDay,
         remainingDays,
         remainingBalance,
+        remainingBudget,
+        totalAccountsBalance,
+        hasAccountsData,
+        accountBreakdown: {
+          bank: bankBalance,
+          ewallet: ewalletBalance,
+          cash: cashBalance,
+        },
         dailyLimit,
         status,
         motivation: {

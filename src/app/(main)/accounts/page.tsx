@@ -33,7 +33,6 @@ interface AccountItem {
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
-  const [totalBalance, setTotalBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Modal States
@@ -66,14 +65,18 @@ export default function AccountsPage() {
     try {
       const res = await getAccountsAction();
       if (res.success && res.data) {
-        setAccounts(res.data.accounts);
-        setTotalBalance(res.data.totalBalance);
-        if (res.data.accounts.length >= 2) {
-          setFromAccountId(res.data.accounts[0].id);
-          setToAccountId(res.data.accounts[1].id);
+        const list = res.data.accounts || [];
+        const computedSum = list.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+        setAccounts(list);
+        if (list.length >= 2) {
+          setFromAccountId(list[0].id);
+          setToAccountId(list[1].id);
         }
         try {
-          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(res.data));
+          localStorage.setItem(
+            "sakuin_cached_accounts",
+            JSON.stringify({ totalBalance: computedSum, accounts: list })
+          );
         } catch {}
       }
     } catch (e) {
@@ -89,12 +92,12 @@ export default function AccountsPage() {
       const cached = localStorage.getItem("sakuin_cached_accounts");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed && Array.isArray(parsed.accounts)) {
-          setAccounts(parsed.accounts);
-          setTotalBalance(parsed.totalBalance || 0);
-          if (parsed.accounts.length >= 2) {
-            setFromAccountId(parsed.accounts[0].id);
-            setToAccountId(parsed.accounts[1].id);
+        const list = Array.isArray(parsed) ? parsed : parsed?.accounts;
+        if (Array.isArray(list)) {
+          setAccounts(list);
+          if (list.length >= 2) {
+            setFromAccountId(list[0].id);
+            setToAccountId(list[1].id);
           }
           setIsLoading(false);
           hasCache = true;
@@ -126,6 +129,7 @@ export default function AccountsPage() {
         setNewAccountNumber("");
         setNewBalance("0");
         await loadData();
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
         alert(res.error || "Gagal membuat rekening");
       }
@@ -158,6 +162,7 @@ export default function AccountsPage() {
         setAdminFee("0");
         setTransferNote("");
         await loadData();
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
         alert(res.error || "Gagal melakukan transfer");
       }
@@ -183,6 +188,7 @@ export default function AccountsPage() {
         setShowAdjustModal(false);
         setSelectedAccount(null);
         await loadData();
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
         alert(res.error || "Gagal menyesuaikan saldo");
       }
@@ -198,10 +204,22 @@ export default function AccountsPage() {
     const res = await deleteAccountAction(id);
     if (res.success) {
       await loadData();
+      window.dispatchEvent(new Event("sakuin:data-invalidated"));
     } else {
       alert(res.error || "Gagal menghapus rekening");
     }
   };
+
+  const computedTotalBalance = accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+  const bankTotal = accounts
+    .filter((a) => a.type === "bank")
+    .reduce((sum, a) => sum + Number(a.balance || 0), 0);
+  const ewalletTotal = accounts
+    .filter((a) => a.type === "ewallet")
+    .reduce((sum, a) => sum + Number(a.balance || 0), 0);
+  const cashTotal = accounts
+    .filter((a) => a.type === "cash")
+    .reduce((sum, a) => sum + Number(a.balance || 0), 0);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -259,17 +277,17 @@ export default function AccountsPage() {
       </div>
 
       {/* 2. Total Saldo Card */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-md relative overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-md relative overflow-hidden space-y-4">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               Total Saldo Seluruh Rekening
             </p>
-            <h2 className="text-3xl font-black text-foreground tracking-tight mt-1 text-accent">
-              {isLoading ? "Rp . . ." : formatRupiah(totalBalance)}
+            <h2 className="text-3xl font-black tracking-tight mt-1 text-accent">
+              {isLoading ? "Rp . . ." : formatRupiah(computedTotalBalance)}
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Tersebar di {accounts.length} rekening & dompet aktif
+              Gabungan dari {accounts.length} rekening bank, e-wallet &amp; dompet fisik
             </p>
           </div>
 
@@ -279,6 +297,22 @@ export default function AccountsPage() {
               {accounts.filter((a) => a.type === "ewallet").length} E-Wallet •{" "}
               {accounts.filter((a) => a.type === "cash").length} Tunai
             </span>
+          </div>
+        </div>
+
+        {/* Rincian Per Kategori Rekening */}
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/60 text-xs">
+          <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">Bank</p>
+            <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(bankTotal)}</p>
+          </div>
+          <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">E-Wallet</p>
+            <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(ewalletTotal)}</p>
+          </div>
+          <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">Dompet Fisik</p>
+            <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(cashTotal)}</p>
           </div>
         </div>
       </div>
@@ -358,7 +392,7 @@ export default function AccountsPage() {
 
       {/* 4. MODAL: Tambah Rekening */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-foreground">Tambah Rekening Baru</h3>
@@ -503,7 +537,7 @@ export default function AccountsPage() {
 
       {/* 5. MODAL: Pindah Saldo (Transfer Antar Rekening) */}
       {showTransferModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-foreground">Pindah Saldo Antar Rekening</h3>
@@ -632,7 +666,7 @@ export default function AccountsPage() {
 
       {/* 6. MODAL: Sesuaikan Saldo */}
       {showAdjustModal && selectedAccount && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-foreground">Sesuaikan Saldo</h3>
