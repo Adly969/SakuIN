@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { Delete, Lock, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { Delete, Lock, KeyRound, ShieldCheck } from "lucide-react";
 import { verifyPinAction } from "@/app/actions/pin";
 import { createClient } from "@/lib/supabase/client";
 
@@ -17,61 +16,72 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isShake, setIsShake] = useState(false);
+  const isVerifyingRef = useRef(false);
 
-  // Handle digit input
-  const handleDigit = useCallback(
-    (digit: string) => {
-      if (isVerifying) return;
-      if (pin.length < 6) {
-        setErrorMessage("");
-        setPin((prev) => prev + digit);
-      }
-    },
-    [pin, isVerifying]
-  );
-
-  // Handle backspace
-  const handleBackspace = useCallback(() => {
-    if (isVerifying) return;
+  // Instant digit input (tanpa dependency `pin` agar tidak re-render/re-bind listener tiap ketukan)
+  const handleDigit = useCallback((digit: string) => {
+    if (isVerifyingRef.current) return;
     setErrorMessage("");
-    setPin((prev) => prev.slice(0, -1));
-  }, [isVerifying]);
+    setPin((prev) => {
+      if (prev.length >= 6) return prev;
+      return prev + digit;
+    });
+  }, []);
 
-  // Handle auto-verify when PIN reaches 6 digits
+  // Instant backspace
+  const handleBackspace = useCallback(() => {
+    if (isVerifyingRef.current) return;
+    setErrorMessage("");
+    setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev));
+  }, []);
+
+  // Auto-verify ketika genap 6 digit
   useEffect(() => {
-    if (pin.length === 6) {
-      const verify = async () => {
-        setIsVerifying(true);
-        setErrorMessage("");
+    if (pin.length !== 6 || isVerifyingRef.current) return;
 
-        try {
-          const res = await verifyPinAction(pin);
-          if (res.success) {
-            onUnlocked();
-          } else {
-            setIsShake(true);
-            setErrorMessage(res.error || "PIN yang kamu masukkan salah");
-            setTimeout(() => {
-              setIsShake(false);
-              setPin("");
-              setIsVerifying(false);
-            }, 600);
-          }
-        } catch (err) {
+    let cancelled = false;
+    isVerifyingRef.current = true;
+    setIsVerifying(true);
+    setErrorMessage("");
+
+    (async () => {
+      try {
+        const res = await verifyPinAction(pin);
+        if (cancelled) return;
+
+        if (res.success) {
+          onUnlocked();
+        } else {
           setIsShake(true);
-          setErrorMessage("Gagal memverifikasi PIN");
+          setErrorMessage(res.error || "PIN yang kamu masukkan salah");
           setTimeout(() => {
+            if (cancelled) return;
             setIsShake(false);
             setPin("");
+            isVerifyingRef.current = false;
             setIsVerifying(false);
-          }, 600);
+          }, 500);
         }
-      };
-      verify();
-    }
+      } catch {
+        if (cancelled) return;
+        setIsShake(true);
+        setErrorMessage("Gagal memverifikasi PIN");
+        setTimeout(() => {
+          if (cancelled) return;
+          setIsShake(false);
+          setPin("");
+          isVerifyingRef.current = false;
+          setIsVerifying(false);
+        }, 500);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [pin, onUnlocked]);
 
-  // Listen to physical keyboard events (0-9, Backspace)
+  // Listen to physical keyboard events (0-9, Backspace) — hanya dipasang 1x
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key >= "0" && e.key <= "9") {
@@ -85,7 +95,6 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleDigit, handleBackspace]);
 
-  // Handle logout / masuk dengan password
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -99,8 +108,29 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
     ["", "0", "backspace"],
   ];
 
+  // Helper 0ms touch: gunakan onPointerDown di sentuhan jari (APK/WebView) dan fallback onClick untuk keyboard/screen reader
+  const lastPointerAtRef = useRef<number>(0);
+
+  const triggerDigit = (digit: string, fromPointer: boolean) => {
+    if (fromPointer) {
+      lastPointerAtRef.current = Date.now();
+      handleDigit(digit);
+    } else if (Date.now() - lastPointerAtRef.current > 450) {
+      handleDigit(digit);
+    }
+  };
+
+  const triggerBackspace = (fromPointer: boolean) => {
+    if (fromPointer) {
+      lastPointerAtRef.current = Date.now();
+      handleBackspace();
+    } else if (Date.now() - lastPointerAtRef.current > 450) {
+      handleBackspace();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-between p-6 select-none overflow-y-auto">
+    <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-between p-6 select-none overflow-y-auto touch-manipulation">
       {/* Top Header */}
       <div
         style={{
@@ -129,41 +159,33 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
           </p>
         </div>
 
-        {/* 6 Dots Indicator */}
-        <motion.div
-          animate={isShake ? { x: [-10, 10, -8, 8, -4, 4, 0] } : {}}
-          transition={{ duration: 0.4 }}
-          className="flex items-center justify-center gap-3.5 py-2"
+        {/* 6 Dots Indicator — Pure CSS GPU-only transition agar 0ms tanpa frame lag */}
+        <div
+          className={`flex items-center justify-center gap-3.5 py-2 ${
+            isShake ? "animate-bounce" : ""
+          }`}
         >
           {[0, 1, 2, 3, 4, 5].map((idx) => {
             const isFilled = pin.length > idx;
             return (
-              <motion.div
+              <div
                 key={idx}
-                initial={false}
-                animate={{
-                  scale: isFilled ? 1.15 : 1,
-                  backgroundColor: isFilled ? "var(--accent)" : "transparent",
-                  borderColor: isFilled
-                    ? "var(--accent)"
+                className={`w-3.5 h-3.5 rounded-full border-2 transform transition-transform duration-75 ${
+                  isFilled
+                    ? "scale-110 bg-accent border-accent"
                     : errorMessage
-                    ? "var(--expense)"
-                    : "var(--border)",
-                }}
-                className={`w-3.5 h-3.5 rounded-full border-2 transition-colors ${
-                  errorMessage && !isFilled ? "border-expense" : ""
+                    ? "scale-100 bg-transparent border-expense"
+                    : "scale-100 bg-transparent border-border"
                 }`}
               />
             );
           })}
-        </motion.div>
+        </div>
 
         {/* Error / Status Text */}
         <div className="h-5">
           {errorMessage ? (
-            <p className="text-xs font-bold text-expense animate-fade-in">
-              {errorMessage}
-            </p>
+            <p className="text-xs font-bold text-expense">{errorMessage}</p>
           ) : isVerifying ? (
             <p className="text-xs font-bold text-accent animate-pulse">
               Memverifikasi PIN...
@@ -175,8 +197,8 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
           )}
         </div>
 
-        {/* Numeric Keypad Grid */}
-        <div className="w-full grid grid-cols-3 gap-3 pt-2 max-w-[280px]">
+        {/* Numeric Keypad Grid — 0ms PointerDown Response untuk WebView APK */}
+        <div className="w-full grid grid-cols-3 gap-3 pt-2 max-w-[280px] touch-manipulation">
           {keypadRows.map((row, rIdx) =>
             row.map((item, cIdx) => {
               if (item === "") {
@@ -188,9 +210,14 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
                   <button
                     key="backspace"
                     type="button"
-                    onClick={handleBackspace}
-                    disabled={isVerifying || pin.length === 0}
-                    className="h-14 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-90 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      triggerBackspace(true);
+                    }}
+                    onClick={() => triggerBackspace(false)}
+                    className={`h-14 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-90 active:bg-muted/60 transition-transform duration-75 touch-manipulation select-none [-webkit-tap-highlight-color:transparent] ${
+                      isVerifying || pin.length === 0 ? "opacity-30 pointer-events-none" : ""
+                    }`}
                     aria-label="Hapus digit"
                   >
                     <Delete className="w-5 h-5 stroke-[2]" />
@@ -202,9 +229,12 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
                 <button
                   key={item}
                   type="button"
-                  onClick={() => handleDigit(item)}
-                  disabled={isVerifying || pin.length >= 6}
-                  className="h-14 rounded-full bg-card hover:bg-muted border border-border text-foreground text-xl font-bold active:scale-95 active:bg-accent/20 transition-all shadow-sm flex items-center justify-center"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    triggerDigit(item, true);
+                  }}
+                  onClick={() => triggerDigit(item, false)}
+                  className="h-14 rounded-full bg-card hover:bg-muted border border-border text-foreground text-xl font-bold active:scale-[0.92] active:bg-accent/25 transition-transform duration-75 shadow-sm flex items-center justify-center touch-manipulation select-none [-webkit-tap-highlight-color:transparent]"
                 >
                   {item}
                 </button>
@@ -219,7 +249,7 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
         <button
           type="button"
           onClick={handleLogout}
-          className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5 py-1 px-3 rounded-full hover:bg-muted"
+          className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5 py-2 min-h-[44px] px-3 rounded-full hover:bg-muted"
         >
           <KeyRound className="w-3.5 h-3.5" />
           <span>Lupa PIN? Masuk dengan Password</span>
