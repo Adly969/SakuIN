@@ -2,25 +2,36 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   Download,
   Smartphone,
   ShieldCheck,
-  CheckCircle2,
-  Copy,
   Check,
+  Copy,
   ExternalLink,
-  Sparkles,
-  Apple,
   Share,
+  PlusSquare,
+  BellRing,
+  WifiOff,
+  Lock,
   ArrowRight,
+  ChevronRight,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { getLatestReleaseAction, AppReleaseData } from "@/app/actions/releases";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
 
 export default function DownloadPage() {
   const [release, setRelease] = useState<AppReleaseData | null>(null);
   const [copiedSha, setCopiedSha] = useState(false);
+  const [platformTab, setPlatformTab] = useState<"android" | "ios">("android");
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installFeedback, setInstallFeedback] = useState<string>("");
 
   useEffect(() => {
     async function fetchRelease() {
@@ -30,7 +41,45 @@ export default function DownloadPage() {
       }
     }
     fetchRelease();
+
+    // Deteksi iOS secara halus untuk tab default panduan
+    if (typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      setPlatformTab("ios");
+    }
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
   }, []);
+
+  const handleInstallPwa = async () => {
+    if (deferredPrompt) {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        setInstallFeedback("SakuIN sedang dipasang ke layar utama HP kamu!");
+      }
+      setDeferredPrompt(null);
+      return;
+    }
+
+    // Jika di iOS atau browser tanpa prompt otomatis, arahkan ke panduan pasang
+    setPlatformTab(
+      typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent)
+        ? "ios"
+        : "android"
+    );
+    const guideEl = document.getElementById("guide-section");
+    if (guideEl) {
+      guideEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setInstallFeedback("Ikuti panduan singkat di bawah untuk memasang di layar utama.");
+    setTimeout(() => setInstallFeedback(""), 4000);
+  };
 
   const handleCopySha = (hash: string) => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -44,282 +93,277 @@ export default function DownloadPage() {
     release?.apkUrlPrimary ||
     "https://github.com/Adly969/SakuIN/releases/download/v1.0.0/sakuin-v1.0.0.apk";
   const githubReleasesUrl = "https://github.com/Adly969/SakuIN/releases";
+  const versionLabel = release?.version || "v1.0.0";
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-between selection:bg-accent selection:text-black">
-      {/* 1. Header Bersih & Profesional */}
-      <header className="border-b border-border/80 bg-background/80 backdrop-blur-xl sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <Image
-              src="/app-icon.png"
-              alt="SakuIN Logo"
-              width={34}
-              height={34}
-              className="rounded-xl shadow-xs group-hover:scale-105 transition-transform"
-              priority
-            />
-            <span className="font-brand font-black text-lg sm:text-xl text-foreground tracking-tight">
-              SakuIN<span className="text-accent">.</span>
-            </span>
+    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col justify-between selection:bg-accent selection:text-[#121212]">
+      {/* 1. Minimal Sticky Header */}
+      <header
+        style={{
+          paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 6px), 10px)",
+        }}
+        className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur-md"
+      >
+        <div className="max-w-[560px] mx-auto px-4 pb-2.5 flex items-center justify-between gap-2">
+          <Link href="/" className="flex items-center min-h-[44px]">
+            <BrandLogo height={28} />
           </Link>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg"
-            >
-              Masuk
-            </Link>
+            <ThemeToggle />
             <Link
               href="/dashboard"
-              className="text-xs font-black px-3.5 py-1.5 rounded-full bg-accent text-[#121212] hover:brightness-105 active:scale-95 transition-all shadow-xs"
+              className="min-h-[44px] px-3.5 rounded-full bg-card border border-border hover:border-accent/50 text-xs font-bold text-foreground inline-flex items-center gap-1 transition-colors"
             >
-              Buka Web
+              <span>Buka Web</span>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
             </Link>
           </div>
         </div>
       </header>
 
-      {/* 2. Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-5 sm:py-10 space-y-7 w-full">
-        {/* Hero Section */}
-        <div className="text-center space-y-3 max-w-xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/40 text-accent text-xs font-extrabold tracking-wide">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Versi Resmi {release?.version || "v1.0.0"}</span>
+      {/* 2. Single-Column Centered Content */}
+      <main className="max-w-[560px] mx-auto px-4 py-6 sm:py-10 w-full flex-1 space-y-6">
+        {/* Hero Block — Dirancang agar Judul + 2 Tombol Besar muat di 390px tanpa scroll */}
+        <section className="bg-card border border-border rounded-3xl p-5 sm:p-7 shadow-sm space-y-5 text-center">
+          <div className="space-y-2.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted border border-border text-[11px] font-bold text-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span>Rilis Resmi {versionLabel} &bull; Gratis</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground leading-tight">
+              Pasang SakuIN di HP Kamu
+            </h1>
+
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+              Kelola uang saku bulanan, mingguan, maupun harian lebih tertata. Ringan, siap offline, dan hemat kuota.
+            </p>
           </div>
 
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground leading-tight">
-            Pasang SakuIN di HP Kamu
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            Aplikasi pencatatan keuangan bulanan mahasiswa perantau. Siap offline, hemat kuota, dan bebas cemas.
-          </p>
-
-          {/* Dua Tombol Besar Langsung Terlihat Tanpa Scroll (Lolos Uji 390px) */}
-          <div className="flex flex-col gap-2.5 max-w-sm mx-auto w-full pt-2">
+          {/* Dua Tombol Utama Besar (Selalu Terlihat di 390px) */}
+          <div className="space-y-2.5 pt-1">
             <a
               href={primaryDownloadUrl}
               download
-              className="w-full py-3.5 px-5 rounded-xl bg-accent text-[#121212] font-black text-sm flex items-center justify-center gap-2.5 hover:brightness-105 active:scale-98 transition-all shadow-md shadow-accent/25 cursor-pointer min-h-[48px]"
+              className="w-full min-h-[52px] py-3.5 px-5 rounded-2xl bg-accent hover:brightness-105 text-[#121212] font-black text-sm flex items-center justify-center gap-2.5 shadow-md shadow-accent/15 active:scale-[0.98] transition-all cursor-pointer"
             >
               <Download className="w-4 h-4 stroke-[2.5]" />
-              <span>Unduh File APK (~4.5 MB)</span>
+              <span>Unduh APK Android (~4.5 MB)</span>
             </a>
 
-            <a
-              href="#install-guide"
-              className="w-full py-3 px-5 rounded-xl bg-card border border-border text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-muted active:scale-98 transition-all min-h-[44px]"
+            <button
+              type="button"
+              onClick={handleInstallPwa}
+              className="w-full min-h-[50px] py-3 px-5 rounded-2xl bg-background hover:bg-muted border border-border text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all cursor-pointer"
             >
-              <Smartphone className="w-4 h-4 text-accent" />
-              <span>Pasang di HP (PWA / iPhone)</span>
-            </a>
-          </div>
-        </div>
+              <Smartphone className="w-4 h-4 text-muted-foreground" />
+              <span>{deferredPrompt ? "Pasang Langsung ke Layar Utama" : "Pasang PWA (iPhone & Browser)"}</span>
+            </button>
 
-        {/* Cards Grid: Android APK vs iOS PWA */}
-        <div id="install-guide" className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch scroll-mt-20">
-          {/* Card 1: Android APK */}
-          <div className="bg-card border-2 border-accent/50 rounded-2xl p-5 sm:p-7 shadow-xl flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-accent text-[#121212] text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-wider">
-              Khusus Android
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
-                  <Smartphone className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-foreground">
-                    SakuIN Android (APK)
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Aplikasi Native Mandiri &bull; ~4.5 MB
-                  </p>
-                </div>
-              </div>
-
-              {/* Info Pills */}
-              <div className="grid grid-cols-3 gap-2 py-2.5 border-y border-border/80 text-center">
-                <div className="p-2 rounded-lg bg-background/60">
-                  <span className="block text-[10px] text-muted-foreground font-semibold">Ukuran</span>
-                  <span className="text-xs font-black text-accent">~4.5 MB</span>
-                </div>
-                <div className="p-2 rounded-lg bg-background/60">
-                  <span className="block text-[10px] text-muted-foreground font-semibold">Versi</span>
-                  <span className="text-xs font-black text-foreground">{release?.version || "1.0.0"}</span>
-                </div>
-                <div className="p-2 rounded-lg bg-background/60">
-                  <span className="block text-[10px] text-muted-foreground font-semibold">OS</span>
-                  <span className="text-xs font-black text-foreground">Android 7+</span>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2 text-foreground font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
-                  <span>Notifikasi alarm pasti berbunyi walau app mati</span>
-                </div>
-                <div className="flex items-center gap-2 text-foreground font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
-                  <span>Login Google resmi tetap aman & didukung</span>
-                </div>
-                <div className="flex items-center gap-2 text-foreground font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
-                  <span>Update fitur otomatis tanpa download ulang</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-5 space-y-2.5">
-              <a
-                href={primaryDownloadUrl}
-                download
-                className="w-full py-3.5 px-4 rounded-xl bg-accent text-[#121212] font-black text-sm flex items-center justify-center gap-2 hover:brightness-105 active:scale-98 transition-all shadow-md shadow-accent/20 cursor-pointer"
-              >
-                <Download className="w-4 h-4 stroke-[2.5]" />
-                <span>Unduh File APK (~4.5 MB)</span>
-              </a>
-
-              <div className="text-center">
-                <a
-                  href={githubReleasesUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-muted-foreground hover:text-accent font-semibold inline-flex items-center gap-1 transition-colors"
-                >
-                  <span>Atau lihat daftar rilis di GitHub</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
+            {installFeedback && (
+              <p className="text-[11px] font-semibold text-accent pt-0.5">{installFeedback}</p>
+            )}
           </div>
 
-          {/* Card 2: iOS iPhone (PWA) */}
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-7 shadow-lg flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-muted text-foreground flex items-center justify-center shrink-0">
-                  <Apple className="w-5 h-5 stroke-[2]" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-foreground">
-                    Pengguna iPhone (iOS)
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Pasang instan lewat Safari tanpa download file
-                  </p>
-                </div>
-              </div>
-
-              {/* Instructions Box */}
-              <div className="p-3.5 rounded-xl bg-background/80 border border-border/80 space-y-2">
-                <span className="text-[11px] font-bold text-foreground block">
-                  Cara pasang di iPhone / iPad:
-                </span>
-                <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
-                  <li>
-                    Buka situs <strong className="text-foreground">saku-in.vercel.app</strong> di <strong className="text-foreground">Safari</strong>.
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span>Tekan tombol</span>
-                    <Share className="w-3.5 h-3.5 inline mt-0.5 text-accent shrink-0" />
-                    <span><strong>Bagikan (Share)</strong> di bar bawah Safari.</span>
-                  </li>
-                  <li>
-                    Pilih <strong className="text-foreground">Tambahkan ke Layar Utama (Add to Home Screen)</strong>.
-                  </li>
-                </ol>
-              </div>
-
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span>Tanpa memakan ruang penyimpanan HP</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span>Mendukung mode offline & notifikasi pengingat</span>
-                </div>
-              </div>
+          {/* 3 Spec Ringkas Monochrome */}
+          <div className="grid grid-cols-3 divide-x divide-border pt-4 border-t border-border/70 text-center">
+            <div className="px-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Ukuran</p>
+              <p className="text-xs font-black text-foreground mt-0.5">~4.5 MB</p>
             </div>
-
-            <div className="pt-5">
-              <Link
-                href="/dashboard"
-                className="w-full py-3.5 px-4 rounded-xl bg-card border border-border text-foreground font-black text-sm flex items-center justify-center gap-2 hover:bg-muted active:scale-98 transition-all"
-              >
-                <span>Buka Versi Web SakuIN</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+            <div className="px-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Platform</p>
+              <p className="text-xs font-black text-foreground mt-0.5">Android &amp; iOS</p>
             </div>
-          </div>
-        </div>
-
-        {/* 3. Panduan Instalasi APK Android */}
-        <section className="bg-card border border-border rounded-2xl p-5 sm:p-7 space-y-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-accent/15 text-accent shrink-0">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-black text-foreground">
-                Panduan Memasang APK di HP Android
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Penjelasan jika muncul peringatan &quot;File mungkin berbahaya&quot;
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-xl bg-background/70 border border-border/80 space-y-1.5">
-              <div className="w-6 h-6 rounded-full bg-accent text-[#121212] font-black text-xs flex items-center justify-center">
-                1
-              </div>
-              <h4 className="text-xs font-bold text-foreground">Klik Unduh APK</h4>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Tekan tombol unduh di atas. File berukuran ~4.5 MB akan selesai dalam hitungan detik.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-background/70 border border-border/80 space-y-1.5">
-              <div className="w-6 h-6 rounded-full bg-accent text-[#121212] font-black text-xs flex items-center justify-center">
-                2
-              </div>
-              <h4 className="text-xs font-bold text-foreground">Pilih &quot;Tetap Download&quot;</h4>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Android menampilkan peringatan ini untuk semua APK di luar Play Store. Pilih <strong>Tetap Download (Download anyway)</strong>.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-background/70 border border-border/80 space-y-1.5">
-              <div className="w-6 h-6 rounded-full bg-accent text-[#121212] font-black text-xs flex items-center justify-center">
-                3
-              </div>
-              <h4 className="text-xs font-bold text-foreground">Pasang & Izinkan</h4>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Buka file APK. Jika diminta, aktifkan <strong>Izinkan dari sumber ini</strong>, lalu klik <strong>Pasang</strong>.
-              </p>
+            <div className="px-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mode</p>
+              <p className="text-xs font-black text-foreground mt-0.5">Offline Ready</p>
             </div>
           </div>
         </section>
 
-        {/* 4. Checksum SHA-256 Integritas */}
+        {/* 3. Keunggulan Ringkas (Monochrome Clean Icons) */}
+        <section className="grid grid-cols-3 gap-2.5">
+          {[
+            { icon: BellRing, title: "Pengingat Harian", desc: "Notifikasi batas jajan" },
+            { icon: WifiOff, title: "Siap Offline", desc: "Catat tanpa sinyal" },
+            { icon: Lock, title: "Kunci PIN", desc: "Privasi data aman" },
+          ].map((feat) => {
+            const Icon = feat.icon;
+            return (
+              <div
+                key={feat.title}
+                className="bg-card border border-border rounded-2xl p-3 text-center space-y-1.5"
+              >
+                <div className="w-8 h-8 rounded-xl bg-muted border border-border/60 text-foreground flex items-center justify-center mx-auto">
+                  <Icon className="w-4 h-4 stroke-[2]" />
+                </div>
+                <p className="text-[11px] font-bold text-foreground leading-tight">{feat.title}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{feat.desc}</p>
+              </div>
+            );
+          })}
+        </section>
+
+        {/* 4. Panduan Pemasangan Berbasis Tab (Android vs iPhone) */}
+        <section id="guide-section" className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 scroll-mt-20">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm sm:text-base font-black text-foreground">
+                Panduan Pemasangan
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Pilih perangkatmu untuk melihat langkah instalasi
+              </p>
+            </div>
+
+            {/* Segmented Tab */}
+            <div className="grid grid-cols-2 p-1 bg-background border border-border rounded-xl text-xs font-bold shrink-0">
+              <button
+                type="button"
+                onClick={() => setPlatformTab("android")}
+                className={`px-3.5 py-2 min-h-[38px] rounded-lg transition-all ${
+                  platformTab === "android"
+                    ? "bg-card text-foreground shadow-xs border border-border font-black"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Android (APK)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlatformTab("ios")}
+                className={`px-3.5 py-2 min-h-[38px] rounded-lg transition-all ${
+                  platformTab === "ios"
+                    ? "bg-card text-foreground shadow-xs border border-border font-black"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                iPhone (Safari)
+              </button>
+            </div>
+          </div>
+
+          {platformTab === "android" ? (
+            <div className="space-y-3">
+              {[
+                {
+                  step: "1",
+                  title: "Unduh file APK",
+                  desc: "Tekan tombol Unduh APK Android di atas. Ukuran file hanya ~4.5 MB.",
+                },
+                {
+                  step: "2",
+                  title: 'Pilih "Tetap Download"',
+                  desc: "Android selalu memunculkan peringatan untuk aplikasi di luar Play Store. Ketuk Tetap Download.",
+                },
+                {
+                  step: "3",
+                  title: "Izinkan & Pasang",
+                  desc: "Buka file yang terunduh, aktifkan Izinkan dari sumber ini jika diminta, lalu tekan Pasang.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.step}
+                  className="flex items-start gap-3 p-3 rounded-2xl bg-background border border-border/80"
+                >
+                  <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    {item.step}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-foreground">{item.title}</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                      {item.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex items-center justify-between pt-2 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+                  <span>Login Google &amp; update fitur otomatis</span>
+                </span>
+                <a
+                  href={githubReleasesUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold text-foreground hover:text-accent inline-flex items-center gap-1 transition-colors py-1"
+                >
+                  <span>Rilis GitHub</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-background border border-border/80">
+                <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-foreground">Buka di Safari</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                    Pastikan kamu membuka <strong className="text-foreground">saku-in.vercel.app</strong> menggunakan browser <strong className="text-foreground">Safari</strong> di iPhone/iPad.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-background border border-border/80">
+                <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <span>Ketuk Tombol Bagikan</span>
+                    <Share className="w-3.5 h-3.5 text-muted-foreground" />
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                    Tekan ikon kotak dengan panah ke atas di bagian tengah bawah layar Safari.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-background border border-border/80">
+                <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <span>Tambahkan ke Layar Utama</span>
+                    <PlusSquare className="w-3.5 h-3.5 text-muted-foreground" />
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                    Gulir ke bawah, pilih <strong className="text-foreground">Add to Home Screen</strong>, lalu ketuk <strong className="text-foreground">Add</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                href="/dashboard"
+                className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-background hover:bg-muted border border-border text-xs font-bold text-foreground flex items-center justify-center gap-2 transition-colors"
+              >
+                <span>Langsung Buka Aplikasi Web</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {/* 5. Verifikasi Integritas SHA-256 (Compact) */}
         {release?.sha256 && (
-          <div className="p-3.5 rounded-xl bg-card border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+          <div className="p-3.5 rounded-2xl bg-card border border-border flex items-center justify-between gap-2.5 text-xs">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-bold text-muted-foreground shrink-0 text-[11px]">SHA-256:</span>
-              <code className="px-2 py-0.5 bg-background rounded border border-border text-[10px] font-mono text-muted-foreground truncate max-w-[200px] sm:max-w-md">
+              <span className="font-bold text-muted-foreground shrink-0 text-[11px]">SHA-256</span>
+              <code className="px-2 py-1 bg-background rounded-lg border border-border text-[10px] font-mono text-muted-foreground truncate">
                 {release.sha256}
               </code>
             </div>
             <button
               type="button"
               onClick={() => handleCopySha(release.sha256 || "")}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-background border border-border hover:border-accent text-[11px] font-bold transition-all shrink-0 cursor-pointer"
+              className="min-h-[36px] flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background border border-border hover:border-accent text-[11px] font-bold transition-all shrink-0 cursor-pointer"
             >
               {copiedSha ? (
                 <>
@@ -329,7 +373,7 @@ export default function DownloadPage() {
               ) : (
                 <>
                   <Copy className="w-3 h-3" />
-                  <span>Salin Hash</span>
+                  <span>Salin</span>
                 </>
               )}
             </button>
@@ -338,14 +382,10 @@ export default function DownloadPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border/80 py-6 text-center text-xs text-muted-foreground">
-        <div className="max-w-4xl mx-auto px-4 space-y-1.5">
-          <p className="font-bold text-foreground">
-            SakuIN · Kelola Uang Saku Mahasiswa
-          </p>
-          <p className="text-[10px]">
-            Dikelola oleh Adly untuk mahasiswa perantau Indonesia &bull; Versi 1.0.0
-          </p>
+      <footer className="border-t border-border/70 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center text-xs text-muted-foreground">
+        <div className="max-w-[560px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-1.5">
+          <span className="font-bold text-foreground">SakuIN &bull; {versionLabel}</span>
+          <span className="text-[11px]">Kelola uang saku mahasiswa lebih teratur</span>
         </div>
       </footer>
     </div>
