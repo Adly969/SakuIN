@@ -51,6 +51,8 @@ export async function getPinStatusAction() {
       pinEnabled: true,
       isUnlocked,
       userName: profile.name || "Kawan",
+      userId: user.id,
+      pinVersion: profile.pinHash.slice(0, 16),
     };
   } catch (err) {
     console.error("Gagal cek status PIN:", err);
@@ -101,9 +103,12 @@ export async function setupPinAction(pin: string) {
     });
 
     revalidatePath("/profile");
-    revalidatePath("/dashboard");
 
-    return { success: true };
+    return {
+      success: true,
+      userId: user.id,
+      pinVersion: hashed.slice(0, 16),
+    };
   } catch (err) {
     console.error("Gagal menyimpan PIN:", err);
     return { success: false, error: "Gagal menyimpan PIN baru" };
@@ -150,10 +155,11 @@ export async function verifyPinAction(pin: string) {
       sameSite: "lax",
     });
 
-    revalidatePath("/dashboard");
-    revalidatePath("/profile");
-
-    return { success: true };
+    return {
+      success: true,
+      userId: user.id,
+      pinVersion: profile.pinHash.slice(0, 16),
+    };
   } catch (err) {
     console.error("Gagal verifikasi PIN:", err);
     return { success: false, error: "Terjadi kesalahan saat memverifikasi PIN" };
@@ -188,7 +194,6 @@ export async function disablePinAction() {
     cookieStore.delete("sakuin_has_pin");
 
     revalidatePath("/profile");
-    revalidatePath("/dashboard");
 
     return { success: true };
   } catch (err) {
@@ -204,8 +209,6 @@ export async function lockAppAction() {
   try {
     const cookieStore = await cookies();
     cookieStore.delete("sakuin_pin_unlocked");
-    cookieStore.delete("sakuin_has_pin");
-    revalidatePath("/dashboard");
     return { success: true };
   } catch (err) {
     return { success: false };

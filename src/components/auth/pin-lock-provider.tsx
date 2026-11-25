@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getPinStatusAction, lockAppAction } from "@/app/actions/pin";
+import { clearLocalPinVerifier, syncLocalPinVersion } from "@/lib/pin-cache";
 import { PinLockScreen } from "./pin-lock-screen";
 import { BrandText } from "@/components/ui/brand-logo";
 
@@ -79,10 +80,14 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
           if (res.pinEnabled) {
             localStorage.setItem(LOCAL_PIN_ACTIVE_KEY, "true");
             localStorage.setItem(LOCAL_USER_NAME_KEY, name);
+            if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
+              syncLocalPinVersion(res.userId, res.pinVersion);
+            }
             const isSessionUnlocked = sessionStorage.getItem(SESSION_UNLOCKED_KEY) === "true";
             setIsUnlocked(isSessionUnlocked);
           } else {
             localStorage.removeItem(LOCAL_PIN_ACTIVE_KEY);
+            clearLocalPinVerifier();
             setIsUnlocked(true);
           }
         }
@@ -182,11 +187,12 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
             key="pin-overlay"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="fixed inset-0 z-[100] bg-background"
           >
             <PinLockScreen
               userName={userName}
+              pinStatusSynced={isChecked}
               onUnlocked={handleUnlocked}
             />
           </motion.div>

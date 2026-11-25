@@ -10,6 +10,7 @@ import {
   updateProfileAction,
 } from "@/app/actions/profile";
 import { setupPinAction, disablePinAction } from "@/app/actions/pin";
+import { saveLocalPinVerifier, clearLocalPinVerifier } from "@/lib/pin-cache";
 import { usePinLock } from "@/components/auth/pin-lock-provider";
 import {
   scheduleNativeDailyReminder,
@@ -335,6 +336,9 @@ export default function ProfilePage() {
       try {
         const res = await setupPinAction(pinConfirm);
         if (res.success) {
+          if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
+            await saveLocalPinVerifier(res.userId, pinConfirm, res.pinVersion);
+          }
           setIsPinModalOpen(false);
           await refreshPinStatus();
           setToastMessage("Kunci PIN 6-digit berhasil diaktifkan!");
@@ -359,6 +363,7 @@ export default function ProfilePage() {
     try {
       const res = await disablePinAction();
       if (res.success) {
+        clearLocalPinVerifier();
         await refreshPinStatus();
         setToastMessage("Kunci PIN berhasil dinonaktifkan");
         setShowToast(true);
@@ -372,6 +377,9 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
+    clearLocalPinVerifier();
+    localStorage.removeItem("sakuin_pin_active");
+    sessionStorage.removeItem("sakuin_pin_session_unlocked");
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";

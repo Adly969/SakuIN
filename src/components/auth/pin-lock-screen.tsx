@@ -4,14 +4,24 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { Delete, Lock, KeyRound, ShieldCheck } from "lucide-react";
 import { verifyPinAction } from "@/app/actions/pin";
+import {
+  verifyLocalPin,
+  saveLocalPinVerifier,
+  clearLocalPinVerifier,
+} from "@/lib/pin-cache";
 import { createClient } from "@/lib/supabase/client";
 
 interface PinLockScreenProps {
   userName?: string;
+  pinStatusSynced?: boolean;
   onUnlocked: () => void;
 }
 
-export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenProps) {
+export function PinLockScreen({
+  userName = "Kawan",
+  pinStatusSynced = false,
+  onUnlocked,
+}: PinLockScreenProps) {
   const [pin, setPin] = useState<string>("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -46,10 +56,39 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
 
     (async () => {
       try {
+        // 1. Cek cepat di perangkat (< 5ms)
+        const localMatch = await verifyLocalPin(pin);
+        if (cancelled) return;
+
+        if (localMatch === true) {
+          onUnlocked();
+          // Sinkronkan cookie server di background tanpa memblokir UI
+          void verifyPinAction(pin).catch(() => {});
+          return;
+        }
+
+        // Jika versi PIN sudah sinkron dengan server dan tidak cocok secara lokal, tolak instan
+        if (localMatch === false && (pinStatusSynced || !navigator.onLine)) {
+          setIsShake(true);
+          setErrorMessage("PIN yang kamu masukkan salah");
+          setTimeout(() => {
+            if (cancelled) return;
+            setIsShake(false);
+            setPin("");
+            isVerifyingRef.current = false;
+            setIsVerifying(false);
+          }, 450);
+          return;
+        }
+
+        // 2. Fallback verifikasi server (misal baru pertama buka di perangkat ini)
         const res = await verifyPinAction(pin);
         if (cancelled) return;
 
         if (res.success) {
+          if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
+            void saveLocalPinVerifier(res.userId, pin, res.pinVersion);
+          }
           onUnlocked();
         } else {
           setIsShake(true);
@@ -60,7 +99,7 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
             setPin("");
             isVerifyingRef.current = false;
             setIsVerifying(false);
-          }, 500);
+          }, 450);
         }
       } catch {
         if (cancelled) return;
@@ -72,14 +111,14 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
           setPin("");
           isVerifyingRef.current = false;
           setIsVerifying(false);
-        }, 500);
+        }, 450);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [pin, onUnlocked]);
+  }, [pin, pinStatusSynced, onUnlocked]);
 
   // Listen to physical keyboard events (0-9, Backspace) — hanya dipasang 1x
   useEffect(() => {
@@ -96,6 +135,9 @@ export function PinLockScreen({ userName = "Kawan", onUnlocked }: PinLockScreenP
   }, [handleDigit, handleBackspace]);
 
   const handleLogout = async () => {
+    clearLocalPinVerifier();
+    localStorage.removeItem("sakuin_pin_active");
+    sessionStorage.removeItem("sakuin_pin_session_unlocked");
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
