@@ -33,12 +33,16 @@ import {
   Undo2,
   CheckCircle2,
   Trash2,
-  ChevronRight,
   Filter,
   Download,
   Banknote,
   Landmark,
   AlertCircle,
+  Pencil,
+  Bike,
+  Cookie,
+  Wifi,
+  AlertTriangle,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 
@@ -62,19 +66,25 @@ interface AccountItem {
   balance: number;
 }
 
-const EXPENSE_CATEGORIES = [
-  { name: "Makan", icon: Utensils },
-  { name: "Nongkrong", icon: Coffee },
-  { name: "Rokok", icon: Flame },
-  { name: "Listrik", icon: Zap },
-  { name: "Kuota", icon: Smartphone },
-  { name: "Laundry", icon: Shirt },
+interface CategoryObj {
+  name: string;
+  type: "expense" | "income";
+}
+
+const DEFAULT_EXPENSE_CATEGORIES = [
+  "Makan",
+  "Nongkrong",
+  "Bensin & Transport",
+  "Jajan & Cemilan",
+  "Kuota & Internet",
+  "Laundry",
 ];
 
-const INCOME_CATEGORIES = [
-  { name: "Uang Kiriman", icon: Wallet },
-  { name: "Gaji / Upah", icon: Briefcase },
-  { name: "Beasiswa", icon: GraduationCap },
+const DEFAULT_INCOME_CATEGORIES = [
+  "Uang Kiriman",
+  "Kerja Sambilan",
+  "Beasiswa",
+  "Gaji / Upah",
 ];
 
 const QUICK_AMOUNTS = [
@@ -84,19 +94,31 @@ const QUICK_AMOUNTS = [
   { label: "+100rb", value: 100000 },
 ];
 
-// Helper icon resolver
+// Helper icon resolver (konsisten dengan halaman Catat)
 function getCategoryIcon(name: string) {
-  const lower = name.toLowerCase();
+  const lower = (name || "").toLowerCase();
   if (lower.includes("makan")) return Utensils;
   if (lower.includes("nongkrong") || lower.includes("kopi")) return Coffee;
+  if (lower.includes("bensin") || lower.includes("transport")) return Bike;
+  if (lower.includes("jajan") || lower.includes("cemilan")) return Cookie;
   if (lower.includes("rokok")) return Flame;
   if (lower.includes("listrik")) return Zap;
-  if (lower.includes("kuota") || lower.includes("pulsa")) return Smartphone;
+  if (lower.includes("kuota") || lower.includes("internet")) return Wifi;
+  if (lower.includes("pulsa")) return Smartphone;
   if (lower.includes("laundry") || lower.includes("baju")) return Shirt;
   if (lower.includes("kiriman") || lower.includes("uang")) return Wallet;
-  if (lower.includes("gaji") || lower.includes("upah") || lower.includes("kerja")) return Briefcase;
+  if (lower.includes("gaji") || lower.includes("upah") || lower.includes("kerja") || lower.includes("sambilan")) return Briefcase;
   if (lower.includes("beasiswa")) return GraduationCap;
   return Tag;
+}
+
+function formatShortDate(dateStr: string) {
+  if (!dateStr || dateStr.includes("Hari ini")) return dateStr;
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function TransactionsContent() {
@@ -113,6 +135,7 @@ function TransactionsContent() {
   // Data States
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [fullCategoriesList, setFullCategoriesList] = useState<CategoryObj[]>([]);
   const [accountsList, setAccountsList] = useState<AccountItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -136,6 +159,14 @@ function TransactionsContent() {
         if (Array.isArray(parsedCats) && parsedCats.length > 0) {
           const names = typeof parsedCats[0] === "string" ? parsedCats : parsedCats.map((c: any) => c.name);
           setCategoriesList(names);
+          if (typeof parsedCats[0] === "object") {
+            setFullCategoriesList(
+              parsedCats.map((c: any) => ({
+                name: c.name,
+                type: c.type === "income" ? "income" : "expense",
+              }))
+            );
+          }
         }
       }
       if (cachedAcc) {
@@ -153,6 +184,7 @@ function TransactionsContent() {
 
   // Edit / Detail Modal State (PRD T4)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [deleteConfirmTx, setDeleteConfirmTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [editType, setEditType] = useState<"expense" | "income">("expense");
   const [editCategory, setEditCategory] = useState("");
@@ -195,6 +227,12 @@ function TransactionsContent() {
       if (catRes.success && catRes.data) {
         const catNames = Array.from(new Set(catRes.data.map((c) => c.name)));
         setCategoriesList(catNames);
+        setFullCategoriesList(
+          catRes.data.map((c) => ({
+            name: c.name,
+            type: c.type === "income" ? "income" : "expense",
+          }))
+        );
         try {
           localStorage.setItem("sakuin_cached_categories", JSON.stringify(catRes.data));
         } catch {}
@@ -262,6 +300,22 @@ function TransactionsContent() {
     return { expense, income, count: transactionsList.length };
   }, [transactionsList]);
 
+  const getCategoriesForType = (t: "expense" | "income") => {
+    const dbFiltered = fullCategoriesList
+      .filter((c) => c.type === t && c.name !== "Kebutuhan Lain" && c.name !== "Lainnya")
+      .map((c) => c.name);
+    const names =
+      dbFiltered.length > 0
+        ? Array.from(new Set(dbFiltered))
+        : t === "expense"
+        ? DEFAULT_EXPENSE_CATEGORIES
+        : DEFAULT_INCOME_CATEGORIES;
+    return names.map((name) => ({
+      name,
+      icon: getCategoryIcon(name),
+    }));
+  };
+
   // Open Edit Modal
   const openEditModal = (tx: Transaction) => {
     setEditingTx(tx);
@@ -269,8 +323,11 @@ function TransactionsContent() {
     setEditType(tx.type);
     setEditAccountId(tx.accountId || (accountsList[0]?.id || ""));
 
-    const presetList = tx.type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    const isPreset = presetList.some((c) => c.name === tx.category);
+    const presetList = getCategoriesForType(tx.type);
+    const isPreset =
+      tx.category !== "Kebutuhan Lain" &&
+      tx.category !== "Lainnya" &&
+      presetList.some((c) => c.name === tx.category);
 
     if (isPreset) {
       setIsCustomEditCategory(false);
@@ -279,7 +336,10 @@ function TransactionsContent() {
     } else {
       setIsCustomEditCategory(true);
       setEditCategory("");
-      setCustomEditCategory(tx.category);
+      setCustomEditCategory(
+        tx.customLabel?.trim() ||
+          (tx.category !== "Kebutuhan Lain" && tx.category !== "Lainnya" ? tx.category : tx.title)
+      );
     }
 
     setEditNote(tx.note || "");
@@ -322,7 +382,9 @@ function TransactionsContent() {
 
     setIsUpdating(true);
     const finalCategory = isCustomEditCategory
-      ? customEditCategory.trim()
+      ? editType === "expense"
+        ? "Kebutuhan Lain"
+        : "Lainnya"
       : editCategory;
 
     try {
@@ -331,7 +393,9 @@ function TransactionsContent() {
         type: editType,
         categoryName: finalCategory,
         note: editNote.trim() || undefined,
-        customLabel: isCustomEditCategory ? customEditCategory.trim() : (editNote.trim() || undefined),
+        customLabel: isCustomEditCategory
+          ? customEditCategory.trim()
+          : editNote.trim() || undefined,
         accountId: editAccountId || undefined,
         occurredOn: editDate,
       });
@@ -350,15 +414,12 @@ function TransactionsContent() {
     }
   };
 
-  // Handle Delete with Undo Toast (PRD T4)
-  const handleDelete = async () => {
-    if (!editingTx || isDeleting) return;
-
-    const confirmed = window.confirm(`Hapus catatan "${editingTx.title}"?`);
-    if (!confirmed) return;
+  // Execute Delete from Confirmation Dialog with Undo Toast (PRD T4)
+  const executeDelete = async () => {
+    if (!deleteConfirmTx || isDeleting) return;
 
     setIsDeleting(true);
-    const targetTx = editingTx;
+    const targetTx = deleteConfirmTx;
 
     try {
       const res = await deleteTransactionAction(targetTx.id);
@@ -367,7 +428,10 @@ function TransactionsContent() {
         setTransactionsList((prev) => prev.filter((t) => t.id !== targetTx.id));
         setLastDeletedTx(targetTx);
         setShowUndoToast(true);
-        closeEditModal();
+        setDeleteConfirmTx(null);
+        if (editingTx?.id === targetTx.id) {
+          closeEditModal();
+        }
         await loadData(true);
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
 
@@ -405,7 +469,7 @@ function TransactionsContent() {
     }
   };
 
-  const activeCategories = editType === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const activeCategories = getCategoriesForType(editType);
 
   return (
     <div className="space-y-5 max-w-xl mx-auto pb-28 md:pb-12">
@@ -570,24 +634,24 @@ function TransactionsContent() {
         </div>
       </div>
 
-      {/* Transactions List */}
+      {/* Transactions Log Activity List */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-extrabold text-muted-foreground uppercase tracking-wider">
-            Daftar Catatan ({summary.count})
+            Log Activity ({summary.count})
           </span>
           <span className="text-[10px] text-muted-foreground">
-            Ketuk catatan untuk mengubah / menghapus
+            Ketuk kartu untuk edit atau ikon sampah untuk hapus
           </span>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center bg-card rounded-xl border border-border">
+          <div className="p-8 text-center bg-card rounded-2xl border border-border">
             <p className="text-xs text-muted-foreground animate-pulse">Memuat riwayat transaksi...</p>
           </div>
         ) : transactionsList.length === 0 ? (
-          <div className="p-8 text-center bg-card rounded-xl border border-border space-y-1">
-            <p className="text-sm font-bold text-foreground">Tidak ada transaksi ditemukan</p>
+          <div className="p-8 text-center bg-card rounded-2xl border border-border space-y-1">
+            <p className="text-sm font-bold text-foreground">Tidak ada log transaksi ditemukan</p>
             <p className="text-xs text-muted-foreground">
               Coba sesuaikan filter bulan, kategori, atau ketuk tombol Catat Baru.
             </p>
@@ -596,105 +660,174 @@ function TransactionsContent() {
           transactionsList.map((item) => {
             const Icon = getCategoryIcon(item.category);
             return (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                onClick={() => openEditModal(item)}
-                className="w-full text-left bg-card border border-border rounded-xl p-3.5 flex items-center justify-between hover:border-accent/50 hover:bg-muted/10 active:scale-[0.99] transition-all group shadow-sm"
+                className="bg-card border border-border rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2 hover:border-accent/40 transition-all shadow-xs group"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Main Tap Area -> Edit Modal */}
+                <button
+                  type="button"
+                  onClick={() => openEditModal(item)}
+                  className="flex-1 min-w-0 flex items-center gap-3 text-left focus:outline-none"
+                >
                   <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
                       item.type === "expense"
-                        ? "bg-expense/15 text-expense"
-                        : "bg-accent/20 text-accent"
+                        ? "bg-expense/10 border-expense/20 text-expense"
+                        : "bg-accent/15 border-accent/25 text-accent"
                     }`}
                   >
-                    <Icon className="w-5 h-5 stroke-[2.2]" />
+                    <Icon className="w-5 h-5 stroke-[2]" />
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-foreground truncate group-hover:text-accent transition-colors">
-                      {item.title}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-0.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-foreground truncate group-hover:text-accent transition-colors">
+                        {item.title}
+                      </h3>
+                      <span
+                        className={`text-sm font-black shrink-0 ${
+                          item.type === "expense" ? "text-expense" : "text-accent"
+                        }`}
+                      >
+                        {item.type === "expense" ? "-" : "+"}
+                        {formatRupiah(item.amount)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {item.accountName && (
-                        <span className="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20 shrink-0">
+                        <span className="text-[10px] font-bold text-foreground bg-muted px-1.5 py-0.5 rounded-md border border-border/70 shrink-0">
                           {item.accountName}
                         </span>
                       )}
                       <span className="text-[11px] text-muted-foreground font-medium truncate">
                         {item.category}
                       </span>
-                      <span className="text-[11px] text-muted-foreground">•</span>
-                      <span className="text-[11px] text-muted-foreground shrink-0">{item.date}</span>
+                      <span className="text-[10px] text-muted-foreground/60">•</span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">
+                        {formatShortDate(item.date)}
+                      </span>
                     </div>
+
                     {item.note && item.note !== item.title && (
-                      <p className="text-[10px] text-muted-foreground/80 italic mt-0.5 truncate">
+                      <p className="text-[11px] text-muted-foreground/80 italic mt-0.5 truncate">
                         &ldquo;{item.note}&rdquo;
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
 
-                <div className="flex items-center gap-2 shrink-0 ml-3 text-right">
-                  <span
-                    className={`text-sm font-black ${
-                      item.type === "expense" ? "text-expense" : "text-accent"
-                    }`}
+                {/* Quick Action Buttons: Edit & Delete */}
+                <div className="flex items-center gap-1 shrink-0 pl-1 border-l border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(item)}
+                    title="Edit log transaksi"
+                    aria-label={`Edit ${item.title}`}
+                    className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-muted-foreground hover:text-accent hover:bg-accent/15 transition-colors active:scale-95"
                   >
-                    {item.type === "expense" ? "-" : "+"}
-                    {formatRupiah(item.amount)}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
+                    <Pencil className="w-4 h-4 stroke-[2]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmTx(item)}
+                    title="Hapus transaksi"
+                    aria-label={`Hapus ${item.title}`}
+                    className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-expense/80 bg-expense/5 hover:bg-expense hover:text-white transition-colors active:scale-95"
+                  >
+                    <Trash2 className="w-4 h-4 stroke-[2]" />
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })
         )}
       </section>
 
-      {/* Detail & Edit Modal (PRD T4) */}
+      {/* Redesigned Edit Log Activity Sheet / Modal (PRD T4) */}
       <AnimatePresence>
         {editingTx && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/75 backdrop-blur-sm"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeEditModal();
+            }}
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl my-auto max-h-[88vh] flex flex-col"
+              initial={{ opacity: 0, y: 40, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.98 }}
+              transition={{ type: "spring", damping: 28, stiffness: 340 }}
+              className="bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl w-full max-w-lg shadow-2xl max-h-[90dvh] flex flex-col overflow-hidden"
             >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-foreground">
-                    Ubah Catatan Transaksi
-                  </h2>
-                  <p className="text-[11px] text-muted-foreground">
-                    Perbarui nominal, kategori, rekening pembayaran, atau hapus
-                  </p>
+              {/* Mobile Drag Handle */}
+              <div className="pt-2.5 pb-1 sm:hidden flex justify-center shrink-0">
+                <div className="w-10 h-1 rounded-full bg-border" />
+              </div>
+
+              {/* Sticky Modal Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                      editType === "expense"
+                        ? "bg-expense/15 border-expense/25 text-expense"
+                        : "bg-accent/15 border-accent/25 text-accent"
+                    }`}
+                  >
+                    {React.createElement(getCategoryIcon(editCategory || customEditCategory || editingTx.category), {
+                      className: "w-4 h-4 stroke-[2.2]",
+                    })}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm sm:text-base font-black text-foreground truncate">
+                        Edit Log Activity
+                      </h2>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          editType === "expense"
+                            ? "bg-expense/15 text-expense"
+                            : "bg-accent/15 text-accent"
+                        }`}
+                      >
+                        {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {editingTx.title} • {formatShortDate(editingTx.date)}
+                    </p>
+                  </div>
                 </div>
+
                 <button
                   type="button"
                   onClick={closeEditModal}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Tutup modal edit"
+                  className="w-10 h-10 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Form Update */}
-              <form onSubmit={handleUpdate} className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8 scrollbar-thin">
-                {/* Tipe Toggle: Pengeluaran vs Pemasukan */}
-                <div className="grid grid-cols-2 p-1 bg-background rounded-full border border-border text-xs font-bold">
+              {/* Scrollable Form Body */}
+              <form
+                id="edit-tx-form"
+                onSubmit={handleUpdate}
+                className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin"
+              >
+                {/* Segmented Tipe Toggle: Pengeluaran vs Pemasukan */}
+                <div className="grid grid-cols-2 p-1 bg-background rounded-xl border border-border text-xs font-bold">
                   <button
                     type="button"
                     onClick={() => {
                       setEditType("expense");
-                      setEditCategory("Makan");
+                      const expCats = getCategoriesForType("expense");
+                      setEditCategory(expCats[0]?.name || "Makan");
                       setIsCustomEditCategory(false);
                       setCustomEditCategory("");
                     }}
-                    className={`py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${
+                    className={`py-2.5 min-h-[40px] rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                       editType === "expense"
                         ? "bg-card text-foreground shadow-sm border border-border font-black"
                         : "text-muted-foreground hover:text-foreground"
@@ -707,11 +840,12 @@ function TransactionsContent() {
                     type="button"
                     onClick={() => {
                       setEditType("income");
-                      setEditCategory("Uang Kiriman");
+                      const incCats = getCategoriesForType("income");
+                      setEditCategory(incCats[0]?.name || "Uang Kiriman");
                       setIsCustomEditCategory(false);
                       setCustomEditCategory("");
                     }}
-                    className={`py-2 rounded-full transition-all flex items-center justify-center gap-1.5 ${
+                    className={`py-2.5 min-h-[40px] rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                       editType === "income"
                         ? "bg-card text-foreground shadow-sm border border-border font-black"
                         : "text-muted-foreground hover:text-foreground"
@@ -722,13 +856,25 @@ function TransactionsContent() {
                   </button>
                 </div>
 
-                {/* Input Nominal with Auto Rupiah Formatting & No Overflow */}
-                <div className="bg-background rounded-xl border border-border p-3.5 space-y-2">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
-                    Nominal {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
-                  </span>
-                  <div className="relative flex items-center bg-card border border-border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent focus-within:border-accent transition-all">
-                    <span className="text-xl font-black text-muted-foreground mr-2 select-none shrink-0">
+                {/* Nominal Hero Card */}
+                <div className="bg-background rounded-2xl border border-border p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">
+                      Nominal {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
+                    </span>
+                    {editAmount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setEditAmount(0)}
+                        className="text-[11px] font-bold text-muted-foreground hover:text-foreground px-2 py-0.5 rounded-md bg-muted/70 transition-colors"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="relative flex items-center bg-card border border-border rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-accent focus-within:border-accent transition-all">
+                    <span className="text-lg font-black text-muted-foreground mr-2 select-none shrink-0">
                       Rp
                     </span>
                     <input
@@ -749,19 +895,10 @@ function TransactionsContent() {
                           : "text-2xl sm:text-3xl"
                       }`}
                     />
-                    {editAmount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setEditAmount(0)}
-                        className="text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-1 rounded bg-muted/60 transition-colors shrink-0 ml-1.5"
-                      >
-                        Reset
-                      </button>
-                    )}
                   </div>
 
                   {/* Quick Helper Chips */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] font-semibold text-muted-foreground mr-0.5">
                       Tambah:
                     </span>
@@ -770,7 +907,7 @@ function TransactionsContent() {
                         key={q.label}
                         type="button"
                         onClick={() => setEditAmount((prev) => Math.min(999999999, prev + q.value))}
-                        className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
+                        className="px-2.5 py-1 min-h-[32px] rounded-full text-[11px] font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
                       >
                         {q.label}
                       </button>
@@ -780,8 +917,8 @@ function TransactionsContent() {
 
                 {/* Pilih Kategori */}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-foreground block">Pilih Kategori</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <label className="text-xs font-bold text-foreground block">Kategori</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {activeCategories.map((cat) => {
                       const Icon = cat.icon;
                       const isSelected = !isCustomEditCategory && editCategory === cat.name;
@@ -795,13 +932,13 @@ function TransactionsContent() {
                             setIsCustomEditCategory(false);
                             setCustomEditCategory("");
                           }}
-                          className={`flex items-center gap-2 p-2 rounded-lg text-xs font-bold border transition-all text-left ${
+                          className={`flex items-center gap-2 p-2.5 min-h-[44px] rounded-xl text-xs font-bold border transition-all text-left ${
                             isSelected
-                              ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent scale-[1.02]"
+                              ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
                               : "bg-background border-border text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <Icon className="w-4 h-4 shrink-0 stroke-[2.2]" />
+                          <Icon className="w-4 h-4 shrink-0 stroke-[2]" />
                           <span className="truncate">{cat.name}</span>
                         </button>
                       );
@@ -815,17 +952,16 @@ function TransactionsContent() {
                       setIsCustomEditCategory(true);
                       setEditCategory("");
                     }}
-                    className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
+                    className={`w-full py-2.5 min-h-[44px] px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
                       isCustomEditCategory
-                        ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent"
-                        : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                        ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
+                        : "bg-background border-border text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Kategori Lainnya</span>
                   </button>
 
-                  {/* Kolom Input Kategori Lain (Muncul jika Kategori Lain dipilih) */}
                   <AnimatePresence>
                     {isCustomEditCategory && (
                       <motion.div
@@ -834,8 +970,8 @@ function TransactionsContent() {
                         exit={{ opacity: 0, height: 0 }}
                         className="space-y-1 pt-1"
                       >
-                        <label className="text-[11px] font-bold text-accent-text flex items-center justify-between">
-                          <span>Nama Kategori Lain</span>
+                        <label className="text-[11px] font-bold text-accent flex items-center justify-between">
+                          <span>Keterangan Kategori Lain</span>
                           <span className="text-[10px] text-expense font-semibold">Wajib diisi</span>
                         </label>
                         <input
@@ -844,20 +980,22 @@ function TransactionsContent() {
                           autoFocus
                           value={customEditCategory}
                           onChange={(e) => setCustomEditCategory(e.target.value)}
-                          placeholder="Ketik nama kategori (contoh: Bensin, Skincare, Obat...)"
-                          className="w-full px-3 py-2 rounded-lg bg-background border border-accent text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="Misal: Skincare, Fotokopi, Obat..."
+                          className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-background border border-accent text-foreground text-base sm:text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                {/* Pilih Rekening Pembayaran / Sumber Dana (PRD Multi Rekening) */}
+                {/* Pilih Rekening Pembayaran / Sumber Dana */}
                 {accountsList.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
+                  <div className="space-y-2 pt-0.5">
                     <label className="text-xs font-bold text-foreground flex items-center justify-between">
                       <span>{editType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
-                      <span className="text-[10px] text-muted-foreground">Saldo disesuaikan otomatis</span>
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        Saldo otomatis disesuaikan
+                      </span>
                     </label>
                     <div
                       className={`grid gap-2 ${
@@ -865,18 +1003,15 @@ function TransactionsContent() {
                           ? "grid-cols-1"
                           : accountsList.length === 2
                           ? "grid-cols-2"
-                          : accountsList.length === 3
-                          ? "grid-cols-3"
-                          : "grid-cols-2 sm:grid-cols-4"
+                          : "grid-cols-2"
                       }`}
                     >
                       {accountsList.map((acc) => {
                         const isSelected = editAccountId === acc.id;
-                        // Saldo efektif jika ini rekening transaksi sebelumnya
-                        const effectiveBal =
-                          editingTx?.accountId === acc.id
-                            ? (acc.balance + (editingTx.type === "expense" ? editingTx.amount : -editingTx.amount))
-                            : acc.balance;
+                        const isOriginal = editingTx?.accountId === acc.id;
+                        const effectiveBal = isOriginal
+                          ? acc.balance + (editingTx.type === "expense" ? editingTx.amount : -editingTx.amount)
+                          : acc.balance;
                         const isInsufficient = editType === "expense" && editAmount > 0 && effectiveBal < editAmount;
                         const AccIcon =
                           acc.type === "bank" ? Landmark : acc.type === "ewallet" ? Smartphone : Banknote;
@@ -886,7 +1021,7 @@ function TransactionsContent() {
                             key={acc.id}
                             type="button"
                             onClick={() => setEditAccountId(acc.id)}
-                            className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 min-h-[54px] ${
+                            className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 min-h-[60px] ${
                               isSelected
                                 ? isInsufficient
                                   ? "border-expense bg-expense/10 text-expense ring-1 ring-expense"
@@ -896,18 +1031,25 @@ function TransactionsContent() {
                                 : "border-border bg-background text-muted-foreground hover:text-foreground"
                             }`}
                           >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <div className="w-5 h-5 rounded bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/50">
-                                <AccIcon className="w-3 h-3" />
+                            <div className="flex items-center justify-between gap-1.5 w-full min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <div className="w-5 h-5 rounded-md bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/50">
+                                  <AccIcon className="w-3 h-3" />
+                                </div>
+                                <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                               </div>
-                              <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
+                              {isOriginal && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                                  Asal
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center justify-between w-full">
-                              <span className="text-[10px] font-semibold text-muted-foreground truncate pl-0.5">
+                              <span className="text-[11px] font-semibold text-muted-foreground truncate">
                                 {formatRupiah(effectiveBal)}
                               </span>
                               {isInsufficient && (
-                                <span className="text-[9px] font-bold text-expense bg-expense/15 px-1 rounded shrink-0">
+                                <span className="text-[9px] font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
                                   Kurang
                                 </span>
                               )}
@@ -918,8 +1060,8 @@ function TransactionsContent() {
                     </div>
 
                     {isEditInsufficient && selectedEditAccount && (
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold mt-1">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
                         <span>
                           Saldo <strong>{selectedEditAccount.name}</strong> ({formatRupiah(effectiveEditBalance)}) tidak cukup untuk nominal baru ({formatRupiah(editAmount)}).
                         </span>
@@ -928,69 +1070,147 @@ function TransactionsContent() {
                   </div>
                 )}
 
-                {/* Kolom Catatan Terpisah */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
-                    <span>Catatan</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={100}
-                    value={editNote}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    placeholder="Contoh: Warteg bu joko, servis motor..."
-                    className="w-full px-3.5 py-2 rounded-lg bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
+                {/* Catatan & Tanggal (Grid 2 Kolom di sm+) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                      <span>Catatan</span>
+                      <span className="text-[10px] text-muted-foreground font-normal">Opsional</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={100}
+                      value={editNote}
+                      onChange={(e) => setEditNote(e.target.value)}
+                      placeholder="Contoh: Warteg bu joko..."
+                      className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-background border border-border text-foreground text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
 
-                {/* Tanggal Transaksi */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>Tanggal Transaksi</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-lg bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
-
-                {/* Action Buttons: Simpan & Hapus */}
-                <div className="pt-2 space-y-2.5">
-                  <button
-                    type="submit"
-                    disabled={
-                      editAmount <= 0 ||
-                      isUpdating ||
-                      isEditInsufficient ||
-                      (isCustomEditCategory ? !customEditCategory.trim() : !editCategory)
-                    }
-                    className="w-full py-3 bg-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] font-black rounded-full text-xs sm:text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                  >
-                    <Check className="w-4 h-4 stroke-[3]" />
-                    <span>
-                      {isUpdating
-                        ? "Memperbarui..."
-                        : isEditInsufficient
-                        ? `Saldo ${selectedEditAccount?.name || "Rekening"} Kurang`
-                        : "Simpan Perubahan"}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="w-full py-2.5 border border-expense/40 bg-expense/5 hover:bg-expense/15 text-expense font-black rounded-full text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                    <span>{isDeleting ? "Menghapus transaksi..." : "Hapus Transaksi Ini"}</span>
-                  </button>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>Tanggal Transaksi</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-background border border-border text-foreground text-base sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent [&::-webkit-date-and-time-value]:text-left cursor-pointer"
+                    />
+                  </div>
                 </div>
               </form>
+
+              {/* Sticky Bottom Action Bar: Selalu Terlihat, Tidak Tertutup Bottom Bar */}
+              <div className="shrink-0 border-t border-border bg-card px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmTx(editingTx)}
+                  disabled={isDeleting || isUpdating}
+                  className="px-4 min-h-[48px] rounded-2xl border border-expense/40 bg-expense/10 hover:bg-expense text-expense hover:text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Trash2 className="w-4 h-4 stroke-[2.2]" />
+                  <span>Hapus</span>
+                </button>
+
+                <button
+                  type="submit"
+                  form="edit-tx-form"
+                  disabled={
+                    editAmount <= 0 ||
+                    isUpdating ||
+                    isEditInsufficient ||
+                    (isCustomEditCategory ? !customEditCategory.trim() : !editCategory)
+                  }
+                  className="flex-1 min-h-[48px] bg-accent hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] font-black rounded-2xl text-xs sm:text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>
+                    {isUpdating
+                      ? "Menyimpan..."
+                      : isEditInsufficient
+                      ? `Saldo ${selectedEditAccount?.name || "Rekening"} Kurang`
+                      : "Simpan Perubahan"}
+                  </span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom In-App Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmTx && (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isDeleting) setDeleteConfirmTx(null);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 12 }}
+              className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4 text-center"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-expense/15 border border-expense/25 text-expense flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6 stroke-[2.2]" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-foreground">Hapus Log Activity?</h3>
+                <p className="text-xs text-muted-foreground">
+                  Catatan transaksi berikut akan dihapus dari riwayatmu:
+                </p>
+              </div>
+
+              <div className="bg-background border border-border rounded-xl p-3 text-left space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-foreground truncate">
+                    {deleteConfirmTx.title}
+                  </span>
+                  <span
+                    className={`text-xs font-black shrink-0 ${
+                      deleteConfirmTx.type === "expense" ? "text-expense" : "text-accent"
+                    }`}
+                  >
+                    {deleteConfirmTx.type === "expense" ? "-" : "+"}
+                    {formatRupiah(deleteConfirmTx.amount)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span>{deleteConfirmTx.category}</span>
+                  <span>•</span>
+                  <span>{formatShortDate(deleteConfirmTx.date)}</span>
+                </div>
+                {deleteConfirmTx.accountName && (
+                  <p className="text-[11px] font-semibold text-accent pt-1">
+                    Saldo {deleteConfirmTx.accountName} akan otomatis disesuaikan kembali.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteConfirmTx(null)}
+                  className="py-2.5 min-h-[44px] rounded-xl border border-border bg-background hover:bg-muted text-foreground font-bold text-xs transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={executeDelete}
+                  className="py-2.5 min-h-[44px] rounded-xl bg-expense hover:brightness-110 text-white font-black text-xs shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>{isDeleting ? "Menghapus..." : "Ya, Hapus"}</span>
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
