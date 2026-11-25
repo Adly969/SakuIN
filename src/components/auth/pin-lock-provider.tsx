@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getPinStatusAction, lockAppAction } from "@/app/actions/pin";
+import { lockAppAction } from "@/app/actions/pin";
 import { clearLocalPinVerifier, syncLocalPinVersion } from "@/lib/pin-cache";
 import { PinLockScreen } from "./pin-lock-screen";
 import { BrandText } from "@/components/ui/brand-logo";
@@ -70,7 +70,11 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await getPinStatusAction();
+      const response = await fetch("/api/pin/status", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const res = await response.json();
       if (res.success) {
         setPinEnabled(res.pinEnabled);
         const name = res.userName || "Kawan";
@@ -80,7 +84,7 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
           if (res.pinEnabled) {
             localStorage.setItem(LOCAL_PIN_ACTIVE_KEY, "true");
             localStorage.setItem(LOCAL_USER_NAME_KEY, name);
-            if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
+            if (res.userId && res.pinVersion) {
               syncLocalPinVersion(res.userId, res.pinVersion);
             }
             const isSessionUnlocked = sessionStorage.getItem(SESSION_UNLOCKED_KEY) === "true";
@@ -132,20 +136,20 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pinEnabled]);
 
-  const lockNow = async () => {
+  const lockNow = useCallback(async () => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(SESSION_UNLOCKED_KEY);
     }
-    await lockAppAction();
     setIsUnlocked(false);
-  };
+    await lockAppAction();
+  }, []);
 
-  const handleUnlocked = () => {
+  const handleUnlocked = useCallback(() => {
     if (typeof window !== "undefined") {
       sessionStorage.setItem(SESSION_UNLOCKED_KEY, "true");
     }
     setIsUnlocked(true);
-  };
+  }, []);
 
   // 1. Jika belum selesai verifikasi awal dan belum ada hint PIN sama sekali, tampilkan splash minimal sebentar
   if (!isChecked && !hasPinHint) {
@@ -158,27 +162,21 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
 
   const isLocked = pinEnabled && !isUnlocked;
 
-  // 2. Render children di latar belakang agar fetching data dashboard berjalan paralel saat user mengetik PIN
+  // 2. Saat terkunci, tunda mount children/prefetcher agar jaringan & DB fokus 100% membuka PIN secepat mungkin
   return (
     <PinLockContext.Provider
       value={{
         pinEnabled,
-        isUnlocked,
+        isUnlocked: !isLocked,
         refreshPinStatus: checkStatus,
         lockNow,
       }}
     >
-      {/* Konten Dashboard / Aplikasi dimuat di background */}
-      <div
-        className={`w-full min-h-screen ${
-          isLocked
-            ? "pointer-events-none select-none opacity-0"
-            : "opacity-100 transition-opacity duration-300"
-        }`}
-        aria-hidden={isLocked}
-      >
-        {children}
-      </div>
+      {!isLocked && (
+        <div className="w-full min-h-screen">
+          {children}
+        </div>
+      )}
 
       {/* Layar PIN tampil di atas (z-[100]) dengan background 100% solid & transisi halus saat terbuka */}
       <AnimatePresence>
@@ -186,8 +184,8 @@ export function PinLockProvider({ children }: { children: React.ReactNode }) {
           <motion.div
             key="pin-overlay"
             initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             className="fixed inset-0 z-[100] bg-background"
           >
             <PinLockScreen

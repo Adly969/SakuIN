@@ -3,10 +3,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { Delete, Lock, KeyRound, ShieldCheck } from "lucide-react";
-import { verifyPinAction } from "@/app/actions/pin";
 import {
-  verifyLocalPin,
-  saveLocalPinVerifier,
+  verifyLocalPinSync,
+  saveLocalPinVerifierSync,
   clearLocalPinVerifier,
 } from "@/lib/pin-cache";
 import { createClient } from "@/lib/supabase/client";
@@ -26,17 +25,121 @@ export function PinLockScreen({
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isShake, setIsShake] = useState(false);
+
   const isVerifyingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const onUnlockedRef = useRef(onUnlocked);
+  const pinStatusSyncedRef = useRef(pinStatusSynced);
+
+  useEffect(() => {
+    onUnlockedRef.current = onUnlocked;
+  }, [onUnlocked]);
+
+  useEffect(() => {
+    pinStatusSyncedRef.current = pinStatusSynced;
+  }, [pinStatusSynced]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const resetWithError = useCallback((msg: string) => {
+    if (!mountedRef.current) return;
+    setIsShake(true);
+    setErrorMessage(msg);
+    setTimeout(() => {
+      if (!mountedRef.current) return;
+      setIsShake(false);
+      setPin("");
+      isVerifyingRef.current = false;
+      setIsVerifying(false);
+    }, 450);
+  }, []);
+
+  const submitPin = useCallback(
+    async (candidatePin: string) => {
+      if (candidatePin.length !== 6 || isVerifyingRef.current) return;
+
+      // 1. Cek cepat secara sinkron di perangkat (< 1ms)
+      const localMatch = verifyLocalPinSync(candidatePin);
+      if (localMatch === true) {
+        isVerifyingRef.current = true;
+        onUnlockedRef.current();
+        // Sinkronkan cookie server di background tanpa memblokir UI
+        void fetch("/api/pin/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: candidatePin }),
+          keepalive: true,
+        }).catch(() => {});
+        return;
+      }
+
+      if (localMatch === false && (pinStatusSyncedRef.current || !navigator.onLine)) {
+        isVerifyingRef.current = true;
+        setIsVerifying(true);
+        resetWithError("PIN yang kamu masukkan salah");
+        return;
+      }
+
+      // 2. Fallback ke endpoint ringan /api/pin/verify dengan timeout 10 detik (anti-stuck)
+      isVerifyingRef.current = true;
+      setIsVerifying(true);
+      setErrorMessage("");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const response = await fetch("/api/pin/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: candidatePin }),
+          signal: controller.signal,
+        });
+        const res = await response.json();
+        if (!mountedRef.current) return;
+
+        if (res.success) {
+          if (res.userId && res.pinVersion) {
+            saveLocalPinVerifierSync(res.userId, candidatePin, res.pinVersion);
+          }
+          onUnlockedRef.current();
+        } else {
+          resetWithError(res.error || "PIN yang kamu masukkan salah");
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        const isTimeout = err instanceof DOMException && err.name === "AbortError";
+        resetWithError(isTimeout ? "Koneksi lambat, coba masukkan PIN lagi" : "Gagal memverifikasi PIN");
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+    [resetWithError]
+  );
 
   // Instant digit input (tanpa dependency `pin` agar tidak re-render/re-bind listener tiap ketukan)
-  const handleDigit = useCallback((digit: string) => {
-    if (isVerifyingRef.current) return;
-    setErrorMessage("");
-    setPin((prev) => {
-      if (prev.length >= 6) return prev;
-      return prev + digit;
-    });
-  }, []);
+  const handleDigit = useCallback(
+    (digit: string) => {
+      if (isVerifyingRef.current) return;
+      setErrorMessage("");
+      setPin((prev) => {
+        if (prev.length >= 6) return prev;
+        const next = prev + digit;
+        if (next.length === 6) {
+          queueMicrotask(() => {
+            void submitPin(next);
+          });
+        }
+        return next;
+      });
+    },
+    [submitPin]
+  );
 
   // Instant backspace
   const handleBackspace = useCallback(() => {
@@ -44,81 +147,6 @@ export function PinLockScreen({
     setErrorMessage("");
     setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev));
   }, []);
-
-  // Auto-verify ketika genap 6 digit
-  useEffect(() => {
-    if (pin.length !== 6 || isVerifyingRef.current) return;
-
-    let cancelled = false;
-    isVerifyingRef.current = true;
-    setIsVerifying(true);
-    setErrorMessage("");
-
-    (async () => {
-      try {
-        // 1. Cek cepat di perangkat (< 5ms)
-        const localMatch = await verifyLocalPin(pin);
-        if (cancelled) return;
-
-        if (localMatch === true) {
-          onUnlocked();
-          // Sinkronkan cookie server di background tanpa memblokir UI
-          void verifyPinAction(pin).catch(() => {});
-          return;
-        }
-
-        // Jika versi PIN sudah sinkron dengan server dan tidak cocok secara lokal, tolak instan
-        if (localMatch === false && (pinStatusSynced || !navigator.onLine)) {
-          setIsShake(true);
-          setErrorMessage("PIN yang kamu masukkan salah");
-          setTimeout(() => {
-            if (cancelled) return;
-            setIsShake(false);
-            setPin("");
-            isVerifyingRef.current = false;
-            setIsVerifying(false);
-          }, 450);
-          return;
-        }
-
-        // 2. Fallback verifikasi server (misal baru pertama buka di perangkat ini)
-        const res = await verifyPinAction(pin);
-        if (cancelled) return;
-
-        if (res.success) {
-          if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
-            void saveLocalPinVerifier(res.userId, pin, res.pinVersion);
-          }
-          onUnlocked();
-        } else {
-          setIsShake(true);
-          setErrorMessage(res.error || "PIN yang kamu masukkan salah");
-          setTimeout(() => {
-            if (cancelled) return;
-            setIsShake(false);
-            setPin("");
-            isVerifyingRef.current = false;
-            setIsVerifying(false);
-          }, 450);
-        }
-      } catch {
-        if (cancelled) return;
-        setIsShake(true);
-        setErrorMessage("Gagal memverifikasi PIN");
-        setTimeout(() => {
-          if (cancelled) return;
-          setIsShake(false);
-          setPin("");
-          isVerifyingRef.current = false;
-          setIsVerifying(false);
-        }, 450);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pin, pinStatusSynced, onUnlocked]);
 
   // Listen to physical keyboard events (0-9, Backspace) — hanya dipasang 1x
   useEffect(() => {

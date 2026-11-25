@@ -10,7 +10,7 @@ import {
   updateProfileAction,
 } from "@/app/actions/profile";
 import { setupPinAction, disablePinAction } from "@/app/actions/pin";
-import { saveLocalPinVerifier, clearLocalPinVerifier } from "@/lib/pin-cache";
+import { saveLocalPinVerifierSync, clearLocalPinVerifier } from "@/lib/pin-cache";
 import { usePinLock } from "@/components/auth/pin-lock-provider";
 import {
   scheduleNativeDailyReminder,
@@ -337,7 +337,7 @@ export default function ProfilePage() {
         const res = await setupPinAction(pinConfirm);
         if (res.success) {
           if ("userId" in res && res.userId && "pinVersion" in res && res.pinVersion) {
-            await saveLocalPinVerifier(res.userId, pinConfirm, res.pinVersion);
+            saveLocalPinVerifierSync(res.userId, pinConfirm, res.pinVersion);
           }
           setIsPinModalOpen(false);
           await refreshPinStatus();
