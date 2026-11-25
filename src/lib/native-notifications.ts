@@ -198,3 +198,80 @@ export async function cancelNativeDailyReminder(): Promise<void> {
     }
   }
 }
+
+export interface DailyLimitAlertPayload {
+  todayBudget: number;
+  todayExpense: number;
+  todayRemaining: number;
+  overLimitAmount: number;
+  usagePercent: number;
+  level: "ok" | "warning" | "reached" | "exceeded";
+}
+
+function formatRp(amount: number): string {
+  return `Rp ${Math.max(0, Math.round(amount)).toLocaleString("id-ID")}`;
+}
+
+/**
+ * Mengirim notifikasi pengingat jika pemakaian harian hampir/sudah mencapai batas,
+ * lengkap dengan sisa batas hari ini.
+ */
+export async function notifyDailyLimitAlert(
+  snapshot: DailyLimitAlertPayload,
+  onNewExpense: boolean = true
+): Promise<{ sent: boolean; title?: string; body?: string }> {
+  if (typeof window === "undefined") return { sent: false };
+  if (snapshot.level === "ok") return { sent: false };
+
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const storageKey = `sakuin_limit_alert_${todayKey}`;
+
+  if (!onNewExpense) {
+    try {
+      const prevRaw = localStorage.getItem(storageKey);
+      if (prevRaw) {
+        const prev = JSON.parse(prevRaw);
+        if (prev.level === snapshot.level && Date.now() - prev.ts < 3 * 60 * 60 * 1000) {
+          return { sent: false };
+        }
+      }
+    } catch {}
+  }
+
+  let title = "";
+  let body = "";
+
+  if (snapshot.level === "warning") {
+    title = `⚠️ Batas Harian Hampir Habis (${snapshot.usagePercent}%)`;
+    body = `Terpakai ${formatRp(snapshot.todayExpense)} dari batas ${formatRp(snapshot.todayBudget)}. Sisa jatah hari ini tinggal ${formatRp(snapshot.todayRemaining)}!`;
+  } else if (snapshot.level === "reached") {
+    title = `🛑 Batas Harian Hari Ini Tercapai!`;
+    body = `Pengeluaran hari ini sudah pas ${formatRp(snapshot.todayBudget)}. Sisa batas hari ini: Rp 0.`;
+  } else {
+    title = `🚨 Batas Harian Terlampaui!`;
+    body = `Pengeluaran hari ini ${formatRp(snapshot.todayExpense)} (lebih ${formatRp(snapshot.overLimitAmount)} dari batas ${formatRp(snapshot.todayBudget)}). Sisa batas hari ini: Rp 0.`;
+  }
+
+  try {
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({ level: snapshot.level, ts: Date.now() })
+    );
+  } catch {}
+
+  window.dispatchEvent(
+    new CustomEvent("sakuin:daily-limit-alert", {
+      detail: { title, body, snapshot },
+    })
+  );
+
+  if ("Notification" in window && Notification.permission === "default") {
+    try {
+      await requestNotificationPermission();
+    } catch {}
+  }
+
+  const osSent = await sendInstantNotification(title, body);
+  return { sent: osSent, title, body };
+}

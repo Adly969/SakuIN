@@ -37,6 +37,7 @@ import {
 } from "@/app/actions/transactions";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { enqueueOfflineTransaction } from "@/lib/offline-queue";
+import { notifyDailyLimitAlert } from "@/lib/native-notifications";
 
 const QUICK_AMOUNTS = [
   { label: "+10rb", value: 10000 },
@@ -375,6 +376,11 @@ export default function RecordPage() {
           });
         }
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
+
+        // Kirim notifikasi pengingat jika mendekati atau mencapai batas harian
+        if (res.dailyLimitAlert && res.dailyLimitAlert.level !== "ok") {
+          notifyDailyLimitAlert(res.dailyLimitAlert, true);
+        }
 
         setAmount(0);
         setIsCustomCategory(false);

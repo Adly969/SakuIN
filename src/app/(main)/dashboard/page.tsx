@@ -104,6 +104,12 @@ interface DashboardData {
     cash: number;
   };
   dailyLimit: number;
+  todayExpense?: number;
+  todayBudget?: number;
+  todayRemaining?: number;
+  overLimitAmount?: number;
+  todayUsagePercent?: number;
+  todayAlertLevel?: "ok" | "warning" | "reached" | "exceeded";
   status: {
     status: "safe" | "warning" | "danger";
     label: string;
@@ -515,6 +521,55 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
+
+            {/* Pemakaian Batas Hari Ini & Sisa Jatah Hari Ini */}
+            {dashboardData && (dashboardData.todayBudget ?? 0) > 0 && (
+              <div className="pt-2.5 border-t border-border/50 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-muted-foreground">
+                    Terpakai Hari Ini ({dashboardData.todayUsagePercent ?? 0}%)
+                  </span>
+                  <span
+                    className={`font-black ${
+                      dashboardData.todayAlertLevel === "exceeded" || dashboardData.todayAlertLevel === "reached"
+                        ? "text-expense"
+                        : dashboardData.todayAlertLevel === "warning"
+                        ? "text-[#FFB04A]"
+                        : "text-accent"
+                    }`}
+                  >
+                    Sisa Hari Ini: {formatRupiah(dashboardData.todayRemaining ?? 0)}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/70">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      dashboardData.todayAlertLevel === "exceeded" || dashboardData.todayAlertLevel === "reached"
+                        ? "bg-expense"
+                        : dashboardData.todayAlertLevel === "warning"
+                        ? "bg-[#FFB04A]"
+                        : "bg-accent"
+                    }`}
+                    style={{ width: `${Math.min(100, dashboardData.todayUsagePercent ?? 0)}%` }}
+                  />
+                </div>
+                {(dashboardData.todayAlertLevel === "warning" ||
+                  dashboardData.todayAlertLevel === "reached" ||
+                  dashboardData.todayAlertLevel === "exceeded") && (
+                  <p
+                    className={`text-[10px] font-bold ${
+                      dashboardData.todayAlertLevel === "warning" ? "text-[#FFB04A]" : "text-expense"
+                    }`}
+                  >
+                    {dashboardData.todayAlertLevel === "warning"
+                      ? `⚠️ Hampir mencapai batas harian! Sisa jatah hari ini tinggal ${formatRupiah(dashboardData.todayRemaining ?? 0)}.`
+                      : dashboardData.todayAlertLevel === "reached"
+                      ? "🛑 Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
+                      : `🚨 Melewati batas harian sebesar ${formatRupiah(dashboardData.overLimitAmount ?? 0)}!`}
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           {/* 2.2 Kartu Rekening (HP: horizontal snap, md ke atas: grid 2-3 kolom) */}

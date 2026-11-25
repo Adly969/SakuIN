@@ -12,6 +12,7 @@ import {
   getUserCategoriesAction,
 } from "@/app/actions/transactions";
 import { getAccountsAction } from "@/app/actions/accounts";
+import { notifyDailyLimitAlert } from "@/lib/native-notifications";
 import {
   Search,
   Plus,
@@ -404,6 +405,9 @@ function TransactionsContent() {
         closeEditModal();
         await loadData(true);
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
+        if (res.dailyLimitAlert && res.dailyLimitAlert.level !== "ok") {
+          notifyDailyLimitAlert(res.dailyLimitAlert, true);
+        }
       } else {
         alert(res.error || "Gagal memperbarui transaksi");
       }

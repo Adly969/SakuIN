@@ -12,6 +12,7 @@ import {
   type AllowanceCycle,
   type ReserveMode,
 } from "@/lib/finance";
+import { getJakartaDateKey } from "@/lib/daily-limit-server";
 
 export async function getDashboardDataAction() {
   try {
@@ -60,11 +61,13 @@ export async function getDashboardDataAction() {
       });
     }
 
-    // Filter transaksi bulan ini (YYYY-MM)
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    // Filter transaksi bulan ini (YYYY-MM) & hari ini (YYYY-MM-DD WIB)
+    const todayKey = getJakartaDateKey(today);
+    const currentMonthKey = todayKey.slice(0, 7);
 
     let totalExpense = 0;
     let totalIncome = 0;
+    let todayExpense = 0;
     const categoryTotals: Record<string, { amount: number; count: number }> = {};
     const monthlyExpenseMap: Record<string, number> = {};
 
@@ -74,6 +77,9 @@ export async function getDashboardDataAction() {
 
       if (tx.type === "expense") {
         monthlyExpenseMap[txMonthKey] = (monthlyExpenseMap[txMonthKey] || 0) + amt;
+        if (tx.occurredOn === todayKey) {
+          todayExpense += amt;
+        }
 
         if (txMonthKey === currentMonthKey) {
           totalExpense += amt;
@@ -154,6 +160,34 @@ export async function getDashboardDataAction() {
     const reservedTotal = adaptive.reservedTotal;
     const spendableBalance = adaptive.spendableBalance;
     const status = getSpendingStatus(dailyLimit);
+
+    // Evaluasi status batas harian hari ini (untuk peringatan mendekati/mencapai limit)
+    const todayStartBalance = remainingBalance + todayExpense;
+    const todayAdaptive = calculateAdaptiveDailyLimit(
+      todayStartBalance,
+      remainingDays,
+      reserveMode,
+      reserveValue
+    );
+    const todayBudget = todayAdaptive.dailyLimit;
+    const todayRemaining = Math.max(0, todayBudget - todayExpense);
+    const overLimitAmount = Math.max(0, todayExpense - todayBudget);
+    const todayUsagePercent =
+      todayBudget > 0
+        ? Math.round((todayExpense / todayBudget) * 100)
+        : todayExpense > 0
+        ? 100
+        : 0;
+    let todayAlertLevel: "ok" | "warning" | "reached" | "exceeded" = "ok";
+    if (todayBudget <= 0) {
+      todayAlertLevel = todayExpense > 0 ? "exceeded" : "ok";
+    } else if (todayExpense > todayBudget) {
+      todayAlertLevel = "exceeded";
+    } else if (todayExpense === todayBudget || todayUsagePercent >= 100) {
+      todayAlertLevel = "reached";
+    } else if (todayUsagePercent >= 80) {
+      todayAlertLevel = "warning";
+    }
 
     // Persentase Anggaran Terpakai (PRD B3)
     const budgetUsedPercent = allowance > 0 ? Math.min(100, Math.round((totalExpense / allowance) * 100)) : 0;
@@ -355,6 +389,12 @@ export async function getDashboardDataAction() {
           cash: cashBalance,
         },
         dailyLimit,
+        todayExpense,
+        todayBudget,
+        todayRemaining,
+        overLimitAmount,
+        todayUsagePercent,
+        todayAlertLevel,
         status,
         motivation: {
           text: selectedMotivation,

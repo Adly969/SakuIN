@@ -6,6 +6,7 @@ import { transactions, categories, accounts } from "@/db/schema";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { evaluateDailyLimitForUser, getJakartaDateKey } from "@/lib/daily-limit-server";
 
 // Skema Validasi Zod Server-side
 const createTransactionSchema = z
@@ -162,8 +163,15 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
     revalidatePath("/statistics");
     revalidatePath("/accounts");
 
+    // Evaluasi apakah pengeluaran hari ini mendekati atau mencapai batas harian
+    const dailyLimitAlert =
+      input.type === "expense" && dateStr === getJakartaDateKey()
+        ? await evaluateDailyLimitForUser(userId)
+        : null;
+
     return {
       success: true,
+      dailyLimitAlert,
       data: {
         id: newTransaction.id,
         title: input.customLabel || input.categoryName,
@@ -349,7 +357,12 @@ export async function updateTransactionAction(
     revalidatePath("/statistics");
     revalidatePath("/accounts");
 
-    return { success: true };
+    const dailyLimitAlert =
+      input.type === "expense" && dateStr === getJakartaDateKey()
+        ? await evaluateDailyLimitForUser(userId)
+        : null;
+
+    return { success: true, dailyLimitAlert };
   } catch (error) {
     console.error("Gagal mengubah transaksi:", error);
     return { success: false, error: "Gagal memperbarui transaksi di database" };
@@ -572,7 +585,12 @@ export async function restoreTransactionAction(id: string) {
     revalidatePath("/statistics");
     revalidatePath("/accounts");
 
-    return { success: true };
+    const dailyLimitAlert =
+      existing.type === "expense" && existing.occurredOn === getJakartaDateKey()
+        ? await evaluateDailyLimitForUser(userId)
+        : null;
+
+    return { success: true, dailyLimitAlert };
   } catch (error) {
     console.error("Gagal memulihkan transaksi:", error);
     return { success: false, error: "Gagal memulihkan transaksi" };
