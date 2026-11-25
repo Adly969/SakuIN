@@ -77,16 +77,33 @@ export function formatIndonesianDate(date: Date = new Date()): IndonesianDateInf
   };
 }
 
+export type AllowanceCycle = "monthly" | "weekly" | "flexible";
+export type ReserveMode = "none" | "daily_fixed" | "percent" | "daily_cap";
+
 /**
- * Menghitung sisa hari hingga tanggal gajian / reset berikutnya
- * Sesuai PRD Bagian 6:
- * Jika hari ini < tanggal gajian: selisih hari di bulan yang sama
- * Jika hari ini >= tanggal gajian: selisih hari hingga tanggal gajian di bulan berikutnya
+ * Menghitung sisa hari hingga tanggal/hari kiriman / reset berikutnya
  */
-export function calculateRemainingDays(today: Date = new Date(), paydayDay: number = 1): number {
+export function calculateRemainingDays(
+  today: Date = new Date(),
+  paydayDay: number = 1,
+  cycle: AllowanceCycle = "monthly",
+  paydayWeekday: number = 1
+): number {
+  if (cycle === "weekly") {
+    const currentWeekday = today.getDay();
+    const normalizedTarget = ((paydayWeekday % 7) + 7) % 7;
+    const diff = (normalizedTarget - currentWeekday + 7) % 7;
+    return diff === 0 ? 7 : diff;
+  }
+
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
+
+  if (cycle === "flexible") {
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    return Math.max(1, lastDayOfMonth - currentDay + 1);
+  }
 
   let targetDate: Date;
 
@@ -104,6 +121,67 @@ export function calculateRemainingDays(today: Date = new Date(), paydayDay: numb
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
   return Math.max(1, diffDays);
+}
+
+/**
+ * Menghitung batas harian adaptif berdasarkan gaya menyisihkan pengguna:
+ * - 'none': Tidak menyisihkan (bagi rata penuh)
+ * - 'daily_fixed': Sisihkan nominal tetap per hari (misal Rp 5.000 / Rp 10.000 per hari)
+ * - 'percent': Sisihkan persentase dari total saldo (misal 10% / 15% / 20%)
+ * - 'daily_cap': Batas harian maksimal tetap (misal Rp 35.000/hari)
+ */
+export function calculateAdaptiveDailyLimit(
+  totalBalance: number,
+  remainingDays: number,
+  reserveMode: ReserveMode = "none",
+  reserveValue: number = 0
+): {
+  dailyLimit: number;
+  reservedTotal: number;
+  spendableBalance: number;
+} {
+  const safeBalance = Math.max(0, totalBalance);
+  const safeDays = Math.max(1, remainingDays);
+  const safeVal = Math.max(0, reserveValue);
+
+  if (reserveMode === "daily_fixed" && safeVal > 0) {
+    const reservedTotal = Math.min(safeBalance, safeVal * safeDays);
+    const spendableBalance = Math.max(0, safeBalance - reservedTotal);
+    return {
+      dailyLimit: Math.floor(spendableBalance / safeDays),
+      reservedTotal,
+      spendableBalance,
+    };
+  }
+
+  if (reserveMode === "percent" && safeVal > 0) {
+    const pct = Math.min(90, safeVal);
+    const reservedTotal = Math.round(safeBalance * (pct / 100));
+    const spendableBalance = Math.max(0, safeBalance - reservedTotal);
+    return {
+      dailyLimit: Math.floor(spendableBalance / safeDays),
+      reservedTotal,
+      spendableBalance,
+    };
+  }
+
+  if (reserveMode === "daily_cap" && safeVal > 0) {
+    const dailyLimit = Math.min(safeBalance, safeVal);
+    const spendableBalance = Math.min(safeBalance, dailyLimit * safeDays);
+    const reservedTotal = Math.max(0, safeBalance - spendableBalance);
+    return {
+      dailyLimit,
+      reservedTotal,
+      spendableBalance,
+    };
+  }
+
+  // Default: 'none' (Tidak menyisihkan / Bagi Rata)
+  return {
+    dailyLimit: Math.floor(safeBalance / safeDays),
+    reservedTotal: 0,
+    spendableBalance: safeBalance,
+  };
 }
 
 /**

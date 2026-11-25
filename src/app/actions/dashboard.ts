@@ -7,8 +7,10 @@ import { eq, and, isNull, desc } from "drizzle-orm";
 import {
   formatIndonesianDate,
   calculateRemainingDays,
-  calculateDailyLimit,
+  calculateAdaptiveDailyLimit,
   getSpendingStatus,
+  type AllowanceCycle,
+  type ReserveMode,
 } from "@/lib/finance";
 
 export async function getDashboardDataAction() {
@@ -34,9 +36,13 @@ export async function getDashboardDataAction() {
 
     const allowance = Number(userProfile?.monthlyAllowance || 0);
     const paydayDay = userProfile?.paydayDay || 1;
+    const allowanceCycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
+    const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const reserveMode = (userProfile?.reserveMode as ReserveMode) || "none";
+    const reserveValue = Number(userProfile?.reserveValue || 0);
 
-    // 3. Sisa Hari Hingga Gajian
-    const remainingDays = calculateRemainingDays(today, paydayDay);
+    // 3. Sisa Hari Hingga Gajian / Reset Berikutnya
+    const remainingDays = calculateRemainingDays(today, paydayDay, allowanceCycle, paydayWeekday);
 
     // 4. Ambil Transaksi Riil Pengguna dari Database
     type TransactionItem = typeof transactions.$inferSelect & {
@@ -138,7 +144,15 @@ export async function getDashboardDataAction() {
 
     // Saldo Utama: jika user menggunakan Multi-Rekening, gunakan total seluruh saldo rekening/e-wallet/dompet fisik
     const remainingBalance = hasAccountsData ? Math.max(0, totalAccountsBalance) : remainingBudget;
-    const dailyLimit = calculateDailyLimit(remainingBalance, remainingDays);
+    const adaptive = calculateAdaptiveDailyLimit(
+      remainingBalance,
+      remainingDays,
+      reserveMode,
+      reserveValue
+    );
+    const dailyLimit = adaptive.dailyLimit;
+    const reservedTotal = adaptive.reservedTotal;
+    const spendableBalance = adaptive.spendableBalance;
     const status = getSpendingStatus(dailyLimit);
 
     // Persentase Anggaran Terpakai (PRD B3)
@@ -154,7 +168,12 @@ export async function getDashboardDataAction() {
       recentIds = userProfile.recentMotivationIds as string[];
     }
 
-    const isPayday = today.getDate() === paydayDay || today.getDate() === 1;
+    const isPayday =
+      allowanceCycle === "weekly"
+        ? today.getDay() === paydayWeekday
+        : allowanceCycle === "monthly"
+        ? today.getDate() === paydayDay || today.getDate() === 1
+        : false;
 
     let eligible = allMotivations.filter((m) => !recentIds.includes(m.id));
     if (eligible.length === 0) {
@@ -319,6 +338,12 @@ export async function getDashboardDataAction() {
         totalSavedMonth,
         budgetUsedPercent,
         paydayDay,
+        allowanceCycle,
+        paydayWeekday,
+        reserveMode,
+        reserveValue,
+        reservedTotal,
+        spendableBalance,
         remainingDays,
         remainingBalance,
         remainingBudget,

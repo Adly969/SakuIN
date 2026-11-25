@@ -42,6 +42,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
+import { INDONESIAN_DAYS, type AllowanceCycle, type ReserveMode } from "@/lib/finance";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface StudentProfile {
@@ -49,6 +50,10 @@ interface StudentProfile {
   email: string;
   allowance: number;
   payday: number;
+  allowanceCycle: AllowanceCycle;
+  paydayWeekday: number;
+  reserveMode: ReserveMode;
+  reserveValue: number;
 }
 
 export default function ProfilePage() {
@@ -66,6 +71,10 @@ export default function ProfilePage() {
   const [editName, setEditName] = useState("");
   const [editAllowance, setEditAllowance] = useState("");
   const [editPayday, setEditPayday] = useState(1);
+  const [editCycle, setEditCycle] = useState<AllowanceCycle>("monthly");
+  const [editWeekday, setEditWeekday] = useState(1);
+  const [editReserveMode, setEditReserveMode] = useState<ReserveMode>("none");
+  const [editReserveValue, setEditReserveValue] = useState("0");
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [showToast, setShowToast] = useState(false);
@@ -88,6 +97,10 @@ export default function ProfilePage() {
           email: res.data.email,
           allowance: res.data.monthlyAllowance,
           payday: res.data.paydayDay,
+          allowanceCycle: res.data.allowanceCycle || "monthly",
+          paydayWeekday: res.data.paydayWeekday ?? 1,
+          reserveMode: res.data.reserveMode || "none",
+          reserveValue: res.data.reserveValue ?? 0,
         });
         setShowMotivation(res.data.showMotivation);
         setReminderEnabled(res.data.reminderEnabled);
@@ -95,6 +108,10 @@ export default function ProfilePage() {
         setEditName(res.data.name);
         setEditAllowance(res.data.monthlyAllowance.toString());
         setEditPayday(res.data.paydayDay);
+        setEditCycle(res.data.allowanceCycle || "monthly");
+        setEditWeekday(res.data.paydayWeekday ?? 1);
+        setEditReserveMode(res.data.reserveMode || "none");
+        setEditReserveValue(String(res.data.reserveValue ?? 0));
       } else {
         router.push("/login");
       }
@@ -114,6 +131,10 @@ export default function ProfilePage() {
       setEditName(profile.name);
       setEditAllowance(profile.allowance.toString());
       setEditPayday(profile.payday);
+      setEditCycle(profile.allowanceCycle);
+      setEditWeekday(profile.paydayWeekday);
+      setEditReserveMode(profile.reserveMode);
+      setEditReserveValue(String(profile.reserveValue));
     }
     setIsEditModalOpen(true);
   };
@@ -125,12 +146,22 @@ export default function ProfilePage() {
     setIsSaving(true);
     const allowanceNum = parseInt(editAllowance.replace(/[^0-9]/g, "") || "0", 10);
     const paydayNum = Math.min(31, Math.max(1, editPayday));
+    const reserveValNum =
+      editReserveMode === "none"
+        ? 0
+        : editReserveMode === "percent"
+        ? Math.min(90, Math.max(0, parseInt(editReserveValue.replace(/[^0-9]/g, "") || "0", 10)))
+        : parseInt(editReserveValue.replace(/[^0-9]/g, "") || "0", 10);
 
     try {
       const res = await updateProfileAction({
         name: editName.trim(),
         monthlyAllowance: allowanceNum,
         paydayDay: paydayNum,
+        allowanceCycle: editCycle,
+        paydayWeekday: editWeekday,
+        reserveMode: editReserveMode,
+        reserveValue: reserveValNum,
         showMotivation,
       });
 
@@ -140,8 +171,13 @@ export default function ProfilePage() {
           email: profile?.email || "",
           allowance: allowanceNum,
           payday: paydayNum,
+          allowanceCycle: editCycle,
+          paydayWeekday: editWeekday,
+          reserveMode: editReserveMode,
+          reserveValue: reserveValNum,
         });
         setIsEditModalOpen(false);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
         setToastMessage("Pengaturan profil berhasil diperbarui!");
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -405,13 +441,13 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2">
             <Wallet className="w-4 h-4 text-accent" />
             <h3 className="text-sm font-extrabold text-foreground">
-              Pengaturan Uang Kiriman
+              Siklus Keuangan &amp; Target Harian
             </h3>
           </div>
           <button
             type="button"
             onClick={handleOpenEdit}
-            className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
+            className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[36px] px-2"
           >
             <span>Ubah</span>
           </button>
@@ -424,10 +460,18 @@ export default function ProfilePage() {
             </div>
             <div className="min-w-0">
               <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
-                Uang Kiriman Bulanan
+                {profile?.allowanceCycle === "weekly"
+                  ? "Bekal Mingguan"
+                  : profile?.allowanceCycle === "flexible"
+                  ? "Pola Pemasukan"
+                  : "Uang Kiriman Bulanan"}
               </p>
               <p className="text-sm font-black text-foreground truncate">
-                {profile ? formatRupiah(profile.allowance) : "Rp ..."}
+                {!profile
+                  ? "Rp ..."
+                  : profile.allowanceCycle === "flexible"
+                  ? "Fleksibel / Mandiri"
+                  : formatRupiah(profile.allowance)}
               </p>
             </div>
           </div>
@@ -438,13 +482,41 @@ export default function ProfilePage() {
             </div>
             <div className="min-w-0">
               <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
-                Tanggal Kiriman
+                Jadwal Siklus
               </p>
               <p className="text-sm font-black text-foreground truncate">
-                Setiap Tanggal {profile?.payday ?? 1}
+                {profile?.allowanceCycle === "weekly"
+                  ? `Setiap Hari ${INDONESIAN_DAYS[profile.paydayWeekday ?? 1]}`
+                  : profile?.allowanceCycle === "flexible"
+                  ? "Berbasis Saldo Saat Ini"
+                  : `Setiap Tanggal ${profile?.payday ?? 1}`}
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="p-3.5 bg-background border border-border rounded-lg flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+              Gaya Menyisihkan Harian
+            </p>
+            <p className="text-xs font-black text-foreground mt-0.5">
+              {profile?.reserveMode === "daily_fixed" && profile.reserveValue > 0
+                ? `Sisihkan ${formatRupiah(profile.reserveValue)} / hari sebelum dibagi`
+                : profile?.reserveMode === "percent" && profile.reserveValue > 0
+                ? `Sisihkan ${profile.reserveValue}% dari saldo sebelum dibagi`
+                : profile?.reserveMode === "daily_cap" && profile.reserveValue > 0
+                ? `Batas Harian Tetap Maks ${formatRupiah(profile.reserveValue)} / hari`
+                : "Tidak Menyisihkan (Bagi Rata Penuh)"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenEdit}
+            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground shrink-0"
+          >
+            Atur
+          </button>
         </div>
       </section>
 
@@ -873,36 +945,36 @@ export default function ProfilePage() {
         )}
       </AnimatePresence>
 
-      {/* Modal Ubah Pengaturan Uang Kiriman */}
+      {/* Modal Ubah Pengaturan Siklus & Sisihan Harian */}
       <AnimatePresence>
         {isEditModalOpen && (
-          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ y: "100%", opacity: 0.5 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 350, damping: 32 }}
-              className="w-full sm:max-w-md bg-card border border-border rounded-t-2xl sm:rounded-xl p-6 pb-10 sm:pb-6 shadow-2xl space-y-5"
+              className="w-full sm:max-w-md bg-card border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col overflow-hidden"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
                 <div>
                   <h3 className="text-base font-extrabold text-foreground">
-                    Ubah Pengaturan Uang Kiriman
+                    Pengaturan Siklus &amp; Sisihan
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Sesuaikan nominal jatah bulanan & tanggal kirimanmu
+                    Sesuaikan jadwal uang saku dan target sisihan harianmu
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-background hover:bg-muted flex items-center justify-center text-muted-foreground"
+                  className="w-10 h-10 rounded-xl bg-background hover:bg-muted flex items-center justify-center text-muted-foreground"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveProfile} className="space-y-4">
+              <form id="profile-edit-form" onSubmit={handleSaveProfile} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground">
                     Nama Panggilan
@@ -913,56 +985,196 @@ export default function ProfilePage() {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="Contoh: Dina"
-                    className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-4 py-2.5 min-h-[44px] rounded-xl bg-background border border-border text-foreground text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-foreground">
-                    Uang Kiriman Bulanan
-                  </label>
-                  <div className="relative flex items-center bg-background border border-border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent">
-                    <span className="text-xs font-bold text-muted-foreground mr-1.5 select-none">
-                      Rp
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={
-                        editAllowance
-                          ? parseInt(editAllowance.replace(/[^0-9]/g, "") || "0", 10).toLocaleString("id-ID")
-                          : ""
-                      }
-                      onChange={(e) => setEditAllowance(e.target.value.replace(/[^0-9]/g, ""))}
-                      placeholder="Contoh: 2.000.000"
-                      className="w-full bg-transparent text-sm font-extrabold text-foreground placeholder:text-muted-foreground focus:outline-none"
-                    />
+                {/* Pilihan Siklus */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-foreground">Siklus Uang Saku</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: "monthly", label: "Bulanan" },
+                      { id: "weekly", label: "Mingguan" },
+                      { id: "flexible", label: "Fleksibel" },
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setEditCycle(c.id as AllowanceCycle)}
+                        className={`py-2.5 min-h-[40px] rounded-xl text-xs font-bold border transition-all ${
+                          editCycle === c.id
+                            ? "bg-accent text-[#1F1F1F] border-accent font-black"
+                            : "bg-background text-muted-foreground border-border hover:text-foreground"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-foreground">
-                    Tanggal Kiriman Bulanan (1 - 31)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    required
-                    value={editPayday}
-                    onChange={(e) => setEditPayday(parseInt(e.target.value, 10) || 1)}
-                    className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
+                {editCycle !== "flexible" && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-foreground">
+                        {editCycle === "weekly" ? "Bekal per Minggu" : "Uang Kiriman Bulanan"}
+                      </label>
+                      <div className="relative flex items-center bg-background border border-border rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-accent">
+                        <span className="text-xs font-bold text-muted-foreground mr-1.5 select-none">
+                          Rp
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={
+                            editAllowance
+                              ? parseInt(editAllowance.replace(/[^0-9]/g, "") || "0", 10).toLocaleString("id-ID")
+                              : ""
+                          }
+                          onChange={(e) => setEditAllowance(e.target.value.replace(/[^0-9]/g, ""))}
+                          placeholder="Contoh: 1.500.000"
+                          className="w-full bg-transparent text-base sm:text-sm font-extrabold text-foreground placeholder:text-muted-foreground focus:outline-none"
+                        />
+                      </div>
+                    </div>
 
+                    {editCycle === "monthly" ? (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-foreground">
+                          Tanggal Kiriman Bulanan (1 - 31)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          required
+                          value={editPayday}
+                          onChange={(e) => setEditPayday(parseInt(e.target.value, 10) || 1)}
+                          className="w-full px-4 py-2.5 min-h-[44px] rounded-xl bg-background border border-border text-foreground text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-foreground">
+                          Hari Kiriman Mingguan
+                        </label>
+                        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                          {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setEditWeekday(d)}
+                              className={`py-2 min-h-[38px] rounded-lg text-[11px] font-bold border ${
+                                editWeekday === d
+                                  ? "bg-accent text-[#1F1F1F] border-accent font-black"
+                                  : "bg-background text-muted-foreground border-border"
+                              }`}
+                            >
+                              {INDONESIAN_DAYS[d].slice(0, 3)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Pilihan Gaya Menyisihkan Harian */}
+                <div className="space-y-2 pt-1 border-t border-border/60">
+                  <label className="text-xs font-bold text-foreground block">
+                    Gaya Menyisihkan Harian
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "none", label: "Tidak Menyisihkan (0%)" },
+                      { id: "daily_fixed", label: "Sisihkan Rp / Hari" },
+                      { id: "percent", label: "Sisihkan % Saldo" },
+                      { id: "daily_cap", label: "Batas Maks / Hari" },
+                    ].map((rm) => (
+                      <button
+                        key={rm.id}
+                        type="button"
+                        onClick={() => {
+                          setEditReserveMode(rm.id as ReserveMode);
+                          if (rm.id === "none") setEditReserveValue("0");
+                          else if (rm.id === "percent" && parseInt(editReserveValue || "0", 10) > 90) setEditReserveValue("15");
+                          else if (rm.id === "daily_fixed" && parseInt(editReserveValue || "0", 10) === 0) setEditReserveValue("10000");
+                          else if (rm.id === "daily_cap" && parseInt(editReserveValue || "0", 10) === 0) setEditReserveValue("35000");
+                        }}
+                        className={`p-2.5 min-h-[42px] rounded-xl text-[11px] font-bold border transition-all text-left ${
+                          editReserveMode === rm.id
+                            ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
+                            : "bg-background border-border text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {rm.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {editReserveMode !== "none" && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center bg-background border border-border rounded-xl px-3.5 py-2.5">
+                        {editReserveMode !== "percent" && (
+                          <span className="text-xs font-bold text-muted-foreground mr-1.5">Rp</span>
+                        )}
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={
+                            editReserveMode === "percent"
+                              ? editReserveValue
+                              : parseInt(editReserveValue.replace(/[^0-9]/g, "") || "0", 10) > 0
+                              ? parseInt(editReserveValue.replace(/[^0-9]/g, "") || "0", 10).toLocaleString("id-ID")
+                              : ""
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            if (editReserveMode === "percent") {
+                              setEditReserveValue(String(Math.min(90, parseInt(raw || "0", 10))));
+                            } else {
+                              setEditReserveValue(raw);
+                            }
+                          }}
+                          className="w-full bg-transparent text-base sm:text-sm font-black text-foreground focus:outline-none"
+                        />
+                        {editReserveMode === "percent" && (
+                          <span className="text-xs font-bold text-muted-foreground ml-1.5">%</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(editReserveMode === "percent"
+                          ? [10, 15, 20, 30]
+                          : editReserveMode === "daily_fixed"
+                          ? [5000, 10000, 15000, 20000]
+                          : [25000, 35000, 50000, 75000]
+                        ).map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setEditReserveValue(String(preset))}
+                            className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-[10px] font-bold text-foreground hover:border-accent"
+                          >
+                            {editReserveMode === "percent" ? `${preset}%` : formatRupiah(preset)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </form>
+
+              <div className="shrink-0 border-t border-border bg-card px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
                 <button
                   type="submit"
+                  form="profile-edit-form"
                   disabled={isSaving}
-                  className="w-full py-3 bg-accent hover:brightness-110 disabled:opacity-50 text-[#1F1F1F] font-black rounded-full text-xs shadow-md transition-all active:scale-[0.98]"
+                  className="w-full py-3 min-h-[48px] bg-accent hover:brightness-110 disabled:opacity-50 text-[#1F1F1F] font-black rounded-2xl text-xs sm:text-sm shadow-md transition-all active:scale-[0.98]"
                 >
                   {isSaving ? "Menyimpan..." : "Simpan Pengaturan"}
                 </button>
-              </form>
+              </div>
             </motion.div>
           </div>
         )}

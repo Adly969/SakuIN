@@ -22,6 +22,10 @@ export const profiles = pgTable("profiles", {
   avatarUrl: text("avatar_url"),
   monthlyAllowance: bigint("monthly_allowance", { mode: "bigint" }).default(sql`0`),
   paydayDay: integer("payday_day").default(1),
+  allowanceCycle: varchar("allowance_cycle", { length: 20 }).default("monthly"), // 'monthly' | 'weekly' | 'flexible'
+  paydayWeekday: integer("payday_weekday").default(1), // 0=Minggu, 1=Senin ... 6=Sabtu
+  reserveMode: varchar("reserve_mode", { length: 20 }).default("none"), // 'none' | 'daily_fixed' | 'percent' | 'daily_cap'
+  reserveValue: bigint("reserve_value", { mode: "bigint" }).default(sql`0`),
   timezone: text("timezone").default("Asia/Jakarta"),
   theme: varchar("theme", { length: 20 }).default("dark"), // 'dark' | 'light' | 'system'
   reminderTime: varchar("reminder_time", { length: 10 }), // e.g. '20:00'

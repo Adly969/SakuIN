@@ -38,6 +38,12 @@ import {
   Tooltip,
 } from "recharts";
 import { formatRupiah } from "@/lib/utils";
+import {
+  calculateAdaptiveDailyLimit,
+  INDONESIAN_DAYS,
+  type AllowanceCycle,
+  type ReserveMode,
+} from "@/lib/finance";
 import { getDashboardDataAction, getNextMotivationAction } from "@/app/actions/dashboard";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { BrandText } from "@/components/ui/brand-logo";
@@ -81,6 +87,12 @@ interface DashboardData {
   totalSavedMonth: number;
   budgetUsedPercent: number;
   paydayDay: number;
+  allowanceCycle?: AllowanceCycle;
+  paydayWeekday?: number;
+  reserveMode?: ReserveMode;
+  reserveValue?: number;
+  reservedTotal?: number;
+  spendableBalance?: number;
   remainingDays: number;
   remainingBalance: number;
   remainingBudget?: number;
@@ -301,9 +313,14 @@ export default function DashboardPage() {
   const heroMainBalance = isUsingAccounts
     ? Math.max(0, liveAccountsTotal)
     : (dashboardData?.remainingBalance ?? 0);
-  const heroDailyLimit = dashboardData
-    ? Math.floor(heroMainBalance / Math.max(1, dashboardData.remainingDays))
-    : 0;
+  const heroAdaptive = calculateAdaptiveDailyLimit(
+    heroMainBalance,
+    dashboardData?.remainingDays ?? 1,
+    dashboardData?.reserveMode ?? "none",
+    dashboardData?.reserveValue ?? 0
+  );
+  const heroDailyLimit = dashboardData ? heroAdaptive.dailyLimit : 0;
+  const heroReservedTotal = dashboardData ? heroAdaptive.reservedTotal : 0;
   const heroStatus =
     heroDailyLimit >= 65000
       ? { status: "safe" as const, label: "Aman" }
@@ -450,7 +467,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Card Footer: Batas Per Hari & Siklus Kiriman */}
-            <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs">
+            <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs gap-2">
               <div>
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
                   Batas per Hari
@@ -470,14 +487,31 @@ export default function DashboardPage() {
                     {heroStatus.label}
                   </span>
                 </div>
+                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
+                  <span className="text-[10px] text-muted-foreground block mt-0.5">
+                    Sisihkan {formatRupiah(heroReservedTotal)}
+                  </span>
+                ) : (
+                  <Link href="/profile" className="text-[10px] text-muted-foreground/80 hover:text-accent block mt-0.5">
+                    Bagi rata (Atur sisihan →)
+                  </Link>
+                )}
               </div>
 
               <div className="text-right">
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
-                  Siklus Bulanan
+                  {dashboardData?.allowanceCycle === "weekly"
+                    ? "Siklus Mingguan"
+                    : dashboardData?.allowanceCycle === "flexible"
+                    ? "Mode Fleksibel"
+                    : "Siklus Bulanan"}
                 </span>
                 <span className="font-bold text-foreground text-xs mt-0.5 block">
-                  Sisa {dashboardData?.remainingDays ?? "..."} Hari (Kiriman Tgl {dashboardData?.paydayDay ?? 1})
+                  {dashboardData?.allowanceCycle === "weekly"
+                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} Hari (Tiap ${INDONESIAN_DAYS[dashboardData?.paydayWeekday ?? 1]})`
+                    : dashboardData?.allowanceCycle === "flexible"
+                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} Hari Bulan Ini`
+                    : `Sisa ${dashboardData?.remainingDays ?? "..."} Hari (Tgl ${dashboardData?.paydayDay ?? 1})`}
                 </span>
               </div>
             </div>

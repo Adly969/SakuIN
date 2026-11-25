@@ -19,11 +19,19 @@ const onboardingSchema = z.object({
     .number()
     .min(0, "Nominal uang kiriman tidak boleh negatif")
     .max(100000000, "Nominal melebihi batas wajar"),
+  allowanceCycle: z.enum(["monthly", "weekly", "flexible"]).default("monthly"),
   paydayDay: z
     .number()
     .int("Tanggal kiriman harus berupa bilangan bulat")
     .min(1, "Tanggal kiriman minimal 1")
-    .max(31, "Tanggal kiriman maksimal 31"),
+    .max(31, "Tanggal kiriman maksimal 31")
+    .default(1),
+  paydayWeekday: z.number().int().min(0).max(6).default(1),
+  reserveMode: z.enum(["none", "daily_fixed", "percent", "daily_cap"]).default("none"),
+  reserveValue: z.number().min(0).max(100000000).default(0),
+  bankBalance: z.number().min(0).max(1000000000).default(0),
+  ewalletBalance: z.number().min(0).max(1000000000).default(0),
+  cashBalance: z.number().min(0).max(1000000000).default(0),
   selectedCategories: z.array(z.string()).optional(),
 });
 
@@ -63,6 +71,10 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
           email: user?.email || existing.email,
           monthlyAllowance: BigInt(input.monthlyAllowance),
           paydayDay: input.paydayDay,
+          allowanceCycle: input.allowanceCycle,
+          paydayWeekday: input.paydayWeekday,
+          reserveMode: input.reserveMode,
+          reserveValue: BigInt(input.reserveValue),
           updatedAt: new Date(),
         })
         .where(eq(profiles.id, userId));
@@ -73,6 +85,10 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
         email: user?.email || null,
         monthlyAllowance: BigInt(input.monthlyAllowance),
         paydayDay: input.paydayDay,
+        allowanceCycle: input.allowanceCycle,
+        paydayWeekday: input.paydayWeekday,
+        reserveMode: input.reserveMode,
+        reserveValue: BigInt(input.reserveValue),
         updatedAt: new Date(),
       });
     }
@@ -143,12 +159,12 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
       await db.insert(accounts).values([
         {
           userId,
-          name: "Dompet Tunai",
+          name: "Dompet Fisik",
           type: "cash",
           color: "#5BAA6B",
           icon: "Banknote",
           isDefault: true,
-          balance: BigInt(0),
+          balance: BigInt(input.cashBalance),
         },
         {
           userId,
@@ -157,18 +173,36 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
           color: "#8CCBFF",
           icon: "Landmark",
           isDefault: false,
-          balance: BigInt(0),
+          balance: BigInt(input.bankBalance),
         },
         {
           userId,
-          name: "E-Wallet",
+          name: "GoPay",
           type: "ewallet",
           color: "#FFB04A",
           icon: "Smartphone",
           isDefault: false,
-          balance: BigInt(0),
+          balance: BigInt(input.ewalletBalance),
         },
       ]);
+    } else if (
+      existingAccounts.every((a) => Number(a.balance || 0) === 0) &&
+      (input.cashBalance > 0 || input.bankBalance > 0 || input.ewalletBalance > 0)
+    ) {
+      for (const acc of existingAccounts) {
+        const initVal =
+          acc.type === "cash"
+            ? input.cashBalance
+            : acc.type === "bank"
+            ? input.bankBalance
+            : input.ewalletBalance;
+        if (initVal > 0) {
+          await db
+            .update(accounts)
+            .set({ balance: BigInt(initVal), updatedAt: new Date() })
+            .where(eq(accounts.id, acc.id));
+        }
+      }
     }
 
     revalidatePath("/dashboard");
