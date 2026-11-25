@@ -18,6 +18,9 @@ import {
   ShieldCheck,
   Calendar,
   AlertTriangle,
+  SlidersHorizontal,
+  Plus,
+  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -35,6 +38,11 @@ import {
   StatisticsData,
   MonthlyComp,
 } from "@/app/actions/statistics";
+import {
+  getCategoryBudgetsAction,
+  upsertCategoryBudgetAction,
+  type CategoryBudgetItem,
+} from "@/app/actions/category-budgets";
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<"month" | "year">("month");
@@ -44,6 +52,14 @@ export default function StatisticsPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   const [statsData, setStatsData] = useState<StatisticsData | null>(null);
+  const [catBudgets, setCatBudgets] = useState<CategoryBudgetItem[]>([]);
+  const [catOptions, setCatOptions] = useState<
+    Array<{ id: string; name: string; color: string; spent: number; limitAmount: number }>
+  >([]);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [editBudgetCatId, setEditBudgetCatId] = useState("");
+  const [editBudgetAmount, setEditBudgetAmount] = useState("");
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
@@ -82,12 +98,15 @@ export default function StatisticsPage() {
     if (!silent) setIsLoading(true);
     startTransition(async () => {
       try {
-        const res = await getStatisticsDataAction({
-          period: p,
-          monthKey: mKey || undefined,
-          year: y || undefined,
-          type: t,
-        });
+        const [res, catBudgetRes] = await Promise.all([
+          getStatisticsDataAction({
+            period: p,
+            monthKey: mKey || undefined,
+            year: y || undefined,
+            type: t,
+          }),
+          getCategoryBudgetsAction(mKey || undefined),
+        ]);
         if (res.success && res.data) {
           setStatsData(res.data);
           if (!selectedMonthKey) {
@@ -99,12 +118,47 @@ export default function StatisticsPage() {
             } catch {}
           }
         }
+        if (catBudgetRes.success && catBudgetRes.data) {
+          setCatBudgets(catBudgetRes.data.items);
+          setCatOptions(catBudgetRes.data.categories);
+          if (!editBudgetCatId && catBudgetRes.data.categories.length > 0) {
+            const pref =
+              catBudgetRes.data.categories.find((c) =>
+                c.name.toLowerCase().includes("nongkrong")
+              ) || catBudgetRes.data.categories[0];
+            setEditBudgetCatId(pref.id);
+          }
+        }
       } catch (err) {
         console.error("Gagal memuat statistik:", err);
       } finally {
         setIsLoading(false);
       }
     });
+  };
+
+  const handleSaveCategoryBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editBudgetCatId || isSavingBudget) return;
+    const amt = parseInt(editBudgetAmount.replace(/[^0-9]/g, "") || "0", 10);
+    setIsSavingBudget(true);
+    try {
+      const res = await upsertCategoryBudgetAction({
+        categoryId: editBudgetCatId,
+        limitAmount: amt,
+        monthKey: selectedMonthKey || undefined,
+      });
+      if (res.success) {
+        setShowBudgetModal(false);
+        loadData(period, selectedMonthKey, selectedYear, type, true);
+      } else {
+        alert(res.error || "Gagal menyimpan batas kategori");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingBudget(false);
+    }
   };
 
   const handlePeriodChange = (newPeriod: "month" | "year") => {
@@ -826,6 +880,107 @@ export default function StatisticsPage() {
             </section>
           )}
 
+          {/* Section 4.5: Kontrol Pos Boros / Batas Kategori Bulan Ini */}
+          <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-extrabold text-foreground tracking-tight">
+                  Kontrol Pos Boros (Batas Kategori)
+                </h2>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Pasang batas bulanan per pos agar pengeluaran seperti nongkrong/jajan terkendali
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const current = catOptions.find((c) => c.id === editBudgetCatId) || catOptions[0];
+                  if (current) {
+                    setEditBudgetCatId(current.id);
+                    setEditBudgetAmount(current.limitAmount > 0 ? String(current.limitAmount) : "");
+                  }
+                  setShowBudgetModal(true);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Atur Batas</span>
+              </button>
+            </div>
+
+            {catBudgets.length === 0 ? (
+              <div className="p-4 rounded-xl bg-background/60 border border-dashed border-border text-center text-xs text-muted-foreground">
+                Belum ada batas kategori aktif bulan ini. Klik <strong>Atur Batas</strong> untuk mengawasi kategori tertentu.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {catBudgets.map((item) => {
+                  const isOver = item.status === "exceeded" || item.status === "reached";
+                  const isWarn = item.status === "warning";
+                  return (
+                    <div
+                      key={item.categoryId}
+                      className="p-3 rounded-xl bg-background/70 border border-border/70 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <span className="font-bold text-foreground truncate">
+                            {item.categoryName}
+                          </span>
+                          <span
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                              isOver
+                                ? "bg-expense/15 text-expense"
+                                : isWarn
+                                ? "bg-[#FFB04A]/20 text-[#FFB04A]"
+                                : "bg-accent/15 text-accent"
+                            }`}
+                          >
+                            {item.usagePercent}%
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditBudgetCatId(item.categoryId);
+                            setEditBudgetAmount(String(item.limitAmount));
+                            setShowBudgetModal(true);
+                          }}
+                          className="p-1 text-muted-foreground hover:text-foreground rounded"
+                          title="Ubah batas kategori"
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="h-1.5 w-full bg-card rounded-full overflow-hidden border border-border/50">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isOver ? "bg-expense" : isWarn ? "bg-[#FFB04A]" : "bg-accent"
+                          }`}
+                          style={{ width: `${Math.min(100, item.usagePercent)}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+                        <span>
+                          Terpakai: <strong className="text-foreground">{formatRupiah(item.spent)}</strong>
+                        </span>
+                        <span>
+                          Batas: {formatRupiah(item.limitAmount)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {/* Section 5: Smart Insights Otomatis (PRD G9) */}
           {smartInsights.length > 0 && (
             <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3">
@@ -880,6 +1035,85 @@ export default function StatisticsPage() {
           )}
         </div>
       </div>
+
+      {/* Modal Atur Batas Kategori */}
+      {showBudgetModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-foreground">
+                  Atur Batas Pengeluaran Kategori
+                </h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Isi nominal 0 untuk menghapus batas pada kategori tersebut
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBudgetModal(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategoryBudget} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground">Pilih Kategori</label>
+                <select
+                  value={editBudgetCatId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setEditBudgetCatId(nextId);
+                    const found = catOptions.find((c) => c.id === nextId);
+                    setEditBudgetAmount(found && found.limitAmount > 0 ? String(found.limitAmount) : "");
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  {catOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} (Terpakai bulan ini: {formatRupiah(c.spent)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground">Batas Maksimal per Bulan</label>
+                <div className="relative flex items-center bg-background border border-border rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-accent">
+                  <span className="text-sm font-black text-muted-foreground mr-2">Rp</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={parseInt(editBudgetAmount || "0", 10) > 0 ? parseInt(editBudgetAmount || "0", 10).toLocaleString("id-ID") : ""}
+                    onChange={(e) => setEditBudgetAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="Contoh: 200.000 (atau kosongkan untuk hapus)"
+                    className="flex-1 min-w-0 bg-transparent text-sm font-black text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowBudgetModal(false)}
+                  className="w-1/3 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingBudget || !editBudgetCatId}
+                  className="flex-1 py-2.5 rounded-xl bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 disabled:opacity-50"
+                >
+                  {isSavingBudget ? "Menyimpan..." : "Simpan Batas"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

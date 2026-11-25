@@ -84,6 +84,7 @@ export async function syncOfflineQueue(): Promise<{
         categoryName: item.categoryName,
         note: item.note,
         customLabel: item.customLabel,
+        accountId: item.accountId ?? undefined,
         occurredOn: item.occurredOn,
       });
 

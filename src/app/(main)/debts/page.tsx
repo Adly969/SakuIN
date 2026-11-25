@@ -388,12 +388,56 @@ export default function DebtsPage() {
                           {item.note}
                         </p>
                       )}
-                      {item.dueDate && (
-                        <div className="flex items-center gap-1.5 text-accent font-bold pt-0.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Jatuh tempo: {item.dueDate}</span>
-                        </div>
-                      )}
+                      {item.dueDate && (() => {
+                        const now = new Date();
+                        const todayKey = new Intl.DateTimeFormat("en-CA", {
+                          timeZone: "Asia/Jakarta",
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                        }).format(now);
+                        const tomorrowKey = new Intl.DateTimeFormat("en-CA", {
+                          timeZone: "Asia/Jakarta",
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                        }).format(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+                        const isOverdue = !isPaid && item.dueDate < todayKey;
+                        const isToday = !isPaid && item.dueDate === todayKey;
+                        const isTomorrow = !isPaid && item.dueDate === tomorrowKey;
+
+                        return (
+                          <div
+                            className={`flex items-center justify-between gap-2 font-bold pt-0.5 ${
+                              isOverdue || isToday
+                                ? "text-expense"
+                                : isTomorrow
+                                ? "text-[#FFB04A]"
+                                : "text-accent"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Jatuh tempo: {item.dueDate}</span>
+                            </div>
+                            {isOverdue && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
+                                Terlewat
+                              </span>
+                            )}
+                            {isToday && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
+                                Hari Ini!
+                              </span>
+                            )}
+                            {isTomorrow && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#FFB04A]/20 text-[#FFB04A] font-black">
+                                Besok
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

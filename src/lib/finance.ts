@@ -134,13 +134,18 @@ export function calculateAdaptiveDailyLimit(
   totalBalance: number,
   remainingDays: number,
   reserveMode: ReserveMode = "none",
-  reserveValue: number = 0
+  reserveValue: number = 0,
+  lockedTotal: number = 0
 ): {
   dailyLimit: number;
   reservedTotal: number;
   spendableBalance: number;
+  lockedTotal: number;
+  freeBalance: number;
 } {
-  const safeBalance = Math.max(0, totalBalance);
+  const safeTotal = Math.max(0, totalBalance);
+  const appliedLocked = Math.min(safeTotal, Math.max(0, lockedTotal));
+  const safeBalance = Math.max(0, safeTotal - appliedLocked);
   const safeDays = Math.max(1, remainingDays);
   const safeVal = Math.max(0, reserveValue);
 
@@ -151,6 +156,8 @@ export function calculateAdaptiveDailyLimit(
       dailyLimit: Math.floor(spendableBalance / safeDays),
       reservedTotal,
       spendableBalance,
+      lockedTotal: appliedLocked,
+      freeBalance: safeBalance,
     };
   }
 
@@ -162,6 +169,8 @@ export function calculateAdaptiveDailyLimit(
       dailyLimit: Math.floor(spendableBalance / safeDays),
       reservedTotal,
       spendableBalance,
+      lockedTotal: appliedLocked,
+      freeBalance: safeBalance,
     };
   }
 
@@ -173,6 +182,8 @@ export function calculateAdaptiveDailyLimit(
       dailyLimit,
       reservedTotal,
       spendableBalance,
+      lockedTotal: appliedLocked,
+      freeBalance: safeBalance,
     };
   }
 
@@ -181,6 +192,8 @@ export function calculateAdaptiveDailyLimit(
     dailyLimit: Math.floor(safeBalance / safeDays),
     reservedTotal: 0,
     spendableBalance: safeBalance,
+    lockedTotal: appliedLocked,
+    freeBalance: safeBalance,
   };
 }
 

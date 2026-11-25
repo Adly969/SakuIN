@@ -2,10 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { savingsGoals, savingsEntries, motivations } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { savingsGoals, savingsEntries, motivations, accounts, profiles } from "@/db/schema";
+import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getJakartaDateKey } from "@/lib/daily-limit-server";
 
 const createGoalSchema = z.object({
   name: z.string().trim().min(1, "Nama target wajib diisi").max(100),
@@ -20,10 +21,97 @@ const entrySchema = z.object({
   amount: z.number().positive("Nominal harus lebih dari 0").max(1000000000),
   date: z.string().optional(),
   note: z.string().max(100).optional(),
+  accountId: z.string().uuid("Rekening tidak valid").nullish().or(z.literal("")),
 });
 
 export type CreateGoalInput = z.infer<typeof createGoalSchema>;
 export type SavingsEntryInput = z.infer<typeof entrySchema>;
+
+const carryoverSchema = z.object({
+  goalId: z.string().uuid("Target tabungan tidak valid"),
+  amount: z.number().positive("Nominal sisa hemat harus lebih dari 0").max(1000000000),
+  carryoverKey: z.string().trim().min(1).max(40),
+  accountId: z.string().uuid("Rekening tidak valid").nullish().or(z.literal("")),
+  note: z.string().max(100).optional(),
+});
+
+export type ClaimCarryoverInput = z.infer<typeof carryoverSchema>;
+
+async function pickTabunganMotivation(userName: string): Promise<string> {
+  const tabunganQuotes = await db.query.motivations.findMany({
+    where: eq(motivations.category, "tabungan"),
+    limit: 45,
+  });
+
+  if (tabunganQuotes.length === 0) {
+    return "Setiap setoran adalah janji kecil pada dirimu di masa depan.";
+  }
+
+  const randomIdx = Math.floor(Math.random() * tabunganQuotes.length);
+  return tabunganQuotes[randomIdx].text.replace(/{nama}/g, userName || "Kawan");
+}
+
+/** Validasi & mutasi saldo rekening yang terhubung saat setor/tarik tabungan. */
+async function applySavingsAccountMutation(
+  userId: string,
+  rawAccountId: string | null | undefined,
+  amount: number,
+  direction: "deposit" | "withdraw"
+): Promise<{ accountId: string | null; accountName: string | null; error: string | null }> {
+  const targetAccountId = rawAccountId && rawAccountId.trim() ? rawAccountId.trim() : null;
+  if (!targetAccountId) {
+    return { accountId: null, accountName: null, error: null };
+  }
+
+  const acc = await db.query.accounts.findFirst({
+    where: and(eq(accounts.id, targetAccountId), eq(accounts.userId, userId)),
+  });
+
+  if (!acc) {
+    return {
+      accountId: null,
+      accountName: null,
+      error: direction === "deposit" ? "Rekening sumber tidak ditemukan" : "Rekening tujuan tidak ditemukan",
+    };
+  }
+
+  if (direction === "deposit") {
+    if (Number(acc.balance) < amount) {
+      return {
+        accountId: null,
+        accountName: null,
+        error: `Saldo ${acc.name} tidak mencukupi (Tersedia: Rp ${Number(acc.balance).toLocaleString("id-ID")}, Setoran: Rp ${amount.toLocaleString("id-ID")})`,
+      };
+    }
+
+    const updated = await db
+      .update(accounts)
+      .set({
+        balance: sql`${accounts.balance} - ${BigInt(amount)}`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accounts.id, targetAccountId), eq(accounts.userId, userId), gte(accounts.balance, BigInt(amount))))
+      .returning();
+
+    if (updated.length === 0) {
+      return {
+        accountId: null,
+        accountName: null,
+        error: `Saldo ${acc.name} tidak mencukupi untuk setoran ini`,
+      };
+    }
+  } else {
+    await db
+      .update(accounts)
+      .set({
+        balance: sql`${accounts.balance} + ${BigInt(amount)}`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accounts.id, targetAccountId), eq(accounts.userId, userId)));
+  }
+
+  return { accountId: acc.id, accountName: acc.name, error: null };
+}
 
 /**
  * 1. Ambil Semua Data Tabungan & Target Pengguna (PRD S1, S3)
@@ -40,15 +128,22 @@ export async function getSavingsDataAction() {
       return { success: true, data: { goals: [], totalSaved: 0 } };
     }
 
-    const goals = await db.query.savingsGoals.findMany({
-      where: eq(savingsGoals.userId, userId),
-      orderBy: [desc(savingsGoals.createdAt)],
-    });
-
-    const entries = await db.query.savingsEntries.findMany({
-      where: eq(savingsEntries.userId, userId),
-      orderBy: [desc(savingsEntries.occurredOn), desc(savingsEntries.createdAt)],
-    });
+    const [goals, entries, userProfile] = await Promise.all([
+      db.query.savingsGoals.findMany({
+        where: eq(savingsGoals.userId, userId),
+        orderBy: [desc(savingsGoals.createdAt)],
+      }),
+      db.query.savingsEntries.findMany({
+        where: eq(savingsEntries.userId, userId),
+        with: {
+          account: true,
+        },
+        orderBy: [desc(savingsEntries.occurredOn), desc(savingsEntries.createdAt)],
+      }),
+      db.query.profiles.findFirst({
+        where: eq(profiles.id, userId),
+      }),
+    ]);
 
     // Map total terkumpul per goal
     const goalMap: Record<string, number> = {};
@@ -71,6 +166,9 @@ export async function getSavingsDataAction() {
         amount: amt,
         date: e.occurredOn,
         note: e.note || (e.type === "deposit" ? "Setoran Tabungan" : "Penarikan Tabungan"),
+        source: e.source || "manual",
+        accountId: e.accountId || null,
+        accountName: e.account?.name || null,
       });
     });
 
@@ -128,6 +226,7 @@ export async function getSavingsDataAction() {
       data: {
         goals: formattedGoals,
         totalSaved,
+        autoCarryoverGoalId: userProfile?.autoCarryoverGoalId || null,
       },
     };
   } catch (error) {
@@ -288,6 +387,11 @@ export async function depositToGoalAction(rawInput: SavingsEntryInput) {
 
     const dateStr = input.date || new Date().toISOString().split("T")[0];
 
+    const accResult = await applySavingsAccountMutation(userId, input.accountId, input.amount, "deposit");
+    if (accResult.error) {
+      return { success: false, error: accResult.error };
+    }
+
     // Simpan entri setoran
     await db.insert(savingsEntries).values({
       goalId: input.goalId,
@@ -297,28 +401,22 @@ export async function depositToGoalAction(rawInput: SavingsEntryInput) {
       occurredOn: dateStr,
       note: input.note || "Setoran Tabungan",
       source: "manual",
+      accountId: accResult.accountId,
     });
 
     // Ambil kutipan motivasi acak kategori tabungan (PRD M7)
-    const tabunganQuotes = await db.query.motivations.findMany({
-      where: eq(motivations.category, "tabungan"),
-      limit: 45,
-    });
-
-    let motivationQuote = "Setiap setoran adalah janji kecil pada dirimu di masa depan.";
-    if (tabunganQuotes.length > 0) {
-      const randomIdx = Math.floor(Math.random() * tabunganQuotes.length);
-      motivationQuote = tabunganQuotes[randomIdx].text.replace(/{nama}/g, user.user_metadata?.name || "Kawan");
-    }
+    const motivationQuote = await pickTabunganMotivation(user.user_metadata?.name || "Kawan");
 
     revalidatePath("/savings");
     revalidatePath("/dashboard");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
     return {
       success: true,
       data: {
         motivationQuote,
+        accountName: accResult.accountName,
       },
     };
   } catch (error) {
@@ -379,6 +477,11 @@ export async function withdrawFromGoalAction(rawInput: SavingsEntryInput) {
 
     const dateStr = input.date || new Date().toISOString().split("T")[0];
 
+    const accResult = await applySavingsAccountMutation(userId, input.accountId, input.amount, "withdraw");
+    if (accResult.error) {
+      return { success: false, error: accResult.error };
+    }
+
     // Simpan entri penarikan
     await db.insert(savingsEntries).values({
       goalId: input.goalId,
@@ -388,15 +491,154 @@ export async function withdrawFromGoalAction(rawInput: SavingsEntryInput) {
       occurredOn: dateStr,
       note: input.note || "Penarikan Tabungan",
       source: "manual",
+      accountId: accResult.accountId,
     });
 
     revalidatePath("/savings");
     revalidatePath("/dashboard");
     revalidatePath("/statistics");
+    revalidatePath("/accounts");
 
-    return { success: true };
+    return {
+      success: true,
+      data: {
+        accountName: accResult.accountName,
+      },
+    };
   } catch (error) {
     console.error("Gagal menarik dana tabungan:", error);
     return { success: false, error: "Gagal memproses penarikan tabungan" };
+  }
+}
+
+/**
+ * 7. Simpan Target Default Auto-Carryover Sisa Hemat (PRD S9)
+ */
+export async function updateAutoCarryoverGoalAction(goalId: string | null) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const userId = user?.id;
+    if (!userId) return { success: false, error: "Pengguna belum login" };
+
+    if (goalId) {
+      const goal = await db.query.savingsGoals.findFirst({
+        where: and(eq(savingsGoals.id, goalId), eq(savingsGoals.userId, userId)),
+      });
+      if (!goal) {
+        return { success: false, error: "Target tabungan tidak ditemukan" };
+      }
+    }
+
+    await db
+      .update(profiles)
+      .set({
+        autoCarryoverGoalId: goalId,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, userId));
+
+    revalidatePath("/savings");
+    revalidatePath("/dashboard");
+    revalidatePath("/profile");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Gagal menyimpan target carryover:", error);
+    return { success: false, error: "Gagal memperbarui target default sisa hemat" };
+  }
+}
+
+/**
+ * 8. Pindahkan Sisa Hemat Harian / Siklus ke Target Tabungan (Idempoten per carryoverKey)
+ */
+export async function claimCarryoverSavingsAction(rawInput: ClaimCarryoverInput) {
+  try {
+    const validation = carryoverSchema.safeParse(rawInput);
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.issues.map((i) => i.message).join(", "),
+      };
+    }
+
+    const input = validation.data;
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const userId = user?.id;
+    if (!userId) return { success: false, error: "Pengguna belum login" };
+
+    const [goal, existingClaim] = await Promise.all([
+      db.query.savingsGoals.findFirst({
+        where: and(eq(savingsGoals.id, input.goalId), eq(savingsGoals.userId, userId)),
+      }),
+      db.query.savingsEntries.findFirst({
+        where: and(
+          eq(savingsEntries.userId, userId),
+          eq(savingsEntries.carryoverKey, input.carryoverKey)
+        ),
+      }),
+    ]);
+
+    if (!goal) {
+      return { success: false, error: "Target tabungan tidak ditemukan" };
+    }
+
+    if (existingClaim) {
+      return {
+        success: false,
+        error: "Sisa hemat untuk periode ini sudah dipindahkan ke tabungan.",
+      };
+    }
+
+    const accResult = await applySavingsAccountMutation(userId, input.accountId, input.amount, "deposit");
+    if (accResult.error) {
+      return { success: false, error: accResult.error };
+    }
+
+    const dateStr = getJakartaDateKey();
+
+    await db.insert(savingsEntries).values({
+      goalId: input.goalId,
+      userId,
+      type: "deposit",
+      amount: BigInt(input.amount),
+      occurredOn: dateStr,
+      note: input.note || "Carryover sisa hemat harian",
+      source: "carryover",
+      carryoverKey: input.carryoverKey,
+      accountId: accResult.accountId,
+    });
+
+    // Simpan goal pilihan ini sebagai default jika belum diset
+    await db
+      .update(profiles)
+      .set({ autoCarryoverGoalId: input.goalId, updatedAt: new Date() })
+      .where(eq(profiles.id, userId));
+
+    const motivationQuote = await pickTabunganMotivation(user.user_metadata?.name || "Kawan");
+
+    revalidatePath("/savings");
+    revalidatePath("/dashboard");
+    revalidatePath("/statistics");
+    revalidatePath("/accounts");
+
+    return {
+      success: true,
+      data: {
+        goalName: goal.name,
+        accountName: accResult.accountName,
+        motivationQuote,
+      },
+    };
+  } catch (error) {
+    console.error("Gagal memindahkan sisa hemat ke tabungan:", error);
+    return { success: false, error: "Gagal memindahkan sisa hemat" };
   }
 }

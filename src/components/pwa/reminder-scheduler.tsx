@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { getProfileAction } from "@/app/actions/profile";
 import { getDashboardDataAction } from "@/app/actions/dashboard";
+import { getUpcomingDueDebtsAction } from "@/app/actions/debts";
 import {
   scheduleNativeDailyReminder,
   cancelNativeDailyReminder,
   notifyDailyLimitAlert,
+  notifyDebtDueAlerts,
+  notifyPaydayReminder,
   REMINDER_SCHEDULE_SLOTS,
   type DailyLimitAlertPayload,
 } from "@/lib/native-notifications";
@@ -23,19 +26,33 @@ export function ReminderScheduler() {
   useEffect(() => {
     const checkDailyLimitOnWake = async () => {
       try {
-        const dash = await getDashboardDataAction();
-        if (dash.success && dash.data && dash.data.todayAlertLevel && dash.data.todayAlertLevel !== "ok") {
-          await notifyDailyLimitAlert(
-            {
-              todayBudget: dash.data.todayBudget ?? dash.data.dailyLimit,
-              todayExpense: dash.data.todayExpense ?? 0,
-              todayRemaining: dash.data.todayRemaining ?? 0,
-              overLimitAmount: dash.data.overLimitAmount ?? 0,
-              usagePercent: dash.data.todayUsagePercent ?? 0,
-              level: dash.data.todayAlertLevel,
-            },
-            false
-          );
+        const [dash, dueDebtsRes] = await Promise.all([
+          getDashboardDataAction(),
+          getUpcomingDueDebtsAction(),
+        ]);
+
+        if (dash.success && dash.data) {
+          if (dash.data.todayAlertLevel && dash.data.todayAlertLevel !== "ok") {
+            await notifyDailyLimitAlert(
+              {
+                todayBudget: dash.data.todayBudget ?? dash.data.dailyLimit,
+                todayExpense: dash.data.todayExpense ?? 0,
+                todayRemaining: dash.data.todayRemaining ?? 0,
+                overLimitAmount: dash.data.overLimitAmount ?? 0,
+                usagePercent: dash.data.todayUsagePercent ?? 0,
+                level: dash.data.todayAlertLevel,
+              },
+              false
+            );
+          }
+
+          if (dash.data.paydayPrompt) {
+            await notifyPaydayReminder(dash.data.paydayPrompt);
+          }
+        }
+
+        if (dueDebtsRes.success && dueDebtsRes.data && dueDebtsRes.data.length > 0) {
+          await notifyDebtDueAlerts(dueDebtsRes.data);
         }
       } catch {}
     };
@@ -68,21 +85,23 @@ export function ReminderScheduler() {
     syncFromServer();
     checkDailyLimitOnWake();
 
-    const handleDailyLimitAlertEvent = (e: Event) => {
+    const handleSmartAlertEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
         title: string;
         body: string;
-        snapshot: DailyLimitAlertPayload;
+        level?: DailyLimitAlertPayload["level"];
+        snapshot?: DailyLimitAlertPayload;
       };
       if (detail?.title && detail?.body) {
         setInAppAlert({
           title: detail.title,
           body: detail.body,
-          level: detail.snapshot?.level || "warning",
+          level: detail.level || detail.snapshot?.level || "warning",
         });
       }
     };
-    window.addEventListener("sakuin:daily-limit-alert", handleDailyLimitAlertEvent);
+    window.addEventListener("sakuin:daily-limit-alert", handleSmartAlertEvent);
+    window.addEventListener("sakuin:smart-alert", handleSmartAlertEvent);
 
     // 2. Fungsi pemicu notifikasi
     const fireNotification = async (title: string, body: string) => {
@@ -173,7 +192,8 @@ export function ReminderScheduler() {
       window.removeEventListener("focus", handleWakeup);
       window.removeEventListener("pageshow", handleWakeup);
       window.removeEventListener("sakuin:reminder-updated", handleReminderUpdated);
-      window.removeEventListener("sakuin:daily-limit-alert", handleDailyLimitAlertEvent);
+      window.removeEventListener("sakuin:daily-limit-alert", handleSmartAlertEvent);
+      window.removeEventListener("sakuin:smart-alert", handleSmartAlertEvent);
     };
   }, []);
 

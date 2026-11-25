@@ -10,6 +10,11 @@ import {
   SlidersHorizontal,
   Trash2,
   X,
+  Lock,
+  CheckCircle2,
+  RotateCcw,
+  Edit3,
+  AlertCircle,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
@@ -19,6 +24,14 @@ import {
   transferBalanceAction,
   deleteAccountAction,
 } from "@/app/actions/accounts";
+import {
+  getLockedFundsAction,
+  createLockedFundAction,
+  updateLockedFundAction,
+  payLockedFundAction,
+  reopenLockedFundAction,
+  deleteLockedFundAction,
+} from "@/app/actions/locked-funds";
 
 interface AccountItem {
   id: string;
@@ -30,6 +43,19 @@ interface AccountItem {
   icon: string;
   isDefault: boolean;
 }
+
+interface LockedFundItem {
+  id: string;
+  name: string;
+  amount: number;
+  dueDay: number | null;
+  isPaid: boolean;
+  paidAt: string | null;
+  paidAccountName: string | null;
+  note: string;
+}
+
+const LOCKED_PRESETS = ["Uang Kos", "WiFi / Internet", "Token Listrik", "Cicilan / SPP"];
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
@@ -58,25 +84,53 @@ export default function AccountsPage() {
   // Form States - Adjust
   const [adjustBalance, setAdjustBalance] = useState<string>("");
 
+  // Locked Funds (Dana Terkunci / Tagihan Wajib) States
+  const [lockedFundsList, setLockedFundsList] = useState<LockedFundItem[]>([]);
+  const [showLockedModal, setShowLockedModal] = useState(false);
+  const [editingLockedFund, setEditingLockedFund] = useState<LockedFundItem | null>(null);
+  const [lockedName, setLockedName] = useState("");
+  const [lockedAmount, setLockedAmount] = useState("");
+  const [lockedDueDay, setLockedDueDay] = useState("");
+  const [lockedNote, setLockedNote] = useState("");
+
+  const [payTargetFund, setPayTargetFund] = useState<LockedFundItem | null>(null);
+  const [payAccountId, setPayAccountId] = useState("");
+  const [payRecordExpense, setPayRecordExpense] = useState(true);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadData = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const res = await getAccountsAction();
+      const [res, lockedRes] = await Promise.all([
+        getAccountsAction(),
+        getLockedFundsAction(),
+      ]);
+
       if (res.success && res.data) {
         const list = res.data.accounts || [];
         const computedSum = list.reduce((sum, a) => sum + Number(a.balance || 0), 0);
         setAccounts(list);
         if (list.length >= 2) {
-          setFromAccountId(list[0].id);
-          setToAccountId(list[1].id);
+          setFromAccountId((prev) => prev || list[0].id);
+          setToAccountId((prev) => prev || list[1].id);
+        }
+        if (list.length > 0) {
+          const def = list.find((a) => a.isDefault) || list[0];
+          setPayAccountId((prev) => (prev && list.some((a) => a.id === prev) ? prev : def.id));
         }
         try {
           localStorage.setItem(
             "sakuin_cached_accounts",
             JSON.stringify({ totalBalance: computedSum, accounts: list })
           );
+        } catch {}
+      }
+
+      if (lockedRes.success && lockedRes.data) {
+        setLockedFundsList(lockedRes.data.funds || []);
+        try {
+          localStorage.setItem("sakuin_cached_locked_funds", JSON.stringify(lockedRes.data));
         } catch {}
       }
     } catch (e) {
@@ -99,13 +153,35 @@ export default function AccountsPage() {
             setFromAccountId(list[0].id);
             setToAccountId(list[1].id);
           }
+          if (list.length > 0) {
+            const def = list.find((a: any) => a.isDefault) || list[0];
+            setPayAccountId(def.id);
+          }
           setIsLoading(false);
           hasCache = true;
+        }
+      }
+
+      const cachedLocked = localStorage.getItem("sakuin_cached_locked_funds");
+      if (cachedLocked) {
+        const parsedLocked = JSON.parse(cachedLocked);
+        if (parsedLocked && Array.isArray(parsedLocked.funds)) {
+          setLockedFundsList(parsedLocked.funds);
         }
       }
     } catch {}
 
     loadData(hasCache);
+
+    const handleRefresh = () => {
+      loadData(true);
+    };
+    window.addEventListener("sakuin:data-invalidated", handleRefresh);
+    window.addEventListener("sakuin:sync-complete", handleRefresh);
+    return () => {
+      window.removeEventListener("sakuin:data-invalidated", handleRefresh);
+      window.removeEventListener("sakuin:sync-complete", handleRefresh);
+    };
   }, []);
 
   const handleAddAccount = async (e: React.FormEvent) => {
@@ -211,6 +287,111 @@ export default function AccountsPage() {
   };
 
   const computedTotalBalance = accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+  const activeLockedFunds = lockedFundsList.filter((f) => !f.isPaid);
+  const paidLockedFunds = lockedFundsList.filter((f) => f.isPaid);
+  const activeLockedTotal = activeLockedFunds.reduce((sum, f) => sum + f.amount, 0);
+  const freeSpendableTotal = Math.max(0, computedTotalBalance - activeLockedTotal);
+
+  const openCreateLockedModal = () => {
+    setEditingLockedFund(null);
+    setLockedName("");
+    setLockedAmount("");
+    setLockedDueDay("");
+    setLockedNote("");
+    setShowLockedModal(true);
+  };
+
+  const openEditLockedModal = (fund: LockedFundItem) => {
+    setEditingLockedFund(fund);
+    setLockedName(fund.name);
+    setLockedAmount(String(fund.amount));
+    setLockedDueDay(fund.dueDay ? String(fund.dueDay) : "");
+    setLockedNote(fund.note || "");
+    setShowLockedModal(true);
+  };
+
+  const handleSaveLockedFund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseInt(lockedAmount || "0", 10);
+    const dueNum = lockedDueDay ? Math.min(31, Math.max(1, parseInt(lockedDueDay, 10))) : null;
+    if (!lockedName.trim() || amt <= 0 || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = editingLockedFund
+        ? await updateLockedFundAction(editingLockedFund.id, {
+            name: lockedName.trim(),
+            amount: amt,
+            dueDay: dueNum,
+            note: lockedNote.trim() || null,
+          })
+        : await createLockedFundAction({
+            name: lockedName.trim(),
+            amount: amt,
+            dueDay: dueNum,
+            note: lockedNote.trim() || null,
+          });
+
+      if (res.success) {
+        setShowLockedModal(false);
+        await loadData(true);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+      } else {
+        alert(res.error || "Gagal menyimpan tagihan wajib");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePayLockedFund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payTargetFund || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await payLockedFundAction({
+        id: payTargetFund.id,
+        accountId: payAccountId || undefined,
+        recordExpense: Boolean(payAccountId && payRecordExpense),
+      });
+
+      if (res.success) {
+        setPayTargetFund(null);
+        await loadData(true);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+      } else {
+        alert(res.error || "Gagal memproses pelunasan");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReopenLockedFund = async (id: string) => {
+    const res = await reopenLockedFundAction(id);
+    if (res.success) {
+      await loadData(true);
+      window.dispatchEvent(new Event("sakuin:data-invalidated"));
+    } else {
+      alert(res.error || "Gagal mengaktifkan tagihan");
+    }
+  };
+
+  const handleDeleteLockedFund = async (id: string, name: string) => {
+    if (!confirm(`Hapus pos dana terkunci "${name}"?`)) return;
+    const res = await deleteLockedFundAction(id);
+    if (res.success) {
+      await loadData(true);
+      window.dispatchEvent(new Event("sakuin:data-invalidated"));
+    } else {
+      alert(res.error || "Gagal menghapus pos tagihan");
+    }
+  };
   const bankTotal = accounts
     .filter((a) => a.type === "bank")
     .reduce((sum, a) => sum + Number(a.balance || 0), 0);
@@ -315,6 +496,22 @@ export default function AccountsPage() {
             <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(cashTotal)}</p>
           </div>
         </div>
+
+        {activeLockedTotal > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/60 text-xs">
+            <div className="flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-[#FFB04A]" />
+              <span className="text-muted-foreground">
+                Dana Terkunci ({activeLockedFunds.length} tagihan):{" "}
+                <strong className="text-[#FFB04A]">{formatRupiah(activeLockedTotal)}</strong>
+              </span>
+            </div>
+            <span className="text-muted-foreground">
+              Saldo Bebas Pakai:{" "}
+              <strong className="text-accent">{formatRupiah(freeSpendableTotal)}</strong>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 3. Daftar Kartu Rekening */}
@@ -389,6 +586,155 @@ export default function AccountsPage() {
           );
         })}
       </div>
+
+      {/* 3.5 POS DANA TERKUNCI / TAGIHAN WAJIB (Kos, WiFi, Token, Cicilan) */}
+      <section id="dana-terkunci" className="bg-card border border-border rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-[#FFB04A]/15 text-[#FFB04A] flex items-center justify-center shrink-0 mt-0.5">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-foreground">
+                Pos Dana Terkunci / Tagihan Wajib
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pisahkan uang Kos, WiFi, atau cicilan agar tidak ikut terbagi ke batas jajan harian.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={openCreateLockedModal}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-accent hover:brightness-105 text-[#1F1F1F] shadow-xs transition-all self-start sm:self-auto shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>Kunci Dana Tagihan</span>
+          </button>
+        </div>
+
+        {activeLockedFunds.length === 0 && paidLockedFunds.length === 0 ? (
+          <div className="p-5 rounded-xl bg-background/70 border border-dashed border-border text-center space-y-2">
+            <p className="text-xs font-bold text-foreground">Belum ada pos dana terkunci</p>
+            <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+              Contoh: masih memegang uang Kos Rp 800.000 di rekening? Kunci di sini supaya jatah harianmu dihitung dari sisa uang bebasnya saja.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {activeLockedFunds.length > 0 && (
+              <div className="space-y-2">
+                {activeLockedFunds.map((fund) => (
+                  <div
+                    key={fund.id}
+                    className="p-3.5 rounded-xl bg-background border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs sm:text-sm font-black text-foreground">
+                          {fund.name}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A]">
+                          Terkunci
+                        </span>
+                        {fund.dueDay && (
+                          <span className="text-[10px] font-semibold text-muted-foreground">
+                            Jatuh tempo tgl {fund.dueDay}
+                          </span>
+                        )}
+                      </div>
+                      {fund.note && (
+                        <p className="text-[11px] text-muted-foreground truncate">{fund.note}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
+                      <span className="text-sm font-black text-[#FFB04A]">
+                        {formatRupiah(fund.amount)}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPayTargetFund(fund);
+                            setPayRecordExpense(true);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all"
+                        >
+                          Bayar / Lunasi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditLockedModal(fund)}
+                          title="Ubah tagihan"
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLockedFund(fund.id, fund.name)}
+                          title="Hapus tagihan"
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-expense hover:bg-expense/10"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {paidLockedFunds.length > 0 && (
+              <div className="pt-2 border-t border-border/60 space-y-2">
+                <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">
+                  Sudah Lunas Periode Ini ({paidLockedFunds.length})
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {paidLockedFunds.map((fund) => (
+                    <div
+                      key={fund.id}
+                      className="p-3 rounded-xl bg-background/60 border border-border/70 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-accent shrink-0" />
+                          <span className="font-bold text-foreground truncate">{fund.name}</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground pl-5 truncate">
+                          {formatRupiah(fund.amount)}
+                          {fund.paidAccountName ? ` • ${fund.paidAccountName}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleReopenLockedFund(fund.id)}
+                          title="Kunci lagi untuk bulan depan"
+                          className="px-2 py-1 rounded-md border border-border text-[10px] font-bold text-foreground hover:bg-muted flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Aktifkan</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLockedFund(fund.id, fund.name)}
+                          title="Hapus"
+                          className="p-1 text-muted-foreground hover:text-expense rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* 4. MODAL: Tambah Rekening */}
       {showAddModal && (
@@ -718,6 +1064,223 @@ export default function AccountsPage() {
                   className="flex-1 py-2.5 rounded-xl bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 disabled:opacity-50"
                 >
                   {isSubmitting ? "Menyimpan..." : "Perbarui Saldo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. MODAL: Tambah / Ubah Dana Terkunci (Tagihan Wajib) */}
+      {showLockedModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-foreground">
+                {editingLockedFund ? "Ubah Tagihan Wajib" : "Kunci Dana Tagihan Wajib"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowLockedModal(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!editingLockedFund && (
+              <div className="flex flex-wrap gap-1.5">
+                {LOCKED_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setLockedName(preset)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                      lockedName === preset
+                        ? "border-accent bg-accent/15 text-foreground"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveLockedFund} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground">Nama Tagihan / Pos</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={60}
+                  value={lockedName}
+                  onChange={(e) => setLockedName(e.target.value)}
+                  placeholder="Contoh: Uang Kos, WiFi, Token Listrik..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground">Nominal Dikunci</label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 text-xs font-black text-muted-foreground">
+                    Rp
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    value={parseInt(lockedAmount || "0", 10) > 0 ? parseInt(lockedAmount || "0", 10).toLocaleString("id-ID") : ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setLockedAmount(raw);
+                    }}
+                    placeholder="0"
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm font-black focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Tgl Jatuh Tempo</span>
+                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={lockedDueDay}
+                    onChange={(e) => setLockedDueDay(e.target.value)}
+                    placeholder="Misal: 5"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Catatan</span>
+                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={80}
+                    value={lockedNote}
+                    onChange={(e) => setLockedNote(e.target.value)}
+                    placeholder="Misal: Transfer ke ibu kos"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLockedModal(false)}
+                  className="w-1/3 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !lockedName.trim() || parseInt(lockedAmount || "0", 10) <= 0}
+                  className="flex-1 py-2.5 rounded-xl bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 disabled:opacity-50"
+                >
+                  {isSubmitting ? "Menyimpan..." : editingLockedFund ? "Simpan Perubahan" : "Kunci Dana"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL: Bayar / Lunasi Tagihan Wajib */}
+      {payTargetFund && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-foreground">
+                  Bayar {payTargetFund.name}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Nominal tagihan: <strong className="text-foreground">{formatRupiah(payTargetFund.amount)}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPayTargetFund(null)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePayLockedFund} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground">Sumber Pembayaran</label>
+                <select
+                  value={payAccountId}
+                  onChange={(e) => setPayAccountId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">Tandai lunas saja (tanpa ubah saldo rekening)</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      Potong {acc.name} (Saldo: {formatRupiah(acc.balance)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {payAccountId && (
+                <label className="flex items-center gap-2 text-xs text-foreground font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={payRecordExpense}
+                    onChange={(e) => setPayRecordExpense(e.target.checked)}
+                    className="rounded border-border accent-accent"
+                  />
+                  <span>Catat juga ke Riwayat Pengeluaran</span>
+                </label>
+              )}
+
+              {payAccountId && (() => {
+                const selectedPayAcc = accounts.find((a) => a.id === payAccountId);
+                if (selectedPayAcc && selectedPayAcc.balance < payTargetFund.amount) {
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-expense/10 border border-expense/30 text-expense text-xs font-semibold">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Saldo {selectedPayAcc.name} ({formatRupiah(selectedPayAcc.balance)}) kurang dari nominal tagihan.
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPayTargetFund(null)}
+                  className="w-1/3 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    Boolean(
+                      payAccountId &&
+                        (accounts.find((a) => a.id === payAccountId)?.balance ?? 0) < payTargetFund.amount
+                    )
+                  }
+                  className="flex-1 py-2.5 rounded-xl bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 disabled:opacity-50"
+                >
+                  {isSubmitting ? "Memproses..." : "Konfirmasi Lunas"}
                 </button>
               </div>
             </form>

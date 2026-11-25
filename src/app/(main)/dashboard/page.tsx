@@ -26,6 +26,9 @@ import {
   HandCoins,
   Briefcase,
   GraduationCap,
+  Lock,
+  PiggyBank,
+  CheckCircle2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,6 +49,8 @@ import {
 } from "@/lib/finance";
 import { getDashboardDataAction, getNextMotivationAction } from "@/app/actions/dashboard";
 import { getAccountsAction } from "@/app/actions/accounts";
+import { claimCarryoverSavingsAction } from "@/app/actions/savings";
+import { createTransactionAction } from "@/app/actions/transactions";
 import { BrandText } from "@/components/ui/brand-logo";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
@@ -93,6 +98,26 @@ interface DashboardData {
   reserveValue?: number;
   reservedTotal?: number;
   spendableBalance?: number;
+  lockedTotal?: number;
+  rawLockedTotal?: number;
+  lockedFundsCount?: number;
+  freeBalance?: number;
+  carryoverOffer?: {
+    carryoverKey: string;
+    dateKey: string;
+    dateLabel: string;
+    amount: number;
+    yesterdayBudget: number;
+    yesterdayExpense: number;
+    preferredGoalId: string | null;
+    goals: Array<{ id: string; name: string }>;
+  } | null;
+  paydayPrompt?: {
+    dateKey: string;
+    dateLabel: string;
+    cycle: AllowanceCycle;
+    suggestedAmount: number;
+  } | null;
   remainingDays: number;
   remainingBalance: number;
   remainingBudget?: number;
@@ -158,6 +183,19 @@ export default function DashboardPage() {
   const [showMotivation, setShowMotivation] = useState(true);
   const [isRefreshingQuote, setIsRefreshingQuote] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [carryoverGoalId, setCarryoverGoalId] = useState<string>("");
+  const [carryoverAccountId, setCarryoverAccountId] = useState<string>("");
+  const [isClaimingCarryover, setIsClaimingCarryover] = useState(false);
+  const [dismissedCarryoverKey, setDismissedCarryoverKey] = useState<string | null>(null);
+  const [carryoverSuccessToast, setCarryoverSuccessToast] = useState<{
+    message: string;
+    quote: string;
+  } | null>(null);
+  const [paydayAmount, setPaydayAmount] = useState<string>("");
+  const [paydayAccountId, setPaydayAccountId] = useState<string>("");
+  const [isSubmittingPayday, setIsSubmittingPayday] = useState(false);
+  const [dismissedPaydayKey, setDismissedPaydayKey] = useState<string | null>(null);
+  const [paydaySuccessMsg, setPaydaySuccessMsg] = useState<string | null>(null);
   const shouldReduceMotion = useReducedMotion();
 
   const loadData = async () => {
@@ -323,16 +361,161 @@ export default function DashboardPage() {
     heroMainBalance,
     dashboardData?.remainingDays ?? 1,
     dashboardData?.reserveMode ?? "none",
-    dashboardData?.reserveValue ?? 0
+    dashboardData?.reserveValue ?? 0,
+    dashboardData?.rawLockedTotal ?? dashboardData?.lockedTotal ?? 0
   );
   const heroDailyLimit = dashboardData ? heroAdaptive.dailyLimit : 0;
   const heroReservedTotal = dashboardData ? heroAdaptive.reservedTotal : 0;
+  const heroLockedTotal = dashboardData ? heroAdaptive.lockedTotal : 0;
+  const heroFreeBalance = dashboardData ? heroAdaptive.freeBalance : heroMainBalance;
   const heroStatus =
     heroDailyLimit >= 65000
       ? { status: "safe" as const, label: "Aman" }
       : heroDailyLimit >= 30000
       ? { status: "warning" as const, label: "Waspada" }
       : { status: "danger" as const, label: "Kritis" };
+
+  const carryoverOffer = dashboardData?.carryoverOffer || null;
+  const paydayPrompt = dashboardData?.paydayPrompt || null;
+
+  useEffect(() => {
+    if (!carryoverOffer) return;
+    if (!carryoverGoalId && carryoverOffer.preferredGoalId) {
+      setCarryoverGoalId(carryoverOffer.preferredGoalId);
+    }
+    try {
+      const dismissed = localStorage.getItem(`sakuin_dismissed_carryover_${carryoverOffer.carryoverKey}`);
+      if (dismissed) setDismissedCarryoverKey(carryoverOffer.carryoverKey);
+    } catch {}
+  }, [carryoverOffer?.carryoverKey, carryoverOffer?.preferredGoalId]);
+
+  useEffect(() => {
+    if (!paydayPrompt) return;
+    if (!paydayAmount && paydayPrompt.suggestedAmount > 0) {
+      setPaydayAmount(String(paydayPrompt.suggestedAmount));
+    }
+    try {
+      const dismissed = localStorage.getItem(`sakuin_dismissed_payday_${paydayPrompt.dateKey}`);
+      if (dismissed) setDismissedPaydayKey(paydayPrompt.dateKey);
+    } catch {}
+  }, [paydayPrompt?.dateKey, paydayPrompt?.suggestedAmount]);
+
+  useEffect(() => {
+    if (accountsList.length === 0) return;
+    const def = accountsList.find((a) => a.isDefault) || accountsList[0];
+    if (carryoverAccountId === "" && def?.id) setCarryoverAccountId(def.id);
+    if (paydayAccountId === "" && def?.id) setPaydayAccountId(def.id);
+  }, [accountsList, carryoverAccountId, paydayAccountId]);
+
+  const handleConfirmPayday = async () => {
+    if (!paydayPrompt || isSubmittingPayday) return;
+    const amt = parseInt(paydayAmount.replace(/[^0-9]/g, "") || "0", 10);
+    if (amt <= 0) return;
+
+    setIsSubmittingPayday(true);
+    try {
+      const res = await createTransactionAction({
+        type: "income",
+        amount: amt,
+        categoryName: "Uang Kiriman",
+        note: `Uang kiriman ${paydayPrompt.cycle === "weekly" ? "mingguan" : "bulanan"} (${paydayPrompt.dateLabel})`,
+        accountId: paydayAccountId || undefined,
+        occurredOn: paydayPrompt.dateKey,
+      });
+
+      if (res.success) {
+        if (paydayAccountId) {
+          setAccountsList((prev) => {
+            const updated = prev.map((acc) =>
+              acc.id === paydayAccountId
+                ? { ...acc, balance: Number(acc.balance || 0) + amt }
+                : acc
+            );
+            try {
+              const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
+              localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
+            } catch {}
+            return updated;
+          });
+        }
+        setDismissedPaydayKey(paydayPrompt.dateKey);
+        setPaydaySuccessMsg(`Uang kiriman ${formatRupiah(amt)} berhasil dicatat masuk!`);
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+        await loadData();
+        setTimeout(() => setPaydaySuccessMsg(null), 6000);
+      } else {
+        alert(res.error || "Gagal mencatat uang kiriman");
+      }
+    } catch (err) {
+      console.error("Gagal catat kiriman:", err);
+    } finally {
+      setIsSubmittingPayday(false);
+    }
+  };
+
+  const handleDismissPayday = () => {
+    if (!paydayPrompt) return;
+    setDismissedPaydayKey(paydayPrompt.dateKey);
+    try {
+      localStorage.setItem(`sakuin_dismissed_payday_${paydayPrompt.dateKey}`, "1");
+    } catch {}
+  };
+
+  const handleClaimCarryover = async () => {
+    if (!carryoverOffer || isClaimingCarryover) return;
+    const targetGoalId = carryoverGoalId || carryoverOffer.preferredGoalId || carryoverOffer.goals[0]?.id;
+    if (!targetGoalId) return;
+
+    setIsClaimingCarryover(true);
+    try {
+      const res = await claimCarryoverSavingsAction({
+        goalId: targetGoalId,
+        amount: carryoverOffer.amount,
+        carryoverKey: carryoverOffer.carryoverKey,
+        accountId: carryoverAccountId || undefined,
+        note: `Sisa hemat harian (${carryoverOffer.dateLabel})`,
+      });
+
+      if (res.success) {
+        if (carryoverAccountId) {
+          setAccountsList((prev) => {
+            const updated = prev.map((acc) =>
+              acc.id === carryoverAccountId
+                ? { ...acc, balance: Number(acc.balance || 0) - carryoverOffer.amount }
+                : acc
+            );
+            try {
+              const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
+              localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
+            } catch {}
+            return updated;
+          });
+        }
+        setDismissedCarryoverKey(carryoverOffer.carryoverKey);
+        setCarryoverSuccessToast({
+          message: `Sisa hemat ${formatRupiah(carryoverOffer.amount)} dipindahkan ke ${res.data?.goalName || "Tabungan"}!`,
+          quote: res.data?.motivationQuote || "Uang hemat hari kemarin kini jadi tabungan masa depanmu.",
+        });
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+        await loadData();
+        setTimeout(() => setCarryoverSuccessToast(null), 7000);
+      } else {
+        alert(res.error || "Gagal memindahkan sisa hemat ke tabungan");
+      }
+    } catch (err) {
+      console.error("Gagal claim carryover:", err);
+    } finally {
+      setIsClaimingCarryover(false);
+    }
+  };
+
+  const handleDismissCarryover = () => {
+    if (!carryoverOffer) return;
+    setDismissedCarryoverKey(carryoverOffer.carryoverKey);
+    try {
+      localStorage.setItem(`sakuin_dismissed_carryover_${carryoverOffer.carryoverKey}`, "1");
+    } catch {}
+  };
 
   // Deteksi Bulan Terboros (PRD G5)
   const highestMonth =
@@ -444,6 +627,28 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* Rincian Dana Terkunci (Tagihan Wajib) jika aktif */}
+            {heroLockedTotal > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-background/80 border border-border/80 text-[11px]">
+                <div className="flex items-center gap-1.5 text-foreground font-semibold">
+                  <Lock className="w-3.5 h-3.5 text-[#FFB04A] shrink-0" />
+                  <span>
+                    Terkunci: <strong className="text-[#FFB04A]">{formatRupiah(heroLockedTotal)}</strong>
+                  </span>
+                  <span className="text-muted-foreground">•</span>
+                  <span>
+                    Bebas Pakai: <strong className="text-accent">{formatRupiah(heroFreeBalance)}</strong>
+                  </span>
+                </div>
+                <Link
+                  href="/accounts#dana-terkunci"
+                  className="text-[10px] font-black text-accent hover:underline shrink-0"
+                >
+                  Atur Tagihan →
+                </Link>
+              </div>
+            )}
+
             {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
@@ -496,7 +701,12 @@ export default function DashboardPage() {
                 {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
                   <span className="text-[10px] text-muted-foreground block mt-0.5">
                     Sisihkan {formatRupiah(heroReservedTotal)}
+                    {heroLockedTotal > 0 ? " (dari saldo bebas)" : ""}
                   </span>
+                ) : heroLockedTotal > 0 ? (
+                  <Link href="/accounts#dana-terkunci" className="text-[10px] text-muted-foreground/80 hover:text-accent block mt-0.5">
+                    Dihitung dari saldo bebas pakai →
+                  </Link>
                 ) : (
                   <Link href="/profile" className="text-[10px] text-muted-foreground/80 hover:text-accent block mt-0.5">
                     Bagi rata (Atur sisihan →)
@@ -571,6 +781,198 @@ export default function DashboardPage() {
               </div>
             )}
           </section>
+
+          {/* 2.05 Kartu Konfirmasi Hari Kiriman (Payday Prompt) */}
+          {paydaySuccessMsg && (
+            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm flex items-center gap-2 text-xs font-black text-accent">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{paydaySuccessMsg}</span>
+            </div>
+          )}
+
+          {paydayPrompt && dismissedPaydayKey !== paydayPrompt.dateKey && (
+            <section className="bg-card border border-accent/40 rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0 mt-0.5">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-foreground">
+                      Hari ini jadwal kirimanmu ({paydayPrompt.dateLabel})!
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Sudah masuk? Konfirmasi 1 ketuk untuk langsung update saldo &amp; riwayat pemasukan.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDismissPayday}
+                  title="Tutup pengingat hari kiriman"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="relative flex items-center bg-background border border-border rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-accent">
+                  <span className="text-xs font-black text-muted-foreground mr-1.5">Rp</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={parseInt(paydayAmount || "0", 10) > 0 ? parseInt(paydayAmount || "0", 10).toLocaleString("id-ID") : ""}
+                    onChange={(e) => setPaydayAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="Nominal kiriman"
+                    className="flex-1 min-w-0 bg-transparent text-xs font-black text-foreground focus:outline-none"
+                  />
+                </div>
+                <select
+                  value={paydayAccountId}
+                  onChange={(e) => setPaydayAccountId(e.target.value)}
+                  className="px-3 py-2 rounded-lg bg-background border border-border text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">Catat tanpa pilih rekening</option>
+                  {accountsList.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      Masuk ke: {acc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmittingPayday || parseInt(paydayAmount || "0", 10) <= 0}
+                  onClick={handleConfirmPayday}
+                  className="flex-1 py-2 px-3 rounded-full bg-accent hover:brightness-110 disabled:opacity-50 text-[#1F1F1F] text-xs font-black transition-all flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isSubmittingPayday ? "Mencatat..." : "Catat Kiriman Masuk"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissPayday}
+                  className="px-3 py-2 rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                >
+                  Nanti
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* 2.1 Toast Konfirmasi / Kartu Penawaran Carryover Sisa Hemat Kemarin (PRD S9) */}
+          {carryoverSuccessToast && (
+            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm space-y-1">
+              <div className="flex items-center gap-2 text-xs font-black text-accent">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{carryoverSuccessToast.message}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground italic pl-6">
+                &ldquo;{carryoverSuccessToast.quote}&rdquo;
+              </p>
+            </div>
+          )}
+
+          {carryoverOffer && dismissedCarryoverKey !== carryoverOffer.carryoverKey && (
+            <section className="bg-card border border-accent/35 rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0 mt-0.5">
+                    <PiggyBank className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-foreground">
+                      Hemat {formatRupiah(carryoverOffer.amount)} kemarin ({carryoverOffer.dateLabel})!
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Jatah harian {formatRupiah(carryoverOffer.yesterdayBudget)}, terpakai{" "}
+                      {formatRupiah(carryoverOffer.yesterdayExpense)}. Mau amankan sisanya ke tabungan?
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDismissCarryover}
+                  title="Lewati hari ini"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {carryoverOffer.goals.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={carryoverGoalId || carryoverOffer.preferredGoalId || ""}
+                      onChange={(e) => setCarryoverGoalId(e.target.value)}
+                      className="px-3 py-2 rounded-lg bg-background border border-border text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      {carryoverOffer.goals.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          Target: {g.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={carryoverAccountId}
+                      onChange={(e) => setCarryoverAccountId(e.target.value)}
+                      className="px-3 py-2 rounded-lg bg-background border border-border text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      <option value="">Catat saja (tanpa potong rekening)</option>
+                      {accountsList.map((acc) => (
+                        <option key={acc.id} value={acc.id} disabled={Number(acc.balance || 0) < carryoverOffer.amount}>
+                          Dari {acc.name} ({formatRupiah(acc.balance || 0)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isClaimingCarryover}
+                      onClick={handleClaimCarryover}
+                      className="flex-1 py-2 px-3 rounded-full bg-accent hover:brightness-110 disabled:opacity-50 text-[#1F1F1F] text-xs font-black transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <PiggyBank className="w-3.5 h-3.5" />
+                      <span>
+                        {isClaimingCarryover
+                          ? "Memindahkan..."
+                          : `Pindahkan ${formatRupiah(carryoverOffer.amount)}`}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDismissCarryover}
+                      className="px-3 py-2 rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                    >
+                      Lewati
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/savings"
+                    className="flex-1 py-2 px-3 rounded-full bg-accent hover:brightness-110 text-[#1F1F1F] text-xs font-black text-center transition-all"
+                  >
+                    Buat Target Tabungan Dulu
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleDismissCarryover}
+                    className="px-3 py-2 rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                  >
+                    Lewati
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* 2.2 Kartu Rekening (HP: horizontal snap, md ke atas: grid 2-3 kolom) */}
           <div className="space-y-2.5">

@@ -19,6 +19,9 @@ import {
   Check,
   ChevronRight,
   AlertCircle,
+  Landmark,
+  Smartphone,
+  Banknote,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
@@ -28,7 +31,9 @@ import {
   deleteSavingsGoalAction,
   depositToGoalAction,
   withdrawFromGoalAction,
+  updateAutoCarryoverGoalAction,
 } from "@/app/actions/savings";
+import { getAccountsAction } from "@/app/actions/accounts";
 
 interface GoalEntry {
   id: string;
@@ -36,6 +41,17 @@ interface GoalEntry {
   amount: number;
   date: string;
   note: string;
+  source?: string;
+  accountId?: string | null;
+  accountName?: string | null;
+}
+
+interface AccountItem {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  isDefault: boolean;
 }
 
 interface GoalItem {
@@ -89,18 +105,37 @@ export default function SavingsPage() {
   const [actionNote, setActionNote] = useState("");
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
+  // Multi-Rekening State
+  const [accountsList, setAccountsList] = useState<AccountItem[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [autoCarryoverGoalId, setAutoCarryoverGoalId] = useState<string>("");
+  const [isSavingCarryoverPref, setIsSavingCarryoverPref] = useState(false);
+
   // Toast Motivasi Tabungan (PRD M7)
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastQuote, setToastQuote] = useState("");
 
+  const syncDefaultAccount = (list: AccountItem[]) => {
+    setSelectedAccountId((prev) => {
+      if (prev === "") {
+        const def = list.find((a) => a.isDefault) || list[0];
+        return def?.id || "";
+      }
+      if (list.some((a) => a.id === prev)) return prev;
+      const def = list.find((a) => a.isDefault) || list[0];
+      return def?.id || "";
+    });
+  };
+
   const loadSavings = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const res = await getSavingsDataAction();
+      const [res, accRes] = await Promise.all([getSavingsDataAction(), getAccountsAction()]);
       if (res.success && res.data) {
         setGoals(res.data.goals);
         setTotalSaved(res.data.totalSaved);
+        setAutoCarryoverGoalId(res.data.autoCarryoverGoalId || "");
         try {
           localStorage.setItem("sakuin_cached_savings", JSON.stringify(res.data));
         } catch {}
@@ -110,6 +145,14 @@ export default function SavingsPage() {
           const updated = res.data.goals.find((g: GoalItem) => g.id === detailGoal.id);
           if (updated) setDetailGoal(updated);
         }
+      }
+
+      if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
+        setAccountsList(accRes.data.accounts);
+        syncDefaultAccount(accRes.data.accounts);
+        try {
+          localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
+        } catch {}
       }
     } catch (err) {
       console.error("Gagal memuat tabungan:", err);
@@ -131,9 +174,29 @@ export default function SavingsPage() {
           hasCache = true;
         }
       }
+
+      const cachedAcc = localStorage.getItem("sakuin_cached_accounts");
+      if (cachedAcc) {
+        const parsedAcc = JSON.parse(cachedAcc);
+        const list = Array.isArray(parsedAcc) ? parsedAcc : parsedAcc?.accounts || [];
+        if (list.length > 0) {
+          setAccountsList(list);
+          syncDefaultAccount(list);
+        }
+      }
     } catch {}
 
     loadSavings(hasCache);
+
+    const handleRefresh = () => {
+      loadSavings(true);
+    };
+    window.addEventListener("sakuin:data-invalidated", handleRefresh);
+    window.addEventListener("sakuin:sync-complete", handleRefresh);
+    return () => {
+      window.removeEventListener("sakuin:data-invalidated", handleRefresh);
+      window.removeEventListener("sakuin:sync-complete", handleRefresh);
+    };
   }, []);
 
   // Open Create Goal Modal
@@ -222,6 +285,31 @@ export default function SavingsPage() {
     }
   };
 
+  const ensureSelectedAccount = () => {
+    if (!selectedAccountId && accountsList.length > 0) {
+      const def = accountsList.find((a) => a.isDefault) || accountsList[0];
+      if (def) setSelectedAccountId(def.id);
+    }
+  };
+
+  const applyLocalAccountDelta = (accountId: string, delta: number) => {
+    if (!accountId) return;
+    setAccountsList((prev) => {
+      const updated = prev.map((acc) =>
+        acc.id === accountId ? { ...acc, balance: acc.balance + delta } : acc
+      );
+      try {
+        const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
+        localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const selectedAccount = accountsList.find((a) => a.id === selectedAccountId);
+  const isDepositInsufficient =
+    Boolean(selectedAccount) && actionAmount > 0 && (selectedAccount?.balance ?? 0) < actionAmount;
+
   // Open Deposit Modal
   const openDepositModal = (goal?: GoalItem) => {
     const target = goal || goals[0] || null;
@@ -229,6 +317,7 @@ export default function SavingsPage() {
     setActionAmount(0);
     setActionDate(new Date().toISOString().split("T")[0]);
     setActionNote("");
+    ensureSelectedAccount();
     setIsDepositModalOpen(true);
   };
 
@@ -239,6 +328,7 @@ export default function SavingsPage() {
     setActionAmount(0);
     setActionDate(new Date().toISOString().split("T")[0]);
     setActionNote("");
+    ensureSelectedAccount();
     setIsWithdrawModalOpen(true);
   };
 
@@ -247,6 +337,11 @@ export default function SavingsPage() {
     e.preventDefault();
     if (!selectedGoalForAction || actionAmount <= 0 || isSubmittingAction) return;
 
+    if (isDepositInsufficient && selectedAccount) {
+      alert(`Saldo ${selectedAccount.name} tidak mencukupi untuk setoran ini.`);
+      return;
+    }
+
     setIsSubmittingAction(true);
     try {
       const res = await depositToGoalAction({
@@ -254,15 +349,22 @@ export default function SavingsPage() {
         amount: actionAmount,
         date: actionDate,
         note: actionNote.trim() || undefined,
+        accountId: selectedAccountId || undefined,
       });
 
       if (res.success) {
+        if (selectedAccountId) {
+          applyLocalAccountDelta(selectedAccountId, -actionAmount);
+        }
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+
+        const accLabel = res.data?.accountName ? ` dari ${res.data.accountName}` : "";
         setIsDepositModalOpen(false);
-        setToastMessage(`Berhasil menyetor ${formatRupiah(actionAmount)} ke ${selectedGoalForAction.name}!`);
+        setToastMessage(`Berhasil menyetor ${formatRupiah(actionAmount)} ke ${selectedGoalForAction.name}${accLabel}!`);
         setToastQuote(res.data?.motivationQuote || "Setiap rupiah yang ditabung adalah ketenangan di masa depan.");
         setShowToast(true);
 
-        await loadSavings();
+        await loadSavings(true);
         setTimeout(() => setShowToast(false), 6000);
       } else {
         alert(res.error || "Gagal menyetor dana");
@@ -291,15 +393,26 @@ export default function SavingsPage() {
         amount: actionAmount,
         date: actionDate,
         note: actionNote.trim() || undefined,
+        accountId: selectedAccountId || undefined,
       });
 
       if (res.success) {
+        if (selectedAccountId) {
+          applyLocalAccountDelta(selectedAccountId, actionAmount);
+        }
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+
+        const accLabel = res.data?.accountName ? ` ke ${res.data.accountName}` : "";
         setIsWithdrawModalOpen(false);
-        setToastMessage(`Berhasil menarik ${formatRupiah(actionAmount)} dari ${selectedGoalForAction.name}.`);
-        setToastQuote("Dana telah dialihkan kembali ke saldo aktifmu.");
+        setToastMessage(`Berhasil menarik ${formatRupiah(actionAmount)} dari ${selectedGoalForAction.name}${accLabel}.`);
+        setToastQuote(
+          res.data?.accountName
+            ? `Dana telah ditambahkan kembali ke saldo ${res.data.accountName}.`
+            : "Dana telah dialihkan kembali ke saldo aktifmu."
+        );
         setShowToast(true);
 
-        await loadSavings();
+        await loadSavings(true);
         setTimeout(() => setShowToast(false), 5000);
       } else {
         alert(res.error || "Gagal menarik dana");
@@ -308,6 +421,111 @@ export default function SavingsPage() {
       console.error("Gagal tarik dana:", err);
     } finally {
       setIsSubmittingAction(false);
+    }
+  };
+
+  const renderAccountPicker = (mode: "deposit" | "withdraw") => {
+    if (accountsList.length === 0) return null;
+    const isDeposit = mode === "deposit";
+
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-foreground">
+            {isDeposit ? "Ambil dari Rekening" : "Masukkan ke Rekening"}
+          </label>
+          <span className="text-[10px] text-muted-foreground">Saldo otomatis terupdate</span>
+        </div>
+
+        <div
+          className={`grid gap-2 ${
+            accountsList.length === 1
+              ? "grid-cols-1"
+              : accountsList.length === 2
+              ? "grid-cols-2"
+              : "grid-cols-2 sm:grid-cols-3"
+          }`}
+        >
+          {accountsList.map((acc) => {
+            const isSelected = selectedAccountId === acc.id;
+            const isInsufficient = isDeposit && actionAmount > 0 && acc.balance < actionAmount;
+            const AccIcon =
+              acc.type === "bank" ? Landmark : acc.type === "ewallet" ? Smartphone : Banknote;
+
+            return (
+              <button
+                key={acc.id}
+                type="button"
+                onClick={() => setSelectedAccountId(acc.id)}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 ${
+                  isSelected
+                    ? isInsufficient
+                      ? "border-expense bg-expense/10 text-expense ring-1 ring-expense"
+                      : "border-accent bg-accent/15 text-foreground ring-1 ring-accent"
+                    : isInsufficient
+                    ? "border-border/60 bg-background/50 text-muted-foreground opacity-60 hover:opacity-100"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-5 h-5 rounded bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
+                    <AccIcon className="w-3 h-3" />
+                  </div>
+                  <span className="text-[11px] font-bold truncate text-foreground">{acc.name}</span>
+                </div>
+                <div className="flex items-center justify-between gap-1 w-full">
+                  <span className="text-[10px] font-semibold text-muted-foreground truncate">
+                    {formatRupiah(acc.balance)}
+                  </span>
+                  {isInsufficient && (
+                    <span className="text-[9px] font-bold text-expense bg-expense/15 px-1 py-0.5 rounded shrink-0">
+                      Kurang
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setSelectedAccountId("")}
+          className={`w-full py-1.5 px-3 rounded-lg border text-[11px] font-semibold transition-all text-center ${
+            selectedAccountId === ""
+              ? "border-accent bg-accent/10 text-foreground"
+              : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Catat saja (tanpa ubah saldo rekening)
+        </button>
+
+        {isDeposit && isDepositInsufficient && selectedAccount && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>
+              Saldo <strong>{selectedAccount.name}</strong> ({formatRupiah(selectedAccount.balance)}) tidak cukup. Pilih rekening lain atau kurangi nominal.
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleChangeCarryoverGoal = async (nextGoalId: string) => {
+    setAutoCarryoverGoalId(nextGoalId);
+    setIsSavingCarryoverPref(true);
+    try {
+      const res = await updateAutoCarryoverGoalAction(nextGoalId || null);
+      if (res.success) {
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+      } else {
+        alert(res.error || "Gagal menyimpan target carryover");
+      }
+    } catch (err) {
+      console.error("Gagal ubah target carryover:", err);
+    } finally {
+      setIsSavingCarryoverPref(false);
     }
   };
 
@@ -411,6 +629,36 @@ export default function SavingsPage() {
           </button>
         </div>
       </section>
+
+      {/* 1.5 Pengaturan Target Default Sisa Hemat (Carryover - PRD S9) */}
+      {goals.length > 0 && (
+        <section className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
+              <span className="text-xs font-extrabold text-foreground">
+                Target Default Sisa Hemat
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Sisa jatah harian yang tidak terpakai ditawarkan masuk ke target ini.
+            </p>
+          </div>
+          <select
+            value={autoCarryoverGoalId}
+            disabled={isSavingCarryoverPref}
+            onChange={(e) => handleChangeCarryoverGoal(e.target.value)}
+            className="sm:w-52 px-3 py-2 bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer disabled:opacity-60"
+          >
+            <option value="">Pilih otomatis / tanya tiap kali</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </section>
+      )}
 
       {/* 2. Daftar Target Impian (PRD S1, S3, S4, S6) */}
       <div className="space-y-3">
@@ -563,7 +811,7 @@ export default function SavingsPage() {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4"
+              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <div>
@@ -656,6 +904,9 @@ export default function SavingsPage() {
                   </div>
                 </div>
 
+                {/* Pilih Sumber Rekening */}
+                {renderAccountPicker("deposit")}
+
                 {/* Catatan / Keterangan */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground block">
@@ -688,7 +939,7 @@ export default function SavingsPage() {
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={actionAmount <= 0 || isSubmittingAction}
+                    disabled={actionAmount <= 0 || isDepositInsufficient || isSubmittingAction}
                     className="w-full py-3.5 bg-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] font-black rounded-full text-xs sm:text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4 stroke-[3]" />
@@ -709,7 +960,7 @@ export default function SavingsPage() {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4"
+              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <div>
@@ -797,6 +1048,9 @@ export default function SavingsPage() {
                   </div>
                 </div>
 
+                {/* Pilih Rekening Tujuan */}
+                {renderAccountPicker("withdraw")}
+
                 {/* Catatan / Alasan Tarik */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground block">
@@ -840,7 +1094,7 @@ export default function SavingsPage() {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4"
+              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <h3 className="text-base sm:text-lg font-black text-foreground">
@@ -1034,8 +1288,18 @@ export default function SavingsPage() {
                             )}
                           </div>
                           <div>
-                            <p className="font-bold text-foreground">{entry.note}</p>
-                            <p className="text-[10px] text-muted-foreground">{entry.date}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-bold text-foreground">{entry.note}</p>
+                              {entry.source === "carryover" && (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+                                  Sisa Hemat
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">
+                              {entry.date}
+                              {entry.accountName ? ` • ${entry.accountName}` : ""}
+                            </p>
                           </div>
                         </div>
 

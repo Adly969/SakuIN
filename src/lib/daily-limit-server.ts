@@ -1,5 +1,13 @@
 import { db } from "@/db";
-import { profiles, transactions, accounts, savingsEntries } from "@/db/schema";
+import {
+  profiles,
+  transactions,
+  accounts,
+  savingsEntries,
+  lockedFunds,
+  budgets,
+  categoryBudgets,
+} from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import {
   calculateRemainingDays,
@@ -26,6 +34,101 @@ export function getJakartaDateKey(date: Date = new Date()): string {
   }).format(date);
 }
 
+const SHORT_WEEKDAY_MAP: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+export function getJakartaDayAndWeekday(date: Date = new Date()): {
+  day: number;
+  weekday: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    weekday: "short",
+  }).formatToParts(date);
+  const dayPart = parts.find((p) => p.type === "day")?.value || "1";
+  const weekdayPart = parts.find((p) => p.type === "weekday")?.value || "Mon";
+  return {
+    day: parseInt(dayPart, 10) || 1,
+    weekday: SHORT_WEEKDAY_MAP[weekdayPart] ?? 1,
+  };
+}
+
+export interface CategoryLimitAlertPayload {
+  categoryName: string;
+  spent: number;
+  limit: number;
+  remaining: number;
+  overAmount: number;
+  usagePercent: number;
+  level: "ok" | "warning" | "reached" | "exceeded";
+}
+
+export async function evaluateCategoryBudgetForUser(
+  userId: string,
+  categoryId: string,
+  categoryName: string,
+  monthKey: string
+): Promise<CategoryLimitAlertPayload | null> {
+  const monthDate = `${monthKey}-01`;
+  const monthBudget = await db.query.budgets.findFirst({
+    where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
+  });
+  if (!monthBudget) return null;
+
+  const catBudget = await db.query.categoryBudgets.findFirst({
+    where: and(
+      eq(categoryBudgets.budgetId, monthBudget.id),
+      eq(categoryBudgets.categoryId, categoryId)
+    ),
+  });
+  if (!catBudget) return null;
+
+  const limit = Number(catBudget.limitAmount || 0);
+  if (limit <= 0) return null;
+
+  const userCatTx = await db.query.transactions.findMany({
+    where: and(
+      eq(transactions.userId, userId),
+      eq(transactions.categoryId, categoryId),
+      eq(transactions.type, "expense"),
+      isNull(transactions.deletedAt)
+    ),
+  });
+
+  const spent = userCatTx
+    .filter((t) => (t.occurredOn ? t.occurredOn.slice(0, 7) === monthKey : false))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+  const usagePercent = Math.round((spent / limit) * 100);
+  const remaining = Math.max(0, limit - spent);
+  const overAmount = Math.max(0, spent - limit);
+
+  let level: CategoryLimitAlertPayload["level"] = "ok";
+  if (spent > limit) level = "exceeded";
+  else if (spent === limit || usagePercent >= 100) level = "reached";
+  else if (usagePercent >= 80) level = "warning";
+
+  if (level === "ok") return null;
+
+  return {
+    categoryName,
+    spent,
+    limit,
+    remaining,
+    overAmount,
+    usagePercent,
+    level,
+  };
+}
+
 /**
  * Menghitung status pemakaian batas harian hari ini untuk user tertentu
  */
@@ -34,14 +137,19 @@ export async function evaluateDailyLimitForUser(userId: string): Promise<DailyLi
   const todayKey = getJakartaDateKey(today);
   const currentMonthKey = todayKey.slice(0, 7);
 
-  const [userProfile, userAccounts, userTransactions, userSavings] = await Promise.all([
+  const [userProfile, userAccounts, userTransactions, userSavings, activeLockedFunds] = await Promise.all([
     db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
     db.query.accounts.findMany({ where: eq(accounts.userId, userId) }),
     db.query.transactions.findMany({
       where: and(eq(transactions.userId, userId), isNull(transactions.deletedAt)),
     }),
     db.query.savingsEntries.findMany({ where: eq(savingsEntries.userId, userId) }),
+    db.query.lockedFunds.findMany({
+      where: and(eq(lockedFunds.userId, userId), eq(lockedFunds.isPaid, false)),
+    }),
   ]);
+
+  const lockedTotal = activeLockedFunds.reduce((sum, f) => sum + Number(f.amount || 0), 0);
 
   const allowance = Number(userProfile?.monthlyAllowance || 0);
   const paydayDay = userProfile?.paydayDay || 1;
@@ -94,7 +202,8 @@ export async function evaluateDailyLimitForUser(userId: string): Promise<DailyLi
     todayStartBalance,
     remainingDays,
     reserveMode,
-    reserveValue
+    reserveValue,
+    lockedTotal
   );
 
   const todayBudget = todayAdaptive.dailyLimit;

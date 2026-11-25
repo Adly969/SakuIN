@@ -2,7 +2,15 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { profiles, transactions, savingsEntries, motivations, accounts } from "@/db/schema";
+import {
+  profiles,
+  transactions,
+  savingsEntries,
+  savingsGoals,
+  motivations,
+  accounts,
+  lockedFunds,
+} from "@/db/schema";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import {
   formatIndonesianDate,
@@ -12,7 +20,7 @@ import {
   type AllowanceCycle,
   type ReserveMode,
 } from "@/lib/finance";
-import { getJakartaDateKey } from "@/lib/daily-limit-server";
+import { getJakartaDateKey, getJakartaDayAndWeekday } from "@/lib/daily-limit-server";
 
 export async function getDashboardDataAction() {
   try {
@@ -61,13 +69,16 @@ export async function getDashboardDataAction() {
       });
     }
 
-    // Filter transaksi bulan ini (YYYY-MM) & hari ini (YYYY-MM-DD WIB)
+    // Filter transaksi bulan ini (YYYY-MM) & hari ini / kemarin (YYYY-MM-DD WIB)
     const todayKey = getJakartaDateKey(today);
+    const yesterdayDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayKey = getJakartaDateKey(yesterdayDate);
     const currentMonthKey = todayKey.slice(0, 7);
 
     let totalExpense = 0;
     let totalIncome = 0;
     let todayExpense = 0;
+    let yesterdayExpense = 0;
     const categoryTotals: Record<string, { amount: number; count: number }> = {};
     const monthlyExpenseMap: Record<string, number> = {};
 
@@ -79,6 +90,9 @@ export async function getDashboardDataAction() {
         monthlyExpenseMap[txMonthKey] = (monthlyExpenseMap[txMonthKey] || 0) + amt;
         if (tx.occurredOn === todayKey) {
           todayExpense += amt;
+        }
+        if (tx.occurredOn === yesterdayKey) {
+          yesterdayExpense += amt;
         }
 
         if (txMonthKey === currentMonthKey) {
@@ -101,12 +115,29 @@ export async function getDashboardDataAction() {
       }
     });
 
-    // 5. Cek Mutasi Tabungan Bulan Ini (PRD S5)
+    // 5. Cek Mutasi Tabungan, Target Tabungan & Dana Terkunci (PRD S5, S9)
     let totalSavedMonth = 0;
+    let userSavings: Array<typeof savingsEntries.$inferSelect> = [];
+    let userGoals: Array<typeof savingsGoals.$inferSelect> = [];
+    let lockedTotal = 0;
+    let lockedFundsCount = 0;
+
     if (userId) {
-      const userSavings = await db.query.savingsEntries.findMany({
-        where: eq(savingsEntries.userId, userId),
-      });
+      const [fetchedSavings, fetchedGoals, activeLockedFunds] = await Promise.all([
+        db.query.savingsEntries.findMany({ where: eq(savingsEntries.userId, userId) }),
+        db.query.savingsGoals.findMany({
+          where: eq(savingsGoals.userId, userId),
+          orderBy: [desc(savingsGoals.createdAt)],
+        }),
+        db.query.lockedFunds.findMany({
+          where: and(eq(lockedFunds.userId, userId), eq(lockedFunds.isPaid, false)),
+        }),
+      ]);
+
+      userSavings = fetchedSavings;
+      userGoals = fetchedGoals;
+      lockedFundsCount = activeLockedFunds.length;
+      lockedTotal = activeLockedFunds.reduce((sum, f) => sum + Number(f.amount || 0), 0);
 
       userSavings.forEach((s) => {
         const sMonthKey = s.occurredOn ? s.occurredOn.slice(0, 7) : currentMonthKey;
@@ -154,11 +185,14 @@ export async function getDashboardDataAction() {
       remainingBalance,
       remainingDays,
       reserveMode,
-      reserveValue
+      reserveValue,
+      lockedTotal
     );
     const dailyLimit = adaptive.dailyLimit;
     const reservedTotal = adaptive.reservedTotal;
     const spendableBalance = adaptive.spendableBalance;
+    const freeBalance = adaptive.freeBalance;
+    const appliedLockedTotal = adaptive.lockedTotal;
     const status = getSpendingStatus(dailyLimit);
 
     // Evaluasi status batas harian hari ini (untuk peringatan mendekati/mencapai limit)
@@ -167,9 +201,46 @@ export async function getDashboardDataAction() {
       todayStartBalance,
       remainingDays,
       reserveMode,
-      reserveValue
+      reserveValue,
+      lockedTotal
     );
     const todayBudget = todayAdaptive.dailyLimit;
+
+    // Evaluasi Penawaran Auto-Carryover Sisa Hemat Kemarin -> Tabungan (PRD S9)
+    const carryoverKey = `daily:${yesterdayKey}`;
+    const alreadyClaimedYesterday = userSavings.some((s) => s.carryoverKey === carryoverKey);
+    const profileCreatedKey = userProfile?.createdAt
+      ? getJakartaDateKey(new Date(userProfile.createdAt))
+      : todayKey;
+    const yesterdayStartBalance = remainingBalance + todayExpense + yesterdayExpense;
+    const yesterdayAdaptive = calculateAdaptiveDailyLimit(
+      yesterdayStartBalance,
+      remainingDays + 1,
+      reserveMode,
+      reserveValue,
+      lockedTotal
+    );
+    const yesterdaySavedAmount = Math.max(0, yesterdayAdaptive.dailyLimit - yesterdayExpense);
+    const canOfferCarryover =
+      Boolean(userId) &&
+      profileCreatedKey < todayKey &&
+      !alreadyClaimedYesterday &&
+      yesterdayAdaptive.dailyLimit > 0 &&
+      yesterdaySavedAmount >= 1000 &&
+      remainingBalance >= yesterdaySavedAmount;
+
+    const carryoverOffer = canOfferCarryover
+      ? {
+          carryoverKey,
+          dateKey: yesterdayKey,
+          dateLabel: formatIndonesianDate(yesterdayDate).short,
+          amount: yesterdaySavedAmount,
+          yesterdayBudget: yesterdayAdaptive.dailyLimit,
+          yesterdayExpense,
+          preferredGoalId: userProfile?.autoCarryoverGoalId || userGoals[0]?.id || null,
+          goals: userGoals.map((g) => ({ id: g.id, name: g.name })),
+        }
+      : null;
     const todayRemaining = Math.max(0, todayBudget - todayExpense);
     const overLimitAmount = Math.max(0, todayExpense - todayBudget);
     const todayUsagePercent =
@@ -202,12 +273,36 @@ export async function getDashboardDataAction() {
       recentIds = userProfile.recentMotivationIds as string[];
     }
 
+    const { day: jakartaDay, weekday: jakartaWeekday } = getJakartaDayAndWeekday(today);
     const isPayday =
       allowanceCycle === "weekly"
-        ? today.getDay() === paydayWeekday
+        ? jakartaWeekday === paydayWeekday
         : allowanceCycle === "monthly"
-        ? today.getDate() === paydayDay || today.getDate() === 1
+        ? jakartaDay === paydayDay || jakartaDay === 1
         : false;
+
+    const isExactScheduledPayday =
+      allowanceCycle === "weekly"
+        ? jakartaWeekday === paydayWeekday
+        : allowanceCycle === "monthly"
+        ? jakartaDay === paydayDay
+        : false;
+    const hasIncomeToday = userTransactions.some(
+      (tx) => tx.type === "income" && tx.occurredOn === todayKey
+    );
+    const paydayPrompt =
+      Boolean(userId) &&
+      allowance > 0 &&
+      isExactScheduledPayday &&
+      !hasIncomeToday &&
+      profileCreatedKey < todayKey
+        ? {
+            dateKey: todayKey,
+            dateLabel: dateInfo.short,
+            cycle: allowanceCycle,
+            suggestedAmount: allowance,
+          }
+        : null;
 
     let eligible = allMotivations.filter((m) => !recentIds.includes(m.id));
     if (eligible.length === 0) {
@@ -378,6 +473,12 @@ export async function getDashboardDataAction() {
         reserveValue,
         reservedTotal,
         spendableBalance,
+        lockedTotal: appliedLockedTotal,
+        rawLockedTotal: lockedTotal,
+        lockedFundsCount,
+        freeBalance,
+        carryoverOffer,
+        paydayPrompt,
         remainingDays,
         remainingBalance,
         remainingBudget,

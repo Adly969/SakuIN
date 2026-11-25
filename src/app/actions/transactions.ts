@@ -6,7 +6,11 @@ import { transactions, categories, accounts } from "@/db/schema";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { evaluateDailyLimitForUser, getJakartaDateKey } from "@/lib/daily-limit-server";
+import {
+  evaluateDailyLimitForUser,
+  evaluateCategoryBudgetForUser,
+  getJakartaDateKey,
+} from "@/lib/daily-limit-server";
 
 // Skema Validasi Zod Server-side
 const createTransactionSchema = z
@@ -163,15 +167,20 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
     revalidatePath("/statistics");
     revalidatePath("/accounts");
 
-    // Evaluasi apakah pengeluaran hari ini mendekati atau mencapai batas harian
-    const dailyLimitAlert =
+    // Evaluasi apakah pengeluaran hari ini mendekati atau mencapai batas harian / batas kategori
+    const [dailyLimitAlert, categoryLimitAlert] = await Promise.all([
       input.type === "expense" && dateStr === getJakartaDateKey()
-        ? await evaluateDailyLimitForUser(userId)
-        : null;
+        ? evaluateDailyLimitForUser(userId)
+        : Promise.resolve(null),
+      input.type === "expense"
+        ? evaluateCategoryBudgetForUser(userId, category.id, category.name, dateStr.slice(0, 7))
+        : Promise.resolve(null),
+    ]);
 
     return {
       success: true,
       dailyLimitAlert,
+      categoryLimitAlert,
       data: {
         id: newTransaction.id,
         title: input.customLabel || input.categoryName,

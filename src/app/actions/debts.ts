@@ -6,6 +6,7 @@ import { debts, debtPayments, accounts } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getJakartaDateKey } from "@/lib/daily-limit-server";
 
 const createDebtSchema = z.object({
   type: z.enum(["payable", "receivable"]), // 'payable' (Saya Berutang) | 'receivable' (Teman Ngutang)
@@ -273,5 +274,63 @@ export async function deleteDebtAction(debtId: string) {
   } catch (error) {
     console.error("Gagal menghapus utang:", error);
     return { success: false, error: "Gagal menghapus catatan utang piutang" };
+  }
+}
+
+export interface DueDebtReminderItem {
+  id: string;
+  type: "payable" | "receivable";
+  personName: string;
+  remainingAmount: number;
+  dueDate: string;
+  urgency: "overdue" | "today" | "tomorrow";
+}
+
+/**
+ * Ambil daftar utang/piutang yang jatuh tempo H-1, Hari-H, atau sudah terlewat
+ */
+export async function getUpcomingDueDebtsAction() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const userId = user?.id;
+    if (!userId) return { success: true, data: [] as DueDebtReminderItem[] };
+
+    const allDebts = await db.query.debts.findMany({
+      where: eq(debts.userId, userId),
+    });
+
+    const now = new Date();
+    const todayKey = getJakartaDateKey(now);
+    const tomorrowKey = getJakartaDateKey(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+
+    const dueList: DueDebtReminderItem[] = [];
+    for (const d of allDebts) {
+      if (d.status === "paid" || !d.dueDate) continue;
+      const remaining = Math.max(0, Number(d.amount) - Number(d.paidAmount));
+      if (remaining <= 0) continue;
+
+      if (d.dueDate <= tomorrowKey) {
+        const urgency: DueDebtReminderItem["urgency"] =
+          d.dueDate < todayKey ? "overdue" : d.dueDate === todayKey ? "today" : "tomorrow";
+        dueList.push({
+          id: d.id,
+          type: d.type as "payable" | "receivable",
+          personName: d.personName,
+          remainingAmount: remaining,
+          dueDate: d.dueDate,
+          urgency,
+        });
+      }
+    }
+
+    dueList.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    return { success: true, data: dueList };
+  } catch (error) {
+    console.error("Gagal mengecek jatuh tempo utang:", error);
+    return { success: false, data: [] as DueDebtReminderItem[] };
   }
 }

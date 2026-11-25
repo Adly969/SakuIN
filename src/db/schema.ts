@@ -155,6 +155,8 @@ export const savingsEntries = pgTable(
     occurredOn: date("occurred_on").notNull().defaultNow(),
     note: text("note"),
     source: varchar("source", { length: 20 }).default("manual").notNull(), // 'manual' | 'carryover'
+    carryoverKey: varchar("carryover_key", { length: 40 }),
+    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -295,6 +297,27 @@ export const appReleases = pgTable(
   })
 );
 
+// 15. LOCKED FUNDS (Dana Terkunci / Tagihan Wajib: Kos, WiFi, Token, Cicilan)
+export const lockedFunds = pgTable(
+  "locked_funds",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
+    dueDay: integer("due_day"),
+    isPaid: boolean("is_paid").default(false).notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    paidAccountId: uuid("paid_account_id").references(() => accounts.id, { onDelete: "set null" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userLockedIdx: index("locked_funds_user_idx").on(table.userId),
+  })
+);
+
 // RELATIONS
 export const categoriesRelations = relations(categories, ({ many }) => ({
   transactions: many(transactions),
@@ -305,6 +328,7 @@ export const accountsRelations = relations(accounts, ({ many }) => ({
   transfersFrom: many(transfers, { relationName: "fromAccount" }),
   transfersTo: many(transfers, { relationName: "toAccount" }),
   debts: many(debts),
+  savingsEntries: many(savingsEntries),
 }));
 
 export const transfersRelations = relations(transfers, ({ one }) => ({
@@ -358,5 +382,16 @@ export const savingsEntriesRelations = relations(savingsEntries, ({ one }) => ({
   goal: one(savingsGoals, {
     fields: [savingsEntries.goalId],
     references: [savingsGoals.id],
+  }),
+  account: one(accounts, {
+    fields: [savingsEntries.accountId],
+    references: [accounts.id],
+  }),
+}));
+
+export const lockedFundsRelations = relations(lockedFunds, ({ one }) => ({
+  paidAccount: one(accounts, {
+    fields: [lockedFunds.paidAccountId],
+    references: [accounts.id],
   }),
 }));

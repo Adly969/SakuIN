@@ -275,3 +275,140 @@ export async function notifyDailyLimitAlert(
   const osSent = await sendInstantNotification(title, body);
   return { sent: osSent, title, body };
 }
+
+export interface CategoryLimitAlertPayload {
+  categoryName: string;
+  spent: number;
+  limit: number;
+  remaining: number;
+  overAmount: number;
+  usagePercent: number;
+  level: "ok" | "warning" | "reached" | "exceeded";
+}
+
+/**
+ * Mengirim notifikasi ketika pengeluaran kategori tertentu mendekati/melewati batas bulanan
+ */
+export async function notifyCategoryLimitAlert(
+  snapshot: CategoryLimitAlertPayload
+): Promise<boolean> {
+  if (typeof window === "undefined" || snapshot.level === "ok") return false;
+
+  let title = "";
+  let body = "";
+  if (snapshot.level === "warning") {
+    title = `⚠️ Pos ${snapshot.categoryName} Hampir Batas (${snapshot.usagePercent}%)`;
+    body = `Terpakai ${formatRp(snapshot.spent)} dari batas ${formatRp(snapshot.limit)}. Sisa bulan ini: ${formatRp(snapshot.remaining)}.`;
+  } else if (snapshot.level === "reached") {
+    title = `🛑 Batas Kategori ${snapshot.categoryName} Tercapai!`;
+    body = `Pengeluaran ${snapshot.categoryName} sudah mencapai ${formatRp(snapshot.limit)} bulan ini.`;
+  } else {
+    title = `🚨 Pos ${snapshot.categoryName} Over Budget!`;
+    body = `Terpakai ${formatRp(snapshot.spent)} (lebih ${formatRp(snapshot.overAmount)} dari batas ${formatRp(snapshot.limit)}).`;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("sakuin:smart-alert", {
+      detail: {
+        title,
+        body,
+        level: snapshot.level,
+      },
+    })
+  );
+
+  return sendInstantNotification(title, body);
+}
+
+export interface DebtDueAlertPayload {
+  id: string;
+  type: "payable" | "receivable";
+  personName: string;
+  remainingAmount: number;
+  dueDate: string;
+  urgency: "overdue" | "today" | "tomorrow";
+}
+
+/**
+ * Mengirim pengingat jatuh tempo utang/piutang (H-1, Hari-H, atau Lewat Jatuh Tempo)
+ * Deduped 1x per hari per item.
+ */
+export async function notifyDebtDueAlerts(dueDebts: DebtDueAlertPayload[]): Promise<void> {
+  if (typeof window === "undefined" || dueDebts.length === 0) return;
+
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const unnotified = dueDebts.filter((d) => {
+    try {
+      return !localStorage.getItem(`sakuin_debt_due_${todayKey}_${d.id}`);
+    } catch {
+      return false;
+    }
+  });
+
+  if (unnotified.length === 0) return;
+
+  const first = unnotified[0];
+  const isReceivable = first.type === "receivable";
+  const prefix =
+    first.urgency === "overdue"
+      ? "⏰ Jatuh Tempo Terlewat!"
+      : first.urgency === "today"
+      ? "📅 Jatuh Tempo Hari Ini!"
+      : "🔔 Pengingat Besok Jatuh Tempo";
+
+  const title =
+    unnotified.length > 1
+      ? `${prefix} (${unnotified.length} catatan)`
+      : `${prefix} — ${first.personName}`;
+
+  const actionLabel = isReceivable
+    ? `Piutang dari ${first.personName}`
+    : `Utang ke ${first.personName}`;
+  const body =
+    unnotified.length > 1
+      ? `${actionLabel} (${formatRp(first.remainingAmount)}) dan ${unnotified.length - 1} catatan lain perlu ditindaklanjuti.`
+      : `${actionLabel} sebesar ${formatRp(first.remainingAmount)} (tenggat ${first.dueDate}).`;
+
+  for (const item of unnotified) {
+    try {
+      localStorage.setItem(`sakuin_debt_due_${todayKey}_${item.id}`, "1");
+    } catch {}
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("sakuin:smart-alert", {
+      detail: {
+        title,
+        body,
+        level: first.urgency === "overdue" ? "exceeded" : "warning",
+      },
+    })
+  );
+
+  await sendInstantNotification(title, body);
+}
+
+/**
+ * Mengirim notifikasi pengingat hari kiriman (1x per hari kiriman)
+ */
+export async function notifyPaydayReminder(payday: {
+  dateKey: string;
+  suggestedAmount: number;
+  cycle: string;
+}): Promise<void> {
+  if (typeof window === "undefined") return;
+  const storageKey = `sakuin_payday_notif_${payday.dateKey}`;
+  try {
+    if (localStorage.getItem(storageKey)) return;
+    localStorage.setItem(storageKey, "1");
+  } catch {
+    return;
+  }
+
+  const title = "💸 Hari Ini Jadwal Kiriman Masuk!";
+  const body = `Jadwal ${payday.cycle === "weekly" ? "mingguan" : "bulanan"} (${formatRp(payday.suggestedAmount)}) sudah tiba. Konfirmasi catat masuk di Beranda!`;
+
+  await sendInstantNotification(title, body);
+}

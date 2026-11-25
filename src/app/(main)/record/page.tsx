@@ -37,7 +37,10 @@ import {
 } from "@/app/actions/transactions";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { enqueueOfflineTransaction } from "@/lib/offline-queue";
-import { notifyDailyLimitAlert } from "@/lib/native-notifications";
+import {
+  notifyDailyLimitAlert,
+  notifyCategoryLimitAlert,
+} from "@/lib/native-notifications";
 
 const QUICK_AMOUNTS = [
   { label: "+10rb", value: 10000 },
@@ -210,14 +213,36 @@ export default function RecordPage() {
           try {
             localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
           } catch {}
-          const def = accRes.data.accounts.find((a) => a.isDefault) || accRes.data.accounts[0];
-          if (def?.id) setSelectedAccountId(def.id);
+          setSelectedAccountId((prev) => {
+            if (prev && accRes.data!.accounts.some((a) => a.id === prev)) return prev;
+            const def = accRes.data!.accounts.find((a) => a.isDefault) || accRes.data!.accounts[0];
+            return def?.id || "";
+          });
         }
       } catch (err) {
         console.error("Gagal inisialisasi data:", err);
       }
     }
     initData();
+
+    const refreshAccounts = async () => {
+      try {
+        const accRes = await getAccountsAction();
+        if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
+          setAccountsList(accRes.data.accounts);
+          try {
+            localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
+          } catch {}
+        }
+      } catch {}
+    };
+
+    window.addEventListener("sakuin:sync-complete", refreshAccounts);
+    window.addEventListener("sakuin:data-invalidated", refreshAccounts);
+    return () => {
+      window.removeEventListener("sakuin:sync-complete", refreshAccounts);
+      window.removeEventListener("sakuin:data-invalidated", refreshAccounts);
+    };
   }, []);
 
   // Load today's recorded transactions for context
@@ -297,6 +322,20 @@ export default function RecordPage() {
     amount > 0 &&
     selectedAccount.balance < amount;
 
+  const applyLocalAccountBalance = (accountId: string, delta: number) => {
+    if (!accountId) return;
+    setAccountsList((prev) => {
+      const updated = prev.map((acc) =>
+        acc.id === accountId ? { ...acc, balance: acc.balance + delta } : acc
+      );
+      try {
+        const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
+        localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
+      } catch {}
+      return updated;
+    });
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (amount <= 0 || isSaving) return;
@@ -318,6 +357,7 @@ export default function RecordPage() {
     const itemTitle = isCustomCategory
       ? customCategory.trim()
       : (note.trim() || selectedCategory);
+    const localDelta = recordType === "expense" ? -amount : amount;
 
     // Offline Queue
     if (typeof window !== "undefined" && !navigator.onLine) {
@@ -327,8 +367,10 @@ export default function RecordPage() {
         categoryName: finalCategory,
         note: note.trim() || undefined,
         customLabel: isCustomCategory ? customCategory.trim() : (note.trim() || undefined),
+        accountId: selectedAccountId || undefined,
         occurredOn: txDate,
       });
+      applyLocalAccountBalance(selectedAccountId, localDelta);
 
       setToastMessage(`${itemTitle} (${formatRupiah(amount)}) disimpan ke antrean offline!`);
       setShowToast(true);
@@ -359,27 +401,15 @@ export default function RecordPage() {
         setShowToast(true);
 
         // Optimistically update account balance in local state & localStorage
-        if (selectedAccountId) {
-          setAccountsList((prev) => {
-            const updated = prev.map((acc) => {
-              if (acc.id === selectedAccountId) {
-                const diff = recordType === "expense" ? -amount : amount;
-                return { ...acc, balance: acc.balance + diff };
-              }
-              return acc;
-            });
-            try {
-              const totalBalance = updated.reduce((s, a) => s + Number(a.balance || 0), 0);
-              localStorage.setItem("sakuin_cached_accounts", JSON.stringify({ totalBalance, accounts: updated }));
-            } catch {}
-            return updated;
-          });
-        }
+        applyLocalAccountBalance(selectedAccountId, localDelta);
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
 
-        // Kirim notifikasi pengingat jika mendekati atau mencapai batas harian
+        // Kirim notifikasi pengingat jika mendekati atau mencapai batas harian / batas kategori
         if (res.dailyLimitAlert && res.dailyLimitAlert.level !== "ok") {
           notifyDailyLimitAlert(res.dailyLimitAlert, true);
+        }
+        if (res.categoryLimitAlert && res.categoryLimitAlert.level !== "ok") {
+          notifyCategoryLimitAlert(res.categoryLimitAlert);
         }
 
         setAmount(0);
@@ -399,8 +429,10 @@ export default function RecordPage() {
         categoryName: finalCategory,
         note: note.trim() || undefined,
         customLabel: isCustomCategory ? customCategory.trim() : (note.trim() || undefined),
+        accountId: selectedAccountId || undefined,
         occurredOn: txDate,
       });
+      applyLocalAccountBalance(selectedAccountId, localDelta);
       setToastMessage(`${itemTitle} disimpan ke antrean offline!`);
       setShowToast(true);
       setAmount(0);
