@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, X } from "lucide-react";
 import { getProfileAction } from "@/app/actions/profile";
 import { getDashboardDataAction } from "@/app/actions/dashboard";
 import { getUpcomingDueDebtsAction } from "@/app/actions/debts";
 import {
+  isCapacitorNative,
   scheduleNativeDailyReminder,
   cancelNativeDailyReminder,
   scheduleNativeMotivationNotif,
@@ -13,12 +15,14 @@ import {
   notifyDailyLimitAlert,
   notifyDebtDueAlerts,
   notifyPaydayReminder,
+  notifyContextualMotivation,
   REMINDER_SCHEDULE_SLOTS,
   type DailyLimitAlertPayload,
 } from "@/lib/native-notifications";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 
 export function ReminderScheduler() {
+  const router = useRouter();
   const isCheckingRef = useRef(false);
   const [inAppAlert, setInAppAlert] = useState<{
     title: string;
@@ -51,6 +55,13 @@ export function ReminderScheduler() {
 
           if (dash.data.paydayPrompt) {
             await notifyPaydayReminder(dash.data.paydayPrompt);
+          }
+
+          if (dash.data.todayAlertLevel === "warning") {
+            await notifyContextualMotivation({
+              remainingPercent: Math.max(0, 100 - (dash.data.todayUsagePercent ?? 0)),
+              todayRemaining: dash.data.todayRemaining ?? 0,
+            });
           }
         }
 
@@ -106,6 +117,22 @@ export function ReminderScheduler() {
     syncFromServer();
     checkDailyLimitOnWake();
 
+    let nativeTapListener: { remove: () => Promise<void> } | null = null;
+    isCapacitorNative().then(async (native) => {
+      if (!native) return;
+      try {
+        const { LocalNotifications } = await import("@capacitor/local-notifications");
+        nativeTapListener = await LocalNotifications.addListener(
+          "localNotificationActionPerformed",
+          (action) => {
+            const targetUrl =
+              (action?.notification?.extra?.url as string | undefined) || "/dashboard";
+            router.push(targetUrl);
+          }
+        );
+      } catch {}
+    });
+
     const handleSmartAlertEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
         title: string;
@@ -137,8 +164,8 @@ export function ReminderScheduler() {
             icon: "/app-icon.png",
             badge: "/app-icon.png",
             tag: "sakuin-daily-reminder",
-            data: { url: "/record" },
-          } as any);
+            data: { url: "/dashboard" },
+          } as NotificationOptions & { data?: { url: string } });
         } else {
           new Notification(title, {
             body,
@@ -239,8 +266,11 @@ export function ReminderScheduler() {
       window.removeEventListener("sakuin:reminder-updated", handleReminderUpdated);
       window.removeEventListener("sakuin:daily-limit-alert", handleSmartAlertEvent);
       window.removeEventListener("sakuin:smart-alert", handleSmartAlertEvent);
+      if (nativeTapListener) {
+        void nativeTapListener.remove();
+      }
     };
-  }, []);
+  }, [router]);
 
   if (!inAppAlert) return null;
 
@@ -270,7 +300,7 @@ export function ReminderScheduler() {
           type="button"
           onClick={() => setInAppAlert(null)}
           aria-label="Tutup pengingat batas harian"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
         >
           <X className="w-4 h-4" />
         </button>

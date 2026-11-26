@@ -40,7 +40,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 export async function sendInstantNotification(
   title: string,
-  body: string
+  body: string,
+  url: string = "/dashboard"
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
@@ -57,6 +58,7 @@ export async function sendInstantNotification(
             schedule: { at: new Date(Date.now() + 500) },
             smallIcon: "ic_stat_icon_config_sample",
             iconColor: "#D4FF5A",
+            extra: { url },
           },
         ],
       });
@@ -75,7 +77,8 @@ export async function sendInstantNotification(
           body,
           icon: "/app-icon.png",
           badge: "/app-icon.png",
-        });
+          data: { url },
+        } as NotificationOptions & { data?: { url: string } });
         return true;
       } else {
         new Notification(title, {
@@ -168,6 +171,7 @@ export async function scheduleNativeDailyReminder(
         sound: undefined,
         smallIcon: "ic_stat_icon_config_sample",
         iconColor: "#D4FF5A",
+        extra: { url: "/dashboard" },
       }));
 
       await LocalNotifications.schedule({ notifications });
@@ -228,6 +232,7 @@ export async function scheduleNativeMotivationNotif(
           },
           smallIcon: "ic_stat_icon_config_sample",
           iconColor: "#D4FF5A",
+          extra: { url: "/dashboard" },
         },
       ],
     });
@@ -459,5 +464,50 @@ export async function notifyPaydayReminder(payday: {
   const title = "💸 Hari Ini Jadwal Kiriman Masuk!";
   const body = `Jadwal ${payday.cycle === "weekly" ? "mingguan" : "bulanan"} (${formatRp(payday.suggestedAmount)}) sudah tiba. Konfirmasi catat masuk di Beranda!`;
 
-  await sendInstantNotification(title, body);
+  await sendInstantNotification(title, body, "/dashboard");
+}
+
+/**
+ * Mengirim notifikasi motivasi kontekstual (maks 1x per hari, mengikuti toggle motivasi).
+ * Dipicu saat batas harian menipis atau streak hemat di bawah batas tercapai.
+ */
+export async function notifyContextualMotivation(params: {
+  remainingPercent?: number;
+  todayRemaining?: number;
+  streakDays?: number;
+}): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  try {
+    if (localStorage.getItem("sakuin_motivation_notif_enabled") !== "true") {
+      return false;
+    }
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const storageKey = `sakuin_contextual_motivation_${todayKey}`;
+    if (localStorage.getItem(storageKey)) return false;
+
+    let title = "";
+    let body = "";
+
+    if (params.streakDays && params.streakDays >= 3) {
+      title = `🔥 ${params.streakDays} Hari Berturut-turut Aman!`;
+      body = `Mantap! Kamu berhasil menjaga pengeluaran di bawah batas harian selama ${params.streakDays} hari beruntun.`;
+    } else if (
+      params.remainingPercent !== undefined &&
+      params.remainingPercent > 0 &&
+      params.remainingPercent <= 25 &&
+      (params.todayRemaining ?? 0) > 0
+    ) {
+      title = "💡 Jaga Ritme Hari Ini";
+      body = `Sisa batas harianmu tinggal ${formatRp(params.todayRemaining ?? 0)}. Tahan jajan impulsif biar besok tetap lega!`;
+    } else {
+      return false;
+    }
+
+    localStorage.setItem(storageKey, "1");
+    return await sendInstantNotification(title, body, "/dashboard");
+  } catch {
+    return false;
+  }
 }

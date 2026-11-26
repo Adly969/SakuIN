@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -11,7 +11,6 @@ import {
   Flame,
   ChevronDown,
   ArrowUpRight,
-  ArrowDownLeft,
   Calendar,
   Sparkles,
   ArrowRight,
@@ -30,6 +29,9 @@ import {
   PiggyBank,
   CheckCircle2,
   RefreshCw,
+  AlertTriangle,
+  ShieldAlert,
+  Circle,
 } from "lucide-react";
 import { useOfflineSync } from "@/components/pwa/offline-sync-provider";
 import {
@@ -56,6 +58,43 @@ import { createTransactionAction } from "@/app/actions/transactions";
 import { BrandText } from "@/components/ui/brand-logo";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
+
+function LazySection({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || visible) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  return (
+    <div ref={ref} className={className}>
+      {visible ? children : null}
+    </div>
+  );
+}
 
 interface MonthHistoryItem {
   month: string;
@@ -370,7 +409,6 @@ export default function DashboardPage() {
   const heroDailyLimit = dashboardData ? heroAdaptive.dailyLimit : 0;
   const heroReservedTotal = dashboardData ? heroAdaptive.reservedTotal : 0;
   const heroLockedTotal = dashboardData ? heroAdaptive.lockedTotal : 0;
-  const heroFreeBalance = dashboardData ? heroAdaptive.freeBalance : heroMainBalance;
 
   const liveTodayExpense = dashboardData?.todayExpense ?? 0;
   const liveTodayAdaptive = calculateAdaptiveDailyLimit(
@@ -645,14 +683,21 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <BrandText height={18} />
                   <span
-                    className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
+                    className={`inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-0.5 rounded-full ${heroStatus.status === "safe"
                       ? "bg-accent/20 text-accent"
                       : heroStatus.status === "warning"
                         ? "bg-[#FFB04A]/20 text-[#FFB04A]"
                         : "bg-expense/20 text-expense"
                       }`}
                   >
-                    {heroStatus.label}
+                    {heroStatus.status === "safe" ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    ) : heroStatus.status === "warning" ? (
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    )}
+                    <span>{heroStatus.label}</span>
                   </span>
                 </div>
                 <p className="text-ui-label text-muted-foreground pt-0.5">
@@ -781,6 +826,91 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
+
+          {/* 2.02 Checklist Pengguna Baru (Hari ke-1): otomatis hilang setelah ada transaksi */}
+          {dashboardData && recentTransactions.length === 0 && (dashboardData.totalExpense ?? 0) === 0 && (
+            <section className="bg-card border border-accent/35 rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-accent shrink-0" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-foreground">
+                    Mulai Hari Pertamamu
+                  </h2>
+                </div>
+                <span className="text-[11px] font-bold text-muted-foreground">
+                  3 langkah cepat
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <Link
+                  href="/accounts"
+                  className="flex items-center justify-between gap-3 p-2.5 min-h-[44px] rounded-xl bg-background border border-border hover:border-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {isUsingAccounts || heroMainBalance > 0 ? (
+                      <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">
+                        1. Pastikan saldo dompet & rekening aktif
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {isUsingAccounts || heroMainBalance > 0
+                          ? `Saldo terbaca ${formatRupiah(heroMainBalance)}`
+                          : "Isi saldo awal agar batas harian akurat"}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </Link>
+
+                <Link
+                  href="/record"
+                  className="flex items-center justify-between gap-3 p-2.5 min-h-[44px] rounded-xl bg-accent/10 border border-accent/40 hover:bg-accent/15 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Circle className="w-4 h-4 text-accent shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">
+                        2. Catat pengeluaran atau pemasukan pertama
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        Cuma butuh 5 detik — pilih nominal & kategori
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-accent shrink-0" />
+                </Link>
+
+                <Link
+                  href="/accounts#dana-terkunci"
+                  className="flex items-center justify-between gap-3 p-2.5 min-h-[44px] rounded-xl bg-background border border-border hover:border-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {heroLockedTotal > 0 ? (
+                      <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">
+                        3. Kunci dana tagihan wajib (opsional)
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {heroLockedTotal > 0
+                          ? `Sudah terkunci ${formatRupiah(heroLockedTotal)}`
+                          : "Pisahkan uang kos/cicilan agar tak ikut terpakai"}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </Link>
+              </div>
+            </section>
+          )}
 
           {/* 2.05 Kartu Konfirmasi Hari Kiriman (Payday Prompt) */}
           {paydaySuccessMsg && (
@@ -1115,7 +1245,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setPeriod("month")}
-                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${period === "month"
+                className={`px-3.5 py-2 min-h-[44px] rounded-full transition-all flex items-center justify-center ${period === "month"
                   ? "bg-foreground text-background font-bold shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -1125,7 +1255,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setPeriod("year")}
-                className={`px-3.5 py-2 min-h-[36px] rounded-full transition-all flex items-center justify-center ${period === "year"
+                className={`px-3.5 py-2 min-h-[44px] rounded-full transition-all flex items-center justify-center ${period === "year"
                   ? "bg-foreground text-background font-bold shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -1135,8 +1265,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 4. Bagian Grafik Donut & Komposisi (Desktop saja; di HP dipindah ke Statistik) */}
-          <div className="hidden lg:grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* 4-6. Grafik & Analisis Lanjutan (Desktop saja; lazy-load saat discroll) */}
+          <LazySection className="hidden lg:block space-y-5">
+            {/* 4. Bagian Grafik Donut & Komposisi (Desktop saja; di HP dipindah ke Statistik) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Left Card: Donut Chart with Large Percentage in Center */}
             <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
               <div className="relative w-full h-36 flex items-center justify-center">
@@ -1279,7 +1411,7 @@ export default function DashboardPage() {
 
           {/* 5. Pengeluaran Terbanyak Bulan Ini (Desktop saja) */}
           {topExpenses.length > 0 && (
-            <section className="hidden lg:block bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+            <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-4 h-4 text-expense" />
@@ -1320,7 +1452,7 @@ export default function DashboardPage() {
           )}
 
           {/* 6. Riwayat Pengeluaran Tiap Bulan & Deteksi Bulan Terboros (Desktop saja) */}
-          <section className="hidden lg:block bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
+          <section className="bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -1456,6 +1588,7 @@ export default function DashboardPage() {
               )}
             </div>
           </section>
+          </LazySection>
 
           {/* 7. Transaksi Terbaru (PRD G1) */}
           {recentTransactions.length > 0 && (

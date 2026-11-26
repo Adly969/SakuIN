@@ -121,7 +121,7 @@ self.addEventListener("push", (event) => {
     icon: "/logo-mark.png",
     badge: "/logo-mark.png",
     vibrate: [200, 100, 200],
-    data: { url: "/record" },
+    data: { url: data.url || "/dashboard" },
   };
 
   event.waitUntil(self.registration.showNotification(data.title, options));
@@ -130,18 +130,22 @@ self.addEventListener("push", (event) => {
 // 5. Notification Click Handler
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const targetUrl = (event.notification && event.notification.data && event.notification.data.url) || "/dashboard";
 
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
+          if ("navigate" in client && typeof client.navigate === "function") {
+            return client.navigate(targetUrl).then((c) => (c && "focus" in c ? c.focus() : client.focus()));
+          }
           if ("focus" in client) {
             return client.focus();
           }
         }
         if (clients.openWindow) {
-          return clients.openWindow("/record");
+          return clients.openWindow(targetUrl);
         }
       })
   );

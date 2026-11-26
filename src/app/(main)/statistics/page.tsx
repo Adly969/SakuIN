@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from "react";
+import Link from "next/link";
 import { formatRupiah } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -291,7 +292,7 @@ export default function StatisticsPage() {
             <button
               type="button"
               onClick={() => handlePeriodChange("month")}
-              className={`px-3.5 py-1.5 min-h-[36px] rounded-full transition-all text-xs font-bold ${
+              className={`px-3.5 py-1.5 min-h-[44px] rounded-full transition-all text-xs font-bold ${
                 period === "month"
                   ? "bg-foreground text-background shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -302,7 +303,7 @@ export default function StatisticsPage() {
             <button
               type="button"
               onClick={() => handlePeriodChange("year")}
-              className={`px-3.5 py-1.5 min-h-[36px] rounded-full transition-all text-xs font-bold ${
+              className={`px-3.5 py-1.5 min-h-[44px] rounded-full transition-all text-xs font-bold ${
                 period === "year"
                   ? "bg-foreground text-background shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -319,7 +320,7 @@ export default function StatisticsPage() {
             <button
               type="button"
               onClick={handleResetToCurrent}
-              className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[36px]"
+              className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2"
             >
               Kembali ke Bulan Sekarang
             </button>
@@ -410,13 +411,26 @@ export default function StatisticsPage() {
                 <p className="text-xs font-bold text-muted-foreground mt-2">
                   Belum ada data {type === "expense" ? "pengeluaran" : type === "income" ? "pemasukan" : "tabungan"}
                 </p>
-                <p className="text-xs text-muted-foreground/70 max-w-[200px]">
+                <p className="text-xs text-muted-foreground/70 max-w-[220px] mt-0.5">
                   {type === "expense"
                     ? "Catat pengeluaran harianmu untuk melihat sebaran porsi"
                     : type === "income"
                     ? "Atur uang kiriman atau catat pemasukan baru"
                     : "Mulai sisihkan uang ke target tabungan impianmu"}
                 </p>
+                <Link
+                  href={type === "savings" ? "/savings" : "/record"}
+                  className="mt-3 inline-flex items-center gap-1.5 bg-accent text-[#1F1F1F] font-black text-xs px-4 py-2.5 min-h-[44px] rounded-full shadow-sm hover:brightness-110 transition-all"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>
+                    {type === "expense"
+                      ? "Catat Pengeluaran"
+                      : type === "income"
+                      ? "Catat Pemasukan"
+                      : "Buat Target Tabungan"}
+                  </span>
+                </Link>
               </div>
             ) : (
               <>

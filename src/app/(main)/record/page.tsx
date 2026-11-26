@@ -40,6 +40,7 @@ import { enqueueOfflineTransaction } from "@/lib/offline-queue";
 import {
   notifyDailyLimitAlert,
   notifyCategoryLimitAlert,
+  notifyContextualMotivation,
 } from "@/lib/native-notifications";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 
@@ -501,6 +502,17 @@ export default function RecordPage() {
         }
         if (res.categoryLimitAlert && res.categoryLimitAlert.level !== "ok") {
           notifyCategoryLimitAlert(res.categoryLimitAlert);
+        }
+        if (
+          recordType === "expense" &&
+          res.dailyLimitAlert &&
+          res.dailyLimitAlert.usagePercent >= 75 &&
+          res.dailyLimitAlert.todayRemaining > 0
+        ) {
+          notifyContextualMotivation({
+            remainingPercent: Math.max(0, 100 - res.dailyLimitAlert.usagePercent),
+            todayRemaining: res.dailyLimitAlert.todayRemaining,
+          });
         }
 
         setAmount(0);
