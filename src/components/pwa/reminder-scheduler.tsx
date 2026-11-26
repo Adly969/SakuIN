@@ -57,7 +57,11 @@ export function ReminderScheduler() {
             await notifyPaydayReminder(dash.data.paydayPrompt);
           }
 
-          if (dash.data.todayAlertLevel === "warning") {
+          if (dash.data.safeStreakDays && dash.data.safeStreakDays >= 3) {
+            await notifyContextualMotivation({
+              streakDays: dash.data.safeStreakDays,
+            });
+          } else if (dash.data.todayAlertLevel === "warning") {
             await notifyContextualMotivation({
               remainingPercent: Math.max(0, 100 - (dash.data.todayUsagePercent ?? 0)),
               todayRemaining: dash.data.todayRemaining ?? 0,

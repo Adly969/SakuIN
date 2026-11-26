@@ -81,6 +81,7 @@ export async function getDashboardDataAction() {
     let yesterdayExpense = 0;
     const categoryTotals: Record<string, { amount: number; count: number }> = {};
     const monthlyExpenseMap: Record<string, number> = {};
+    const dailyExpenseMap: Record<string, number> = {};
 
     userTransactions.forEach((tx) => {
       const amt = Number(tx.amount);
@@ -88,6 +89,9 @@ export async function getDashboardDataAction() {
 
       if (tx.type === "expense") {
         monthlyExpenseMap[txMonthKey] = (monthlyExpenseMap[txMonthKey] || 0) + amt;
+        if (tx.occurredOn) {
+          dailyExpenseMap[tx.occurredOn] = (dailyExpenseMap[tx.occurredOn] || 0) + amt;
+        }
         if (tx.occurredOn === todayKey) {
           todayExpense += amt;
         }
@@ -258,6 +262,23 @@ export async function getDashboardDataAction() {
       todayAlertLevel = "reached";
     } else if (todayUsagePercent >= 80) {
       todayAlertLevel = "warning";
+    }
+
+    // Evaluasi streak hari berturut-turut di bawah batas harian (sebelum hari ini, maks 14 hari)
+    let safeStreakDays = 0;
+    const referenceDailyLimit = yesterdayAdaptive.dailyLimit || todayBudget || dailyLimit;
+    if (Boolean(userId) && referenceDailyLimit > 0 && userTransactions.length > 0) {
+      for (let offset = 1; offset <= 14; offset++) {
+        const d = new Date(today.getTime() - offset * 24 * 60 * 60 * 1000);
+        const dKey = getJakartaDateKey(d);
+        if (dKey < profileCreatedKey) break;
+        const dExpense = dailyExpenseMap[dKey] || 0;
+        if (dExpense <= referenceDailyLimit) {
+          safeStreakDays += 1;
+        } else {
+          break;
+        }
+      }
     }
 
     // Persentase Anggaran Terpakai (PRD B3)
@@ -496,6 +517,7 @@ export async function getDashboardDataAction() {
         overLimitAmount,
         todayUsagePercent,
         todayAlertLevel,
+        safeStreakDays,
         status,
         motivation: {
           text: selectedMotivation,

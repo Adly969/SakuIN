@@ -520,7 +520,7 @@ export default function SavingsPage() {
       if (res.success) {
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
-        alert(res.error || "Gagal menyimpan target carryover");
+        alert(res.error || "Gagal menyimpan target sisa hemat");
       }
     } catch (err) {
       console.error("Gagal ubah target carryover:", err);
@@ -648,7 +648,7 @@ export default function SavingsPage() {
             value={autoCarryoverGoalId}
             disabled={isSavingCarryoverPref}
             onChange={(e) => handleChangeCarryoverGoal(e.target.value)}
-            className="sm:w-52 px-3 py-2 bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer disabled:opacity-60"
+            className="sm:w-52 px-3 py-2 min-h-[44px] bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer disabled:opacity-60"
           >
             <option value="">Pilih otomatis / tanya tiap kali</option>
             {goals.map((g) => (

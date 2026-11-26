@@ -612,7 +612,7 @@ export default function RecordPage() {
               setShowAllCategories(false);
               amountInputRef.current?.focus();
             }}
-            className={`py-2.5 rounded-full transition-all flex items-center justify-center gap-2 ${
+            className={`py-2.5 min-h-[44px] rounded-full transition-all flex items-center justify-center gap-2 ${
               recordType === "expense"
                 ? "bg-card text-foreground shadow-sm border border-border font-black"
                 : "text-muted-foreground hover:text-foreground"
@@ -632,7 +632,7 @@ export default function RecordPage() {
               setShowAllCategories(false);
               amountInputRef.current?.focus();
             }}
-            className={`py-2.5 rounded-full transition-all flex items-center justify-center gap-2 ${
+            className={`py-2.5 min-h-[44px] rounded-full transition-all flex items-center justify-center gap-2 ${
               recordType === "income"
                 ? "bg-card text-foreground shadow-sm border border-border font-black"
                 : "text-muted-foreground hover:text-foreground"
@@ -675,7 +675,7 @@ export default function RecordPage() {
               <button
                 type="button"
                 onClick={() => setAmount(0)}
-                className="text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-1 rounded bg-muted/60 transition-colors shrink-0 ml-1.5"
+                className="text-xs font-bold text-muted-foreground hover:text-foreground px-3 py-2 min-h-[44px] rounded-lg bg-muted/60 transition-colors shrink-0 ml-1.5 flex items-center justify-center"
               >
                 Reset
               </button>
