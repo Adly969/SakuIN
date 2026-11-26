@@ -118,11 +118,25 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
             <WifiOff className="w-3.5 h-3.5" />
             <span>Mode Offline</span>
             {queueCount > 0 && (
-              <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px]">
-                {queueCount} antrean
+              <span className="bg-black/30 px-2 py-0.5 rounded-full text-xs">
+                {queueCount} menunggu sinyal
               </span>
             )}
           </motion.aside>
+        )}
+
+        {isOnline && queueCount > 0 && !isSyncing && (
+          <motion.button
+            type="button"
+            onClick={triggerSync}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-card/95 backdrop-blur-md text-foreground text-xs font-bold rounded-full shadow-lg flex items-center gap-2 border border-border hover:border-accent transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-accent" />
+            <span>{queueCount} transaksi menunggu sinkron • Ketuk untuk kirim</span>
+          </motion.button>
         )}
 
         {isOnline && isSyncing && (
@@ -131,7 +145,7 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             aria-label="Status Sinkronisasi"
-            className="fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-accent/90 dark:bg-accent/90 backdrop-blur-md text-foreground text-xs font-bold rounded-full shadow-lg flex items-center gap-2 border border-border/40"
+            className="fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-accent/95 backdrop-blur-md text-[#1F1F1F] text-xs font-black rounded-full shadow-lg flex items-center gap-2 border border-border/40"
           >
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
             <span>Menyinkronkan antrean transaksi...</span>

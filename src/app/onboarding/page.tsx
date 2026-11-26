@@ -78,10 +78,11 @@ export default function OnboardingPage() {
   const [customReserveMode, setCustomReserveMode] = useState<Exclude<ReserveMode, "none">>("daily_fixed");
   const [customReserveValue, setCustomReserveValue] = useState("10000");
 
-  // Step 4: Kategori
+  // Step 4: Kategori & Tawaran Motivasi (default mati per PRD UI/UX)
   const [selectedCats, setSelectedCats] = useState<string[]>(
     STUDENT_CATEGORIES.filter((c) => c.defaultChecked).map((c) => c.name)
   );
+  const [motivationNotifEnabled, setMotivationNotifEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const toggleCategory = (catName: string) => {
@@ -152,6 +153,7 @@ export default function OnboardingPage() {
         ewalletBalance: parsedEwallet,
         cashBalance: parsedCash,
         selectedCategories: selectedCats,
+        motivationNotifEnabled,
       });
       if (!res.success) {
         alert(res.error || "Gagal menyimpan data onboarding");
@@ -706,6 +708,24 @@ export default function OnboardingPage() {
                 );
               })}
             </div>
+
+            {/* Tawaran ringan Notifikasi Motivasi Harian (Default mati) */}
+            <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-background/70 border border-border cursor-pointer">
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-xs font-bold text-foreground">
+                  Mau dapat 1 kutipan semangat tiap pagi?
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Opsional, maksimal 1x/hari jam 07:30 (bisa diubah kapan saja di Profil).
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={motivationNotifEnabled}
+                onChange={(e) => setMotivationNotifEnabled(e.target.checked)}
+                className="w-5 h-5 rounded border-border accent-accent shrink-0"
+              />
+            </label>
 
             <div className="flex gap-3 pt-2">
               <button

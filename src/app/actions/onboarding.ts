@@ -33,6 +33,7 @@ const onboardingSchema = z.object({
   ewalletBalance: z.number().min(0).max(1000000000).default(0),
   cashBalance: z.number().min(0).max(1000000000).default(0),
   selectedCategories: z.array(z.string()).optional(),
+  motivationNotifEnabled: z.boolean().optional().default(false),
 });
 
 export type SaveOnboardingInput = z.infer<typeof onboardingSchema>;
@@ -75,6 +76,7 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
           paydayWeekday: input.paydayWeekday,
           reserveMode: input.reserveMode,
           reserveValue: BigInt(input.reserveValue),
+          motivationNotifEnabled: input.motivationNotifEnabled ?? false,
           updatedAt: new Date(),
         })
         .where(eq(profiles.id, userId));
@@ -89,6 +91,7 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
         paydayWeekday: input.paydayWeekday,
         reserveMode: input.reserveMode,
         reserveValue: BigInt(input.reserveValue),
+        motivationNotifEnabled: input.motivationNotifEnabled ?? false,
         updatedAt: new Date(),
       });
     }

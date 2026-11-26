@@ -41,6 +41,7 @@ import {
   notifyDailyLimitAlert,
   notifyCategoryLimitAlert,
 } from "@/lib/native-notifications";
+import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 
 const QUICK_AMOUNTS = [
   { label: "+10rb", value: 10000 },
@@ -92,15 +93,21 @@ export default function RecordPage() {
   const [accountsList, setAccountsList] = useState<AccountItem[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
-  // Catatan terpisah
+  // Catatan terpisah & detail toggle
   const [note, setNote] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [categoryFreq, setCategoryFreq] = useState<Record<string, number>>({});
 
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [toastImpact, setToastImpact] = useState("");
+  const [toastQuote, setToastQuote] = useState("");
   const [todayTransactions, setTodayTransactions] = useState<RecentTx[]>([]);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const amountInputRef = React.useRef<HTMLInputElement>(null);
 
   // Jaga tombol Simpan sticky tetap terlihat di atas keyboard HP (Android WebView)
   useEffect(() => {
@@ -144,10 +151,38 @@ export default function RecordPage() {
         const list = Array.isArray(parsedAcc) ? parsedAcc : parsedAcc?.accounts || [];
         if (list.length > 0) {
           setAccountsList(list);
-          const def = list.find((a: any) => a.isDefault) || list[0];
-          if (def?.id) setSelectedAccountId(def.id);
+          let lastAccId = "";
+          try {
+            lastAccId = localStorage.getItem("sakuin_last_account_id") || "";
+          } catch {}
+          const preferred =
+            list.find((a: any) => a.id === lastAccId) ||
+            list.find((a: any) => a.isDefault) ||
+            list[0];
+          if (preferred?.id) setSelectedAccountId(preferred.id);
         }
       }
+
+      // Muat frekuensi pemakaian kategori untuk pengurutan pintar
+      try {
+        const freqRaw = localStorage.getItem("sakuin_cat_freq");
+        if (freqRaw) {
+          setCategoryFreq(JSON.parse(freqRaw));
+        } else {
+          const cachedTx = localStorage.getItem("sakuin_cached_transactions");
+          if (cachedTx) {
+            const parsedTx = JSON.parse(cachedTx);
+            if (Array.isArray(parsedTx)) {
+              const counts: Record<string, number> = {};
+              parsedTx.forEach((t: any) => {
+                const name = t.category || t.categoryName;
+                if (name) counts[name] = (counts[name] || 0) + 1;
+              });
+              setCategoryFreq(counts);
+            }
+          }
+        }
+      } catch {}
 
       const cachedCat = localStorage.getItem("sakuin_cached_categories");
       if (cachedCat) {
@@ -232,8 +267,15 @@ export default function RecordPage() {
           } catch {}
           setSelectedAccountId((prev) => {
             if (prev && accRes.data!.accounts.some((a) => a.id === prev)) return prev;
-            const def = accRes.data!.accounts.find((a) => a.isDefault) || accRes.data!.accounts[0];
-            return def?.id || "";
+            let lastAccId = "";
+            try {
+              lastAccId = localStorage.getItem("sakuin_last_account_id") || "";
+            } catch {}
+            const preferred =
+              accRes.data!.accounts.find((a) => a.id === lastAccId) ||
+              accRes.data!.accounts.find((a) => a.isDefault) ||
+              accRes.data!.accounts[0];
+            return preferred?.id || "";
           });
         }
       } catch (err) {
@@ -314,7 +356,7 @@ export default function RecordPage() {
   );
 
   // Fallback if dbCategories empty yet
-  const displayCategories =
+  const baseCategories =
     currentCategories.length > 0
       ? currentCategories
       : recordType === "expense"
@@ -331,6 +373,12 @@ export default function RecordPage() {
           { id: "8", name: "Kerja Sambilan", type: "income", icon: "Briefcase", color: "#8CCBFF", requiresLabel: false },
           { id: "9", name: "Beasiswa", type: "income", icon: "GraduationCap", color: "#5BAA6B", requiresLabel: false },
         ];
+
+  const sortedCategories = [...baseCategories].sort(
+    (a, b) => (categoryFreq[b.name] || 0) - (categoryFreq[a.name] || 0)
+  );
+  const displayCategories = showAllCategories ? sortedCategories : sortedCategories.slice(0, 6);
+  const hasMoreCategories = sortedCategories.length > 6;
 
   const selectedAccount = accountsList.find((a) => a.id === selectedAccountId);
   const isInsufficientBalance =
@@ -376,6 +424,20 @@ export default function RecordPage() {
       : (note.trim() || selectedCategory);
     const localDelta = recordType === "expense" ? -amount : amount;
 
+    // Simpan rekening terakhir & tambah frekuensi kategori
+    try {
+      if (selectedAccountId) {
+        localStorage.setItem("sakuin_last_account_id", selectedAccountId);
+      }
+      setCategoryFreq((prev) => {
+        const nextFreq = { ...prev, [finalCategory]: (prev[finalCategory] || 0) + 1 };
+        try {
+          localStorage.setItem("sakuin_cat_freq", JSON.stringify(nextFreq));
+        } catch {}
+        return nextFreq;
+      });
+    } catch {}
+
     // Offline Queue
     if (typeof window !== "undefined" && !navigator.onLine) {
       enqueueOfflineTransaction({
@@ -390,6 +452,8 @@ export default function RecordPage() {
       applyLocalAccountBalance(selectedAccountId, localDelta);
 
       setToastMessage(`${itemTitle} (${formatRupiah(amount)}) disimpan ke antrean offline!`);
+      setToastImpact("Menunggu sinyal untuk menyinkronkan ke server.");
+      setToastQuote(getRandomOfflineQuote().text);
       setShowToast(true);
 
       setAmount(0);
@@ -398,7 +462,7 @@ export default function RecordPage() {
       setNote("");
       setIsSaving(false);
 
-      setTimeout(() => setShowToast(false), 4000);
+      setTimeout(() => setShowToast(false), 5000);
       return;
     }
 
@@ -415,6 +479,16 @@ export default function RecordPage() {
 
       if (res.success) {
         setToastMessage(`${itemTitle} (${formatRupiah(amount)}) berhasil dicatat!`);
+        if (res.dailyLimitAlert) {
+          setToastImpact(
+            res.dailyLimitAlert.overLimitAmount > 0
+              ? `Melewati batas hari ini sebesar ${formatRupiah(res.dailyLimitAlert.overLimitAmount)}.`
+              : `Sisa Batas Hari Ini jadi ${formatRupiah(res.dailyLimitAlert.todayRemaining)}.`
+          );
+        } else {
+          setToastImpact("");
+        }
+        setToastQuote(getRandomOfflineQuote().text);
         setShowToast(true);
 
         // Optimistically update account balance in local state & localStorage
@@ -434,7 +508,7 @@ export default function RecordPage() {
         setCustomCategory("");
         setNote("");
 
-        setTimeout(() => setShowToast(false), 4000);
+        setTimeout(() => setShowToast(false), 5500);
       } else {
         alert(res.error || "Gagal menyimpan transaksi");
       }
@@ -451,6 +525,8 @@ export default function RecordPage() {
       });
       applyLocalAccountBalance(selectedAccountId, localDelta);
       setToastMessage(`${itemTitle} disimpan ke antrean offline!`);
+      setToastImpact("Akan otomatis disinkronkan saat koneksi kembali.");
+      setToastQuote("");
       setShowToast(true);
       setAmount(0);
       setIsCustomCategory(false);
@@ -480,19 +556,31 @@ export default function RecordPage() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-3.5 rounded-xl bg-accent/20 border border-accent/40 text-foreground flex items-center justify-between gap-3 shadow-md"
+            className="p-3.5 rounded-xl bg-accent/20 border border-accent/40 text-foreground space-y-1.5 shadow-md"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <CheckCircle2 className="w-5 h-5 text-accent shrink-0" />
-              <span className="text-xs font-bold truncate">{toastMessage}</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <CheckCircle2 className="w-5 h-5 text-accent shrink-0" />
+                <span className="text-xs font-black truncate">{toastMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/transactions")}
+                className="text-xs font-extrabold text-accent hover:underline shrink-0"
+              >
+                Lihat di Riwayat
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push("/transactions")}
-              className="text-xs font-extrabold text-accent hover:underline shrink-0"
-            >
-              Lihat di Riwayat
-            </button>
+            {toastImpact && (
+              <p className="text-xs font-extrabold text-foreground pl-7">
+                {toastImpact}
+              </p>
+            )}
+            {toastQuote && (
+              <p className="text-xs text-muted-foreground italic pl-7">
+                &ldquo;{toastQuote}&rdquo;
+              </p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -509,6 +597,8 @@ export default function RecordPage() {
               setSelectedCategory(firstExp?.name || "Makan");
               setIsCustomCategory(false);
               setCustomCategory("");
+              setShowAllCategories(false);
+              amountInputRef.current?.focus();
             }}
             className={`py-2.5 rounded-full transition-all flex items-center justify-center gap-2 ${
               recordType === "expense"
@@ -527,6 +617,8 @@ export default function RecordPage() {
               setSelectedCategory(firstInc?.name || "Uang Kiriman");
               setIsCustomCategory(false);
               setCustomCategory("");
+              setShowAllCategories(false);
+              amountInputRef.current?.focus();
             }}
             className={`py-2.5 rounded-full transition-all flex items-center justify-center gap-2 ${
               recordType === "income"
@@ -550,6 +642,7 @@ export default function RecordPage() {
               Rp
             </span>
             <input
+              ref={amountInputRef}
               type="text"
               inputMode="numeric"
               autoFocus
@@ -627,22 +720,36 @@ export default function RecordPage() {
             })}
           </div>
 
-          {/* Tombol Opsi Kategori Lain */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsCustomCategory(true);
-              setSelectedCategory("");
-            }}
-            className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 min-h-[44px] ${
-              isCustomCategory
-                ? "bg-accent/15 border-accent text-accent ring-1 ring-accent"
-                : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Kategori Lainnya</span>
-          </button>
+          {/* Tombol Opsi Kategori Lain & Lihat Semua */}
+          <div className={`grid gap-2 ${hasMoreCategories ? "grid-cols-2" : "grid-cols-1"}`}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomCategory(true);
+                setSelectedCategory("");
+              }}
+              className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-1.5 min-h-[44px] ${
+                isCustomCategory
+                  ? "bg-accent/15 border-accent text-accent ring-1 ring-accent"
+                  : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Kategori Lainnya</span>
+            </button>
+
+            {hasMoreCategories && (
+              <button
+                type="button"
+                onClick={() => setShowAllCategories((prev) => !prev)}
+                className="w-full py-2.5 px-3 rounded-lg text-xs font-bold border border-border bg-background text-muted-foreground hover:text-foreground transition-all flex items-center justify-center min-h-[44px]"
+              >
+                {showAllCategories
+                  ? "Tampilkan Teratas"
+                  : `Lainnya (+${sortedCategories.length - 6})`}
+              </button>
+            )}
+          </div>
 
           {/* Kolom Input Kategori Lain */}
           <AnimatePresence>
@@ -699,7 +806,12 @@ export default function RecordPage() {
                   <button
                     key={acc.id}
                     type="button"
-                    onClick={() => setSelectedAccountId(acc.id)}
+                    onClick={() => {
+                      setSelectedAccountId(acc.id);
+                      try {
+                        localStorage.setItem("sakuin_last_account_id", acc.id);
+                      } catch {}
+                    }}
                     className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 min-h-[56px] ${
                       isSelected
                         ? isAccInsufficient
@@ -743,36 +855,47 @@ export default function RecordPage() {
           </div>
         )}
 
-        {/* Kolom Catatan Terpisah */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-foreground flex items-center justify-between">
-            <span>Catatan</span>
-            <span className="text-xs text-muted-foreground">Opsional</span>
-          </label>
-          <input
-            type="text"
-            maxLength={100}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Contoh: Warteg bu joko, bensin shell, beli di minimarket..."
-            className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent min-h-[44px]"
-          />
-        </div>
+        {/* Toggle Ringkas: Tambah detail (Catatan & Tanggal) */}
+        <div className="space-y-2.5 pt-1 border-t border-border/60">
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            className="w-full py-2 px-3 rounded-lg border border-border/80 bg-background hover:bg-muted/50 text-xs font-bold text-muted-foreground hover:text-foreground flex items-center justify-between min-h-[44px] transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-accent" />
+              <span>{showDetails ? "Sembunyikan detail" : "Tambah detail (Catatan & Tanggal)"}</span>
+            </span>
+            <span className="text-xs text-muted-foreground font-semibold">
+              {note.trim() ? "Ada catatan" : txDate}
+            </span>
+          </button>
 
-        {/* Tanggal Transaksi */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-            <span>Tanggal Transaksi</span>
-          </label>
-          <div className="relative">
-            <input
-              type="date"
-              value={txDate}
-              onChange={(e) => setTxDate(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent text-left [&::-webkit-date-and-time-value]:text-left cursor-pointer min-h-[44px]"
-            />
-          </div>
+          {showDetails && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground">Catatan (Opsional)</label>
+                <input
+                  type="text"
+                  maxLength={100}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Contoh: Warteg, bensin..."
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent min-h-[44px]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground">Tanggal Transaksi</label>
+                <input
+                  type="date"
+                  value={txDate}
+                  onChange={(e) => setTxDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-background border border-border text-foreground text-base sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent text-left [&::-webkit-date-and-time-value]:text-left cursor-pointer min-h-[44px]"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tombol Simpan Transaksi (Sticky di atas bottom bar HP & aman dari keyboard via visualViewport) */}

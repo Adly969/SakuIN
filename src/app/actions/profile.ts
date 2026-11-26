@@ -18,6 +18,8 @@ const updateProfileSchema = z.object({
   showMotivation: z.boolean().optional(),
   reminderEnabled: z.boolean().optional(),
   reminderTime: z.string().max(10).optional(),
+  motivationNotifEnabled: z.boolean().optional(),
+  motivationNotifTime: z.string().max(10).optional(),
 });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -70,6 +72,8 @@ export async function getProfileAction() {
         showMotivation: profile.showMotivation ?? true,
         reminderEnabled: profile.reminderEnabled ?? false,
         reminderTime: profile.reminderTime ?? "20:00",
+        motivationNotifEnabled: profile.motivationNotifEnabled ?? false,
+        motivationNotifTime: profile.motivationNotifTime ?? "07:30",
       },
     };
   } catch (err) {
@@ -111,6 +115,9 @@ export async function updateProfileAction(rawInput: UpdateProfileInput) {
         showMotivation: input.showMotivation !== undefined ? input.showMotivation : true,
         reminderEnabled: input.reminderEnabled !== undefined ? input.reminderEnabled : false,
         reminderTime: input.reminderTime || "20:00",
+        motivationNotifEnabled:
+          input.motivationNotifEnabled !== undefined ? input.motivationNotifEnabled : false,
+        motivationNotifTime: input.motivationNotifTime || "07:30",
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -127,6 +134,12 @@ export async function updateProfileAction(rawInput: UpdateProfileInput) {
           ...(input.showMotivation !== undefined ? { showMotivation: input.showMotivation } : {}),
           ...(input.reminderEnabled !== undefined ? { reminderEnabled: input.reminderEnabled } : {}),
           ...(input.reminderTime !== undefined ? { reminderTime: input.reminderTime } : {}),
+          ...(input.motivationNotifEnabled !== undefined
+            ? { motivationNotifEnabled: input.motivationNotifEnabled }
+            : {}),
+          ...(input.motivationNotifTime !== undefined
+            ? { motivationNotifTime: input.motivationNotifTime }
+            : {}),
           updatedAt: new Date(),
         },
       });

@@ -185,8 +185,8 @@ function TransactionsContent() {
 
   // Edit / Detail Modal State (PRD T4)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-  const [deleteConfirmTx, setDeleteConfirmTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
+  const undoTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editType, setEditType] = useState<"expense" | "income">("expense");
   const [editCategory, setEditCategory] = useState("");
   const [isCustomEditCategory, setIsCustomEditCategory] = useState(false);
@@ -418,36 +418,39 @@ function TransactionsContent() {
     }
   };
 
-  // Execute Delete from Confirmation Dialog with Undo Toast (PRD T4)
-  const executeDelete = async () => {
-    if (!deleteConfirmTx || isDeleting) return;
+  // Langsung hapus lembut + tampilkan Snackbar "Urungkan" (PRD UI/UX Tahap 2)
+  const handleDeleteDirect = async (targetTx: Transaction) => {
+    if (isDeleting) return;
 
     setIsDeleting(true);
-    const targetTx = deleteConfirmTx;
+    setTransactionsList((prev) => prev.filter((t) => t.id !== targetTx.id));
+    setLastDeletedTx(targetTx);
+    setShowUndoToast(true);
+    if (editingTx?.id === targetTx.id) {
+      closeEditModal();
+    }
+
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = setTimeout(() => {
+      setShowUndoToast(false);
+    }, 6000);
 
     try {
       const res = await deleteTransactionAction(targetTx.id);
       if (res.success) {
-        // Optimistic remove
-        setTransactionsList((prev) => prev.filter((t) => t.id !== targetTx.id));
-        setLastDeletedTx(targetTx);
-        setShowUndoToast(true);
-        setDeleteConfirmTx(null);
-        if (editingTx?.id === targetTx.id) {
-          closeEditModal();
-        }
         await loadData(true);
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
-
-        // Auto hide toast after 6 seconds
-        setTimeout(() => {
-          setShowUndoToast(false);
-        }, 6000);
       } else {
+        setTransactionsList((prev) => [targetTx, ...prev]);
+        setShowUndoToast(false);
         alert(res.error || "Gagal menghapus transaksi");
       }
     } catch (err) {
       console.error("Gagal hapus transaksi:", err);
+      setTransactionsList((prev) => [targetTx, ...prev]);
+      setShowUndoToast(false);
     } finally {
       setIsDeleting(false);
     }
@@ -734,7 +737,7 @@ function TransactionsContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDeleteConfirmTx(item)}
+                    onClick={() => handleDeleteDirect(item)}
                     title="Hapus transaksi"
                     aria-label={`Hapus ${item.title}`}
                     className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-expense/80 bg-expense/5 hover:bg-expense hover:text-white transition-colors active:scale-95"
@@ -1110,7 +1113,7 @@ function TransactionsContent() {
               <div className="shrink-0 border-t border-border bg-card px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] flex items-center gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setDeleteConfirmTx(editingTx)}
+                  onClick={() => handleDeleteDirect(editingTx)}
                   disabled={isDeleting || isUpdating}
                   className="px-4 min-h-[48px] rounded-2xl border border-expense/40 bg-expense/10 hover:bg-expense text-expense hover:text-white font-bold text-xs sm:text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shrink-0"
                 >
@@ -1144,83 +1147,7 @@ function TransactionsContent() {
         )}
       </AnimatePresence>
 
-      {/* Custom In-App Delete Confirmation Modal */}
-      <AnimatePresence>
-        {deleteConfirmTx && (
-          <div
-            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
-            onClick={(e) => {
-              if (e.target === e.currentTarget && !isDeleting) setDeleteConfirmTx(null);
-            }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: 12 }}
-              className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4 text-center"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-expense/15 border border-expense/25 text-expense flex items-center justify-center mx-auto">
-                <AlertTriangle className="w-6 h-6 stroke-[2.2]" />
-              </div>
-
-              <div className="space-y-1">
-                <h3 className="text-base font-black text-foreground">Hapus Log Activity?</h3>
-                <p className="text-xs text-muted-foreground">
-                  Catatan transaksi berikut akan dihapus dari riwayatmu:
-                </p>
-              </div>
-
-              <div className="bg-background border border-border rounded-xl p-3 text-left space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-foreground truncate">
-                    {deleteConfirmTx.title}
-                  </span>
-                  <span
-                    className={`text-xs font-black shrink-0 ${
-                      deleteConfirmTx.type === "expense" ? "text-expense" : "text-accent"
-                    }`}
-                  >
-                    {deleteConfirmTx.type === "expense" ? "-" : "+"}
-                    {formatRupiah(deleteConfirmTx.amount)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span>{deleteConfirmTx.category}</span>
-                  <span>•</span>
-                  <span>{formatShortDate(deleteConfirmTx.date)}</span>
-                </div>
-                {deleteConfirmTx.accountName && (
-                  <p className="text-xs font-semibold text-accent pt-1">
-                    Saldo {deleteConfirmTx.accountName} akan otomatis disesuaikan kembali.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  onClick={() => setDeleteConfirmTx(null)}
-                  className="py-2.5 min-h-[44px] rounded-xl border border-border bg-background hover:bg-muted text-foreground font-bold text-xs transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  onClick={executeDelete}
-                  className="py-2.5 min-h-[44px] rounded-xl bg-expense hover:brightness-110 text-white font-black text-xs shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>{isDeleting ? "Menghapus..." : "Ya, Hapus"}</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Undo Toast Notification (PRD T4) */}
+      {/* Undo Snackbar Notification (PRD UI/UX Tahap 2) */}
       <AnimatePresence>
         {showUndoToast && lastDeletedTx && (
           <motion.div

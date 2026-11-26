@@ -167,9 +167,9 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
     revalidatePath("/statistics");
     revalidatePath("/accounts");
 
-    // Evaluasi apakah pengeluaran hari ini mendekati atau mencapai batas harian / batas kategori
+    // Evaluasi status batas harian hari ini (untuk dampak langsung & peringatan) & batas kategori
     const [dailyLimitAlert, categoryLimitAlert] = await Promise.all([
-      input.type === "expense" && dateStr === getJakartaDateKey()
+      dateStr === getJakartaDateKey()
         ? evaluateDailyLimitForUser(userId)
         : Promise.resolve(null),
       input.type === "expense"

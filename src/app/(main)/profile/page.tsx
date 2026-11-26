@@ -15,11 +15,14 @@ import { usePinLock } from "@/components/auth/pin-lock-provider";
 import {
   scheduleNativeDailyReminder,
   cancelNativeDailyReminder,
+  scheduleNativeMotivationNotif,
+  cancelNativeMotivationNotif,
   requestNotificationPermission,
   sendInstantNotification,
   isCapacitorNative,
   REMINDER_SCHEDULE_SLOTS,
 } from "@/lib/native-notifications";
+import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import {
   LogOut,
   Wallet,
@@ -37,6 +40,7 @@ import {
   Trash2,
   Bell,
   Clock,
+  Sparkles,
   Download,
   Smartphone,
   ExternalLink,
@@ -65,6 +69,8 @@ export default function ProfilePage() {
   const [showMotivation, setShowMotivation] = useState(true);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("20:00");
+  const [motivationNotifEnabled, setMotivationNotifEnabled] = useState(false);
+  const [motivationNotifTime, setMotivationNotifTime] = useState("07:30");
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit Profile Allowance Modal State
@@ -106,6 +112,8 @@ export default function ProfilePage() {
         setShowMotivation(res.data.showMotivation);
         setReminderEnabled(res.data.reminderEnabled);
         setReminderTime(res.data.reminderTime || "20:00");
+        setMotivationNotifEnabled(res.data.motivationNotifEnabled ?? false);
+        setMotivationNotifTime(res.data.motivationNotifTime || "07:30");
         setEditName(res.data.name);
         setEditAllowance(res.data.monthlyAllowance.toString());
         setEditPayday(res.data.paydayDay);
@@ -241,6 +249,68 @@ export default function ProfilePage() {
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
       console.error("Gagal update pengingat:", err);
+    }
+  };
+
+  const handleToggleMotivationNotif = async () => {
+    const nextVal = !motivationNotifEnabled;
+    setMotivationNotifEnabled(nextVal);
+    localStorage.setItem("sakuin_motivation_notif_enabled", String(nextVal));
+    localStorage.setItem("sakuin_motivation_notif_time", motivationNotifTime);
+    window.dispatchEvent(new Event("sakuin:reminder-updated"));
+    if (!profile) return;
+
+    if (nextVal) {
+      await requestNotificationPermission();
+      await scheduleNativeMotivationNotif(motivationNotifTime, getRandomOfflineQuote().text);
+    } else {
+      await cancelNativeMotivationNotif();
+    }
+
+    try {
+      await updateProfileAction({
+        name: profile.name,
+        monthlyAllowance: profile.allowance,
+        paydayDay: profile.payday,
+        motivationNotifEnabled: nextVal,
+        motivationNotifTime,
+      });
+      setToastMessage(
+        nextVal
+          ? `Notifikasi motivasi harian aktif (jam ${motivationNotifTime})`
+          : "Notifikasi motivasi harian dimatikan"
+      );
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error("Gagal update notifikasi motivasi:", err);
+    }
+  };
+
+  const handleChangeMotivationTime = async (nextTime: string) => {
+    setMotivationNotifTime(nextTime);
+    localStorage.setItem("sakuin_motivation_notif_time", nextTime);
+    localStorage.removeItem("sakuin_last_motivation_notif");
+    window.dispatchEvent(new Event("sakuin:reminder-updated"));
+    if (!profile) return;
+
+    if (motivationNotifEnabled) {
+      await scheduleNativeMotivationNotif(nextTime, getRandomOfflineQuote().text);
+    }
+
+    try {
+      await updateProfileAction({
+        name: profile.name,
+        monthlyAllowance: profile.allowance,
+        paydayDay: profile.payday,
+        motivationNotifEnabled,
+        motivationNotifTime: nextTime,
+      });
+      setToastMessage(`Jam notifikasi motivasi diubah ke ${nextTime}`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2500);
+    } catch (err) {
+      console.error("Gagal ubah jam motivasi:", err);
     }
   };
 
@@ -777,6 +847,54 @@ export default function ProfilePage() {
               <Bell className="w-3.5 h-3.5 text-accent" />
               <span>Uji Coba Notifikasi Sekarang</span>
             </button>
+          </div>
+        )}
+      </section>
+
+      {/* Notifikasi Motivasi Harian Terpisah (PRD UI/UX Tahap 2 - Maks 1x/hari) */}
+      <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-lg bg-accent/15 text-accent shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-extrabold text-foreground">
+                Notifikasi Motivasi Harian
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Terpisah dari pengingat penting • Maksimal 1x sehari di jam pilihanmu
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleMotivationNotif}
+            className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors shrink-0 ${
+              motivationNotifEnabled ? "bg-accent" : "bg-muted"
+            }`}
+          >
+            <div
+              className={`bg-[#1F1F1F] w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                motivationNotifEnabled ? "translate-x-6" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+
+        {motivationNotifEnabled && (
+          <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/60">
+            <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-accent" />
+              <span>Jam Kirim (1x / Hari)</span>
+            </label>
+            <input
+              type="time"
+              value={motivationNotifTime}
+              onChange={(e) => handleChangeMotivationTime(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-background border border-border text-xs font-black text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+            />
           </div>
         )}
       </section>

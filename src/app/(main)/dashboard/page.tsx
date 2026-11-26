@@ -29,7 +29,9 @@ import {
   Lock,
   PiggyBank,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
+import { useOfflineSync } from "@/components/pwa/offline-sync-provider";
 import {
   ResponsiveContainer,
   PieChart as RePieChart,
@@ -196,6 +198,7 @@ export default function DashboardPage() {
   const [isSubmittingPayday, setIsSubmittingPayday] = useState(false);
   const [dismissedPaydayKey, setDismissedPaydayKey] = useState<string | null>(null);
   const [paydaySuccessMsg, setPaydaySuccessMsg] = useState<string | null>(null);
+  const { isOnline, queueCount, isSyncing, manualSync } = useOfflineSync();
   const shouldReduceMotion = useReducedMotion();
 
   const loadData = async () => {
@@ -634,13 +637,13 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (lg:col-span-6 space-y-5) */}
         <div className="lg:col-span-6 space-y-5">
-          {/* 2. Kartu Fokus Batas Hari Ini & Total Saldo (PRD B1-B4, G1) */}
-          <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-            {/* Card Header: Fokus Utama ke Sisa Batas Hari Ini */}
+          {/* 2. Hero Card Ramping: Fokus Sisa Batas Hari Ini */}
+          <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+            {/* Baris 1: Brand + Status + Angka Utama Sisa Batas Hari Ini */}
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <BrandText height={20} />
+                  <BrandText height={18} />
                   <span
                     className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
                       ? "bg-accent/20 text-accent"
@@ -652,24 +655,14 @@ export default function DashboardPage() {
                     {heroStatus.label}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground font-semibold">
+                <p className="text-ui-label text-muted-foreground pt-0.5">
                   Sisa Batas Hari Ini
                 </p>
-                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
-                  <span className="text-xs text-muted-foreground block">
-                    Sisihkan {formatRupiah(heroReservedTotal)}
-                    {heroLockedTotal > 0 ? " (dari saldo bebas)" : ""}
-                  </span>
-                ) : (
-                  <Link href="/profile" className="text-xs text-muted-foreground/80 hover:text-accent block">
-                    Bagi rata (Atur sisihan →)
-                  </Link>
-                )}
               </div>
 
               <div className="text-right">
                 <div
-                  className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                  className={`text-3xl font-black tracking-tight ${
                     heroTodayAlertLevel === "exceeded" || heroTodayAlertLevel === "reached"
                       ? "text-expense"
                       : heroTodayAlertLevel === "warning"
@@ -682,17 +675,17 @@ export default function DashboardPage() {
                 <span className="text-xs font-semibold text-muted-foreground block">
                   {heroOverLimit > 0
                     ? `Over limit ${formatRupiah(heroOverLimit)}`
-                    : `Jatah hari ini: ${dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayBudget) : "Rp ..."}`}
+                    : `Jatah hari ini ${dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayBudget) : "Rp ..."}`}
                 </span>
               </div>
             </div>
 
-            {/* Pemakaian Batas Hari Ini (Progress Bar Utama) */}
+            {/* Baris 2: 1 Progress Bar Pemakaian Hari Ini */}
             {dashboardData && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-muted-foreground">
-                    Terpakai Hari Ini ({heroTodayUsagePercent}%)
+                    Terpakai hari ini ({heroTodayUsagePercent}%)
                   </span>
                   <span className="font-bold text-foreground">
                     {formatRupiah(liveTodayExpense)} / {formatRupiah(heroTodayBudget)}
@@ -719,97 +712,73 @@ export default function DashboardPage() {
                     }`}
                   >
                     {heroTodayAlertLevel === "warning"
-                      ? `⚠️ Hampir mencapai batas harian! Sisa jatah hari ini tinggal ${formatRupiah(heroTodayRemaining)}.`
+                      ? `Batas hari ini hampir habis, tersisa ${formatRupiah(heroTodayRemaining)}.`
                       : heroTodayAlertLevel === "reached"
-                      ? "🛑 Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
-                      : `🚨 Melewati batas harian sebesar ${formatRupiah(heroOverLimit)}!`}
+                      ? "Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
+                      : `Melewati batas hari ini sebesar ${formatRupiah(heroOverLimit)}.`}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Rincian Dana Terkunci (Tagihan Wajib) jika aktif */}
-            {heroLockedTotal > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-background/80 border border-border/80 text-xs">
-                <div className="flex items-center gap-1.5 text-foreground font-semibold">
-                  <Lock className="w-3.5 h-3.5 text-[#FFB04A] shrink-0" />
-                  <span>
-                    Terkunci: <strong className="text-[#FFB04A]">{formatRupiah(heroLockedTotal)}</strong>
-                  </span>
-                  <span className="text-muted-foreground">•</span>
-                  <span>
-                    Bebas Pakai: <strong className="text-accent">{formatRupiah(heroFreeBalance)}</strong>
+            {/* Baris 3: Penanda Antrean Offline jika ada transaksi belum sinkron */}
+            {queueCount > 0 && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#FFB04A]/15 border border-[#FFB04A]/35 text-xs font-bold text-foreground">
+                <div className="flex items-center gap-2 min-w-0">
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#FFB04A] shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+                  <span className="truncate">
+                    {isSyncing
+                      ? `Menyinkronkan ${queueCount} transaksi...`
+                      : `${queueCount} transaksi menunggu sinyal`}
                   </span>
                 </div>
-                <Link
-                  href="/accounts#dana-terkunci"
-                  className="text-xs font-black text-accent hover:underline shrink-0"
-                >
-                  Atur Tagihan →
-                </Link>
+                {isOnline && !isSyncing && (
+                  <button
+                    type="button"
+                    onClick={() => void manualSync()}
+                    className="text-xs font-black text-accent hover:underline shrink-0"
+                  >
+                    Kirim
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Card Footer: Total Saldo & Siklus Kiriman */}
-            <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs gap-2">
-              <div>
-                <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
-                  {isUsingAccounts ? "Total Saldo" : "Sisa Uang Kiriman"}
-                </span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-extrabold text-foreground text-sm sm:text-base">
+            {/* Baris 4: Chip Dana Terkunci + Ringkasan Saldo & Siklus */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-border/60 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                {heroLockedTotal > 0 && (
+                  <Link
+                    href="/accounts#dana-terkunci"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFB04A]/15 border border-[#FFB04A]/30 text-[#FFB04A] font-bold hover:brightness-110 transition-all"
+                  >
+                    <Lock className="w-3 h-3 shrink-0" />
+                    <span>Terkunci {formatRupiah(heroLockedTotal)}</span>
+                  </Link>
+                )}
+                <span className="text-muted-foreground font-semibold">
+                  Saldo{" "}
+                  <strong className="text-foreground">
                     {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
+                  </strong>
+                </span>
+                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 && (
+                  <span className="text-muted-foreground">
+                    • Sisih {formatRupiah(heroReservedTotal)}
                   </span>
-                </div>
-                <span className="text-xs text-muted-foreground block mt-0.5">
-                  {isUsingAccounts ? "Bank, E-Wallet & Tunai" : "Tersedia Bulan Ini"}
-                </span>
+                )}
               </div>
 
-              <div className="text-right">
-                <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
-                  {dashboardData?.allowanceCycle === "weekly"
-                    ? "Siklus Mingguan"
-                    : dashboardData?.allowanceCycle === "flexible"
-                    ? "Mode Fleksibel"
-                    : "Siklus Bulanan"}
-                </span>
-                <span className="font-bold text-foreground text-xs mt-0.5 block">
-                  {dashboardData?.allowanceCycle === "weekly"
-                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} Hari (Tiap ${INDONESIAN_DAYS[dashboardData?.paydayWeekday ?? 1]})`
-                    : dashboardData?.allowanceCycle === "flexible"
-                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} Hari Bulan Ini`
-                    : `Sisa ${dashboardData?.remainingDays ?? "..."} Hari (Tgl ${dashboardData?.paydayDay ?? 1})`}
-                </span>
-              </div>
-            </div>
-
-            {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
-            <div className="space-y-1.5 pt-2.5 border-t border-border/50">
-              <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <div className="text-right text-muted-foreground font-semibold">
                 <span>
-                  Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
+                  {dashboardData?.allowanceCycle === "weekly"
+                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} hari (${INDONESIAN_DAYS[dashboardData?.paydayWeekday ?? 1]})`
+                    : dashboardData?.allowanceCycle === "flexible"
+                    ? `Sisa ${dashboardData?.remainingDays ?? "..."} hari`
+                    : `Sisa ${dashboardData?.remainingDays ?? "..."} hari (Tgl ${dashboardData?.paydayDay ?? 1})`}
                 </span>
-                <span>
-                  {formatRupiah(dashboardData?.totalExpense || 0)} / {formatRupiah(dashboardData?.allowance || 0)}
-                </span>
+                <span className="ml-2">• Bulan ini {dashboardData?.budgetUsedPercent || 0}%</span>
               </div>
-              <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${(dashboardData?.budgetUsedPercent || 0) >= 100
-                    ? "bg-expense"
-                    : (dashboardData?.budgetUsedPercent || 0) >= 80
-                      ? "bg-[#FFB04A]"
-                      : "bg-accent"
-                    }`}
-                  style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
-                />
-              </div>
-              {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
-                <p className="text-xs font-bold text-[#FFB04A] flex items-center gap-1">
-                  <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
-                </p>
-              )}
             </div>
           </section>
 
@@ -907,7 +876,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {carryoverOffer && dismissedCarryoverKey !== carryoverOffer.carryoverKey && (
+          {!(paydayPrompt && dismissedPaydayKey !== paydayPrompt.dateKey) &&
+            carryoverOffer &&
+            dismissedCarryoverKey !== carryoverOffer.carryoverKey && (
             <section className="bg-card border border-accent/35 rounded-xl p-4 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0">
@@ -920,7 +891,7 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Jatah harian {formatRupiah(carryoverOffer.yesterdayBudget)}, terpakai{" "}
-                      {formatRupiah(carryoverOffer.yesterdayExpense)}. Mau amankan sisanya ke tabungan?
+                      {formatRupiah(carryoverOffer.yesterdayExpense)}. Mau pindahkan sisa ini ke tabungan?
                     </p>
                   </div>
                 </div>
@@ -1107,8 +1078,8 @@ export default function DashboardPage() {
 
         {/* Right Column (lg:col-span-6 space-y-5) */}
         <div className="lg:col-span-6 space-y-5">
-          {/* 3. Filter Controls: Dropdown Pill on Left & Month/Year Segmented Toggle on Right */}
-          <div className="flex items-center justify-between px-1">
+          {/* 3. Filter Controls (Desktop saja; di HP semua grafik ada di Statistik) */}
+          <div className="hidden lg:flex items-center justify-between px-1">
             {/* Left Pill Dropdown */}
             <div className="relative">
               <button
@@ -1164,8 +1135,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 4. Bagian Grafik Donut & Komposisi (1 kolom di HP, 2 kolom di >= sm) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* 4. Bagian Grafik Donut & Komposisi (Desktop saja; di HP dipindah ke Statistik) */}
+          <div className="hidden lg:grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Left Card: Donut Chart with Large Percentage in Center */}
             <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
               <div className="relative w-full h-36 flex items-center justify-center">
@@ -1306,9 +1277,9 @@ export default function DashboardPage() {
             </section>
           </div>
 
-          {/* 5. Pengeluaran Terbanyak Bulan Ini (PRD G1 & G6) */}
+          {/* 5. Pengeluaran Terbanyak Bulan Ini (Desktop saja) */}
           {topExpenses.length > 0 && (
-            <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+            <section className="hidden lg:block bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-4 h-4 text-expense" />
@@ -1348,8 +1319,8 @@ export default function DashboardPage() {
             </section>
           )}
 
-          {/* 6. Riwayat Pengeluaran Tiap Bulan & Deteksi Bulan Terboros (PRD G5) */}
-          <section className="bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
+          {/* 6. Riwayat Pengeluaran Tiap Bulan & Deteksi Bulan Terboros (Desktop saja) */}
+          <section className="hidden lg:block bg-card border border-border rounded-xl p-6 shadow-md space-y-4">
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -1503,7 +1474,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-2">
-                {recentTransactions.map((tx) => {
+                {recentTransactions.slice(0, 3).map((tx) => {
                   const Icon = getCategoryIcon(tx.category);
                   return (
                     <Link

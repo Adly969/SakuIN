@@ -31,6 +31,8 @@ export const profiles = pgTable("profiles", {
   reminderTime: varchar("reminder_time", { length: 10 }), // e.g. '20:00'
   reminderEnabled: boolean("reminder_enabled").default(false),
   showMotivation: boolean("show_motivation").default(true),
+  motivationNotifEnabled: boolean("motivation_notif_enabled").default(false),
+  motivationNotifTime: varchar("motivation_notif_time", { length: 10 }).default("07:30"),
   recentMotivationIds: jsonb("recent_motivation_ids").default(sql`'[]'::jsonb`),
   pinHash: text("pin_hash"),
   pinEnabled: boolean("pin_enabled").default(false),

@@ -8,12 +8,15 @@ import { getUpcomingDueDebtsAction } from "@/app/actions/debts";
 import {
   scheduleNativeDailyReminder,
   cancelNativeDailyReminder,
+  scheduleNativeMotivationNotif,
+  cancelNativeMotivationNotif,
   notifyDailyLimitAlert,
   notifyDebtDueAlerts,
   notifyPaydayReminder,
   REMINDER_SCHEDULE_SLOTS,
   type DailyLimitAlertPayload,
 } from "@/lib/native-notifications";
+import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 
 export function ReminderScheduler() {
   const isCheckingRef = useRef(false);
@@ -65,6 +68,15 @@ export function ReminderScheduler() {
           if (res.data.reminderEnabled !== undefined) {
             localStorage.setItem("sakuin_reminder_enabled", String(res.data.reminderEnabled));
           }
+          if (res.data.motivationNotifEnabled !== undefined) {
+            localStorage.setItem(
+              "sakuin_motivation_notif_enabled",
+              String(res.data.motivationNotifEnabled)
+            );
+          }
+          if (res.data.motivationNotifTime) {
+            localStorage.setItem("sakuin_motivation_notif_time", res.data.motivationNotifTime);
+          }
           if (res.data.name) {
             localStorage.setItem("sakuin_user_name", res.data.name);
           }
@@ -74,6 +86,15 @@ export function ReminderScheduler() {
             await scheduleNativeDailyReminder(res.data.name || "Kawan");
           } else {
             await cancelNativeDailyReminder();
+          }
+
+          if (res.data.motivationNotifEnabled) {
+            await scheduleNativeMotivationNotif(
+              res.data.motivationNotifTime || "07:30",
+              getRandomOfflineQuote().text
+            );
+          } else {
+            await cancelNativeMotivationNotif();
           }
         }
       } catch (err) {
@@ -136,15 +157,39 @@ export function ReminderScheduler() {
 
       try {
         const enabled = localStorage.getItem("sakuin_reminder_enabled") === "true";
+        const motivationEnabled =
+          localStorage.getItem("sakuin_motivation_notif_enabled") === "true";
+        const motivationTime =
+          localStorage.getItem("sakuin_motivation_notif_time") || "07:30";
         const userName = localStorage.getItem("sakuin_user_name") || "Kawan";
-
-        if (!enabled) return;
 
         const now = new Date();
         const nowH = now.getHours();
         const nowM = now.getMinutes();
         const nowTotalMins = nowH * 60 + nowM;
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+        // A. Notifikasi Motivasi Harian Terpisah (maks 1x sehari pada jam pilihan user)
+        if (motivationEnabled) {
+          const [mhRaw, mmRaw] = motivationTime.split(":");
+          const motMins =
+            (parseInt(mhRaw || "7", 10) || 7) * 60 + (parseInt(mmRaw || "30", 10) || 30);
+          const motDiff = nowTotalMins - motMins;
+          const motFireKey = `${todayStr}_motivation`;
+          if (
+            motDiff >= 0 &&
+            motDiff <= 60 &&
+            localStorage.getItem("sakuin_last_motivation_notif") !== motFireKey
+          ) {
+            localStorage.setItem("sakuin_last_motivation_notif", motFireKey);
+            await fireNotification(
+              "SakuIN — Semangat Keuangan Hari Ini",
+              getRandomOfflineQuote().text
+            );
+          }
+        }
+
+        if (!enabled) return;
 
         for (const slot of REMINDER_SCHEDULE_SLOTS) {
           const targetTotalMins = slot.hour * 60 + slot.minute;

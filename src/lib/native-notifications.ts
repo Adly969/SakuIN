@@ -199,6 +199,55 @@ export async function cancelNativeDailyReminder(): Promise<void> {
   }
 }
 
+const MOTIVATION_NOTIF_ID = 1006;
+
+export async function scheduleNativeMotivationNotif(
+  timeStr: string = "07:30",
+  quoteText: string = "Menabung sedikit demi sedikit membuat akhir bulan lebih tenang."
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (!(await isCapacitorNative())) return false;
+
+  const [hhRaw, mmRaw] = timeStr.split(":");
+  const hour = Math.min(23, Math.max(0, parseInt(hhRaw || "7", 10) || 7));
+  const minute = Math.min(59, Math.max(0, parseInt(mmRaw || "30", 10) || 30));
+
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.cancel({ notifications: [{ id: MOTIVATION_NOTIF_ID }] });
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: MOTIVATION_NOTIF_ID,
+          title: "SakuIN — Semangat Keuangan Hari Ini",
+          body: quoteText,
+          schedule: {
+            on: { hour, minute },
+            repeats: true,
+            allowWhileIdle: true,
+          },
+          smallIcon: "ic_stat_icon_config_sample",
+          iconColor: "#D4FF5A",
+        },
+      ],
+    });
+    return true;
+  } catch (err) {
+    console.error("Gagal jadwalkan notifikasi motivasi:", err);
+    return false;
+  }
+}
+
+export async function cancelNativeMotivationNotif(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (await isCapacitorNative()) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      await LocalNotifications.cancel({ notifications: [{ id: MOTIVATION_NOTIF_ID }] });
+    } catch {}
+  }
+}
+
 export interface DailyLimitAlertPayload {
   todayBudget: number;
   todayExpense: number;
