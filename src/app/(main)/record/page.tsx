@@ -550,7 +550,7 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-[480px] mx-auto pb-44 md:pb-12">
+    <div className="space-y-5 max-w-[480px] mx-auto pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+188px)] md:pb-12">
       {/* 1. Header Halaman */}
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
@@ -910,10 +910,17 @@ export default function RecordPage() {
           )}
         </div>
 
-        {/* Tombol Simpan Transaksi (Sticky di atas bottom bar HP & aman dari keyboard via visualViewport) */}
+        {/* Tombol Simpan Transaksi (Melayang rapi di atas bottom bar + safe-area HP & aman dari keyboard via visualViewport) */}
         <div
-          style={keyboardOffset > 0 ? { bottom: `${keyboardOffset + 8}px` } : undefined}
-          className="fixed left-0 right-0 bottom-[92px] z-30 px-4 pointer-events-none md:static md:px-0 md:z-auto md:pointer-events-auto"
+          style={{
+            bottom:
+              keyboardOffset > 0
+                ? `${keyboardOffset + 12}px`
+                : "calc(max(env(safe-area-inset-bottom, 0px), 16px) + 104px)",
+          }}
+          className={`fixed left-0 right-0 px-4 pointer-events-none md:static md:bottom-auto md:px-0 md:z-auto md:pointer-events-auto ${
+            keyboardOffset > 0 ? "z-[60]" : "z-40"
+          }`}
         >
           <div className="max-w-[480px] mx-auto pointer-events-auto rounded-2xl bg-card/95 backdrop-blur-md border border-border p-2 shadow-xl md:bg-transparent md:backdrop-blur-none md:border-0 md:p-0 md:shadow-none">
             <button
