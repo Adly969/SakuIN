@@ -138,18 +138,17 @@ export async function getBudgetsWorkspaceAction(): Promise<{
     const todayKey = getJakartaDateKey(today);
     const currentMonthKey = todayKey.slice(0, 7);
 
-    // Pastikan kategori Lainnya (expense) selalu tersedia
-    await ensureFallbackLainnyaCategory(userId);
-
     const [
       userProfile,
       userAccounts,
       activeLockedFunds,
       userSavings,
       userTransactions,
-      userCategories,
+      fetchedCategories,
       userPots,
       monthBudget,
+      allRecentOverrides,
+      allRecentTransfers,
     ] = await Promise.all([
       db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
       db.query.accounts.findMany({ where: eq(accounts.userId, userId) }),
@@ -171,7 +170,30 @@ export async function getBudgetsWorkspaceAction(): Promise<{
       db.query.budgets.findFirst({
         where: and(eq(budgets.userId, userId), eq(budgets.month, `${currentMonthKey}-01`)),
       }),
+      db.query.categoryPotPeriods.findMany({
+        where: eq(categoryPotPeriods.userId, userId),
+        orderBy: [desc(categoryPotPeriods.updatedAt)],
+        limit: 120,
+      }),
+      db.query.categoryPotTransfers.findMany({
+        where: eq(categoryPotTransfers.userId, userId),
+        orderBy: [desc(categoryPotTransfers.createdAt)],
+        limit: 30,
+      }),
     ]);
+
+    let userCategories = fetchedCategories;
+    const existingLainnya = userCategories.find(
+      (c) => (c.name || "").toLowerCase().trim() === "lainnya"
+    );
+    if (!existingLainnya || existingLainnya.isHidden || !existingLainnya.isDefault) {
+      const fixedLainnya = await ensureFallbackLainnyaCategory(userId);
+      if (existingLainnya) {
+        userCategories = userCategories.map((c) => (c.id === fixedLainnya.id ? fixedLainnya : c));
+      } else {
+        userCategories = [...userCategories, fixedLainnya];
+      }
+    }
 
     const allowance = Number(userProfile?.monthlyAllowance || 0);
     const paydayDay = userProfile?.paydayDay || 1;
@@ -183,34 +205,33 @@ export async function getBudgetsWorkspaceAction(): Promise<{
     const periodInfo = getCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
     const prevPeriodInfo = getPreviousCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
 
-    const [periodOverrides, prevPeriodOverrides, periodTransfers] = await Promise.all([
-      db.query.categoryPotPeriods.findMany({
-        where: and(
-          eq(categoryPotPeriods.userId, userId),
-          eq(categoryPotPeriods.periodKey, periodInfo.periodKey)
-        ),
-      }),
-      db.query.categoryPotPeriods.findMany({
-        where: and(
-          eq(categoryPotPeriods.userId, userId),
-          eq(categoryPotPeriods.periodKey, prevPeriodInfo.periodKey)
-        ),
-      }),
-      db.query.categoryPotTransfers.findMany({
-        where: and(
-          eq(categoryPotTransfers.userId, userId),
-          eq(categoryPotTransfers.periodKey, periodInfo.periodKey)
-        ),
-        orderBy: [desc(categoryPotTransfers.createdAt)],
-        limit: 15,
-      }),
-    ]);
+    const periodOverrides = allRecentOverrides.filter(
+      (o) => o.periodKey === periodInfo.periodKey
+    );
+    const prevPeriodOverrides = allRecentOverrides.filter(
+      (o) => o.periodKey === prevPeriodInfo.periodKey
+    );
+    const periodTransfers = allRecentTransfers
+      .filter((tr) => tr.periodKey === periodInfo.periodKey)
+      .slice(0, 15);
 
-    const legacyCategoryBudgets = monthBudget
-      ? await db.query.categoryBudgets.findMany({
-          where: eq(categoryBudgets.budgetId, monthBudget.id),
-        })
-      : [];
+    const potCatIdSet = new Set(userPots.map((p) => p.categoryId));
+    const needsLegacyBudgetLookup =
+      Boolean(monthBudget) &&
+      userCategories.some(
+        (c) =>
+          !c.isHidden &&
+          !EXCLUDED_BILL_CATEGORIES.has((c.name || "").toLowerCase().trim()) &&
+          (c.name || "").toLowerCase().trim() !== "lainnya" &&
+          !potCatIdSet.has(c.id)
+      );
+
+    const legacyCategoryBudgets =
+      monthBudget && needsLegacyBudgetLookup
+        ? await db.query.categoryBudgets.findMany({
+            where: eq(categoryBudgets.budgetId, monthBudget.id),
+          })
+        : [];
 
     // Hitung total pengeluaran periode berjalan, periode lalu, & bulan berjalan (selaras dengan Dashboard)
     let totalExpenseMonth = 0;

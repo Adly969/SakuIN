@@ -90,7 +90,12 @@ function getPotIcon(name: string, iconName?: string) {
 
 export default function BudgetsPage() {
   const [workspace, setWorkspace] = useState<BudgetsWorkspaceData | null>(null);
-  const [pots, setPots] = useState<BudgetPotWorkspaceItem[]>([]);
+  const [pots, setPotsRaw] = useState<BudgetPotWorkspaceItem[]>([]);
+  const hasUserEditedRef = useRef(false);
+  const setPots: React.Dispatch<React.SetStateAction<BudgetPotWorkspaceItem[]>> = (updater) => {
+    hasUserEditedRef.current = true;
+    setPotsRaw(updater);
+  };
   const [expandedCatId, setExpandedCatId] = useState<string | null>(null);
   const [isChecklistOpen, setIsChecklistOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,63 +179,96 @@ export default function BudgetsPage() {
     return () => vv.removeEventListener("resize", updateOffset);
   }, []);
 
-  const loadWorkspace = async () => {
-    setIsLoading(true);
+  const applyWorkspaceData = (
+    data: BudgetsWorkspaceData,
+    options: { preserveEditedPots?: boolean } = {}
+  ) => {
+    setWorkspace(data);
+
+    if (options.preserveEditedPots && hasUserEditedRef.current) {
+      return;
+    }
+
+    let initialPots = data.pots;
+    let firstExpandId = data.pots.find((p) => p.isSelected && !p.isOther)?.categoryId;
+
+    const isHabitSuggestMode =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("suggest") === "habit";
+
+    if (isHabitSuggestMode && data.habitSuggestion && data.habitSuggestion.suggestions.length > 0) {
+      const sugMap = new Map(
+        data.habitSuggestion.suggestions.map((s) => [s.categoryId, s])
+      );
+      initialPots = data.pots.map((p) => {
+        const sug = sugMap.get(p.categoryId);
+        if (!sug) {
+          return p.isOther ? p : { ...p, isSelected: false, allocatedAmount: 0, unitAmount: 0 };
+        }
+        return {
+          ...p,
+          isSelected: true,
+          cadence: sug.cadence,
+          unitAmount: sug.suggestedUnitAmount,
+          allocatedAmount: sug.projectedRemainingAmount,
+        };
+      });
+      firstExpandId = data.habitSuggestion.suggestions[0]?.categoryId || firstExpandId;
+      setHabitPrefillNotice(
+        "Patokan di bawah diisi dari median pengeluaran 7 hari terakhirmu (transaksi sekali-jalan diabaikan). Geser atau ubah sesukamu sebelum menyimpan."
+      );
+      try {
+        localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+      } catch {}
+    }
+
+    hasUserEditedRef.current = false;
+    setPotsRaw(initialPots);
+    if (firstExpandId) {
+      setExpandedCatId(firstExpandId);
+    }
+  };
+
+  const loadWorkspace = async (options: { silent?: boolean; forceReplacePots?: boolean } = {}) => {
+    const { silent = false, forceReplacePots = false } = options;
+    if (!silent) setIsLoading(true);
     setLoadError(null);
     try {
       const res = await getBudgetsWorkspaceAction();
       if (res.success && res.data) {
-        setWorkspace(res.data);
-
-        let initialPots = res.data.pots;
-        let firstExpandId = res.data.pots.find((p) => p.isSelected && !p.isOther)?.categoryId;
-
-        const isHabitSuggestMode =
-          typeof window !== "undefined" &&
-          new URLSearchParams(window.location.search).get("suggest") === "habit";
-
-        if (isHabitSuggestMode && res.data.habitSuggestion && res.data.habitSuggestion.suggestions.length > 0) {
-          const sugMap = new Map(
-            res.data.habitSuggestion.suggestions.map((s) => [s.categoryId, s])
-          );
-          initialPots = res.data.pots.map((p) => {
-            const sug = sugMap.get(p.categoryId);
-            if (!sug) {
-              return p.isOther ? p : { ...p, isSelected: false, allocatedAmount: 0, unitAmount: 0 };
-            }
-            return {
-              ...p,
-              isSelected: true,
-              cadence: sug.cadence,
-              unitAmount: sug.suggestedUnitAmount,
-              allocatedAmount: sug.projectedRemainingAmount,
-            };
-          });
-          firstExpandId = res.data.habitSuggestion.suggestions[0]?.categoryId || firstExpandId;
-          setHabitPrefillNotice(
-            "Patokan di bawah diisi dari median pengeluaran 7 hari terakhirmu (transaksi sekali-jalan diabaikan). Geser atau ubah sesukamu sebelum menyimpan."
-          );
-          try {
-            localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
-          } catch {}
-        }
-
-        setPots(initialPots);
-        if (firstExpandId) {
-          setExpandedCatId(firstExpandId);
-        }
-      } else {
+        try {
+          localStorage.setItem("sakuin_cached_budget_pots", JSON.stringify(res.data));
+        } catch {}
+        applyWorkspaceData(res.data, {
+          preserveEditedPots: silent && !forceReplacePots,
+        });
+      } else if (!silent) {
         setLoadError(res.error || "Gagal memuat pembagian pos kategori");
       }
     } catch {
-      setLoadError("Tidak bisa menghubungi server. Periksa koneksimu dan coba lagi.");
+      if (!silent) {
+        setLoadError("Tidak bisa menghubungi server. Periksa koneksimu dan coba lagi.");
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadWorkspace();
+    let hasCache = false;
+    try {
+      const cachedRaw = localStorage.getItem("sakuin_cached_budget_pots");
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw) as BudgetsWorkspaceData;
+        if (parsed && Array.isArray(parsed.pots)) {
+          applyWorkspaceData(parsed);
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch {}
+
+    void loadWorkspace({ silent: hasCache });
   }, []);
 
   useEffect(() => {
@@ -293,8 +331,15 @@ export default function BudgetsPage() {
     try {
       const res = await archiveCategoryPotAction({ categoryId, archive });
       if (res.success) {
+        hasUserEditedRef.current = false;
         try {
           localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+          if (workspace) {
+            localStorage.setItem(
+              "sakuin_cached_budget_pots",
+              JSON.stringify({ ...workspace, pots })
+            );
+          }
         } catch {}
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
         setSaveToast(
@@ -302,7 +347,7 @@ export default function BudgetsPage() {
             ? "Pos berhasil diarsipkan (riwayat transaksinya tetap tersimpan). Kamu bisa memulihkannya kapan saja."
             : "Pos berhasil dipulihkan ke daftar aktif."
         );
-        await loadWorkspace();
+        await loadWorkspace({ silent: true, forceReplacePots: true });
       } else {
         setSaveError(res.error || "Gagal mengubah status arsip pos");
       }
@@ -560,8 +605,15 @@ export default function BudgetsPage() {
       });
 
       if (res.success) {
+        hasUserEditedRef.current = false;
         try {
           localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+          if (workspace) {
+            localStorage.setItem(
+              "sakuin_cached_budget_pots",
+              JSON.stringify({ ...workspace, pots })
+            );
+          }
         } catch {}
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
         const filledCount = activeNonOtherPots.filter((p) => p.allocatedAmount > 0).length;
@@ -1539,7 +1591,7 @@ export default function BudgetsPage() {
           setSaveToast(
             `Berhasil menggeser ${formatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
           );
-          void loadWorkspace();
+          void loadWorkspace({ silent: true, forceReplacePots: true });
         }}
       />
 

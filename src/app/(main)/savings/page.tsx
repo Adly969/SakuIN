@@ -83,6 +83,7 @@ export default function SavingsPage() {
   const [goals, setGoals] = useState<GoalItem[]>([]);
   const [totalSaved, setTotalSaved] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null);
 
   // Modals States
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -236,7 +237,8 @@ export default function SavingsPage() {
 
         if (res.success) {
           setIsGoalModalOpen(false);
-          await loadSavings();
+          window.dispatchEvent(new Event("sakuin:data-invalidated"));
+          await loadSavings(true);
         } else {
           alert(res.error || "Gagal mengubah target");
         }
@@ -251,7 +253,8 @@ export default function SavingsPage() {
 
         if (res.success) {
           setIsGoalModalOpen(false);
-          await loadSavings();
+          window.dispatchEvent(new Event("sakuin:data-invalidated"));
+          await loadSavings(true);
         } else {
           alert(res.error || "Gagal membuat target");
         }
@@ -263,8 +266,9 @@ export default function SavingsPage() {
     }
   };
 
-  // Delete Goal
+  // Delete Goal (optimistic 0ms UI update, rollback otomatis jika gagal)
   const handleDeleteGoal = async (goal: GoalItem) => {
+    if (deletingGoalId) return;
     const confirmText =
       goal.collected > 0
         ? `Target "${goal.name}" masih memiliki tabungan sebesar ${formatRupiah(goal.collected)}. Hapus target ini?`
@@ -273,16 +277,58 @@ export default function SavingsPage() {
     const ok = window.confirm(confirmText);
     if (!ok) return;
 
+    const prevGoals = goals;
+    const prevTotalSaved = totalSaved;
+    const prevCarryoverId = autoCarryoverGoalId;
+
+    const nextGoals = prevGoals.filter((g) => g.id !== goal.id);
+    const nextTotalSaved = Math.max(0, prevTotalSaved - goal.collected);
+    const nextCarryoverId = prevCarryoverId === goal.id ? "" : prevCarryoverId;
+
+    setDeletingGoalId(goal.id);
+    setDetailGoal(null);
+    setGoals(nextGoals);
+    setTotalSaved(nextTotalSaved);
+    setAutoCarryoverGoalId(nextCarryoverId);
+    try {
+      localStorage.setItem(
+        "sakuin_cached_savings",
+        JSON.stringify({
+          goals: nextGoals,
+          totalSaved: nextTotalSaved,
+          autoCarryoverGoalId: nextCarryoverId || null,
+        })
+      );
+    } catch {}
+
     try {
       const res = await deleteSavingsGoalAction(goal.id);
       if (res.success) {
-        setDetailGoal(null);
-        await loadSavings();
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
       } else {
+        setGoals(prevGoals);
+        setTotalSaved(prevTotalSaved);
+        setAutoCarryoverGoalId(prevCarryoverId);
+        try {
+          localStorage.setItem(
+            "sakuin_cached_savings",
+            JSON.stringify({
+              goals: prevGoals,
+              totalSaved: prevTotalSaved,
+              autoCarryoverGoalId: prevCarryoverId || null,
+            })
+          );
+        } catch {}
         alert(res.error || "Gagal menghapus target");
       }
     } catch (err) {
       console.error("Gagal hapus target:", err);
+      setGoals(prevGoals);
+      setTotalSaved(prevTotalSaved);
+      setAutoCarryoverGoalId(prevCarryoverId);
+      alert("Gagal menghapus target tabungan. Periksa koneksi internetmu.");
+    } finally {
+      setDeletingGoalId(null);
     }
   };
 

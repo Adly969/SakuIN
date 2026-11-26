@@ -7,7 +7,6 @@ import { getSavingsDataAction } from "@/app/actions/savings";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { getDebtsAction } from "@/app/actions/debts";
 import { getBudgetsWorkspaceAction } from "@/app/actions/category-pots";
-import { getJakartaCalendarParts } from "@/lib/finance";
 
 /**
  * DataPrefetcher: Komponen pintar di latar belakang (Background Prefetcher)
@@ -31,7 +30,8 @@ export function DataPrefetcher() {
     lastPrefetchRef.current = now;
 
     try {
-      const curMonthKey = getJakartaCalendarParts().monthKey;
+      const today = new Date();
+      const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
       // Eksekusi semua fetch secara paralel dan graceful (allSettled)
       const results = await Promise.allSettled([
@@ -48,49 +48,49 @@ export function DataPrefetcher() {
       if (results[0].status === "fulfilled" && results[0].value.success && results[0].value.data) {
         try {
           localStorage.setItem("sakuin_cached_transactions", JSON.stringify(results[0].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 2. Categories Cache (simpan objek lengkap dengan type: expense / income)
       if (results[1].status === "fulfilled" && results[1].value.success && results[1].value.data) {
         try {
           localStorage.setItem("sakuin_cached_categories", JSON.stringify(results[1].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 3. Statistics Cache
       if (results[2].status === "fulfilled" && results[2].value.success && results[2].value.data) {
         try {
           localStorage.setItem("sakuin_cached_statistics", JSON.stringify(results[2].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 4. Savings Cache
       if (results[3].status === "fulfilled" && results[3].value.success && results[3].value.data) {
         try {
           localStorage.setItem("sakuin_cached_savings", JSON.stringify(results[3].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 5. Accounts Cache
       if (results[4].status === "fulfilled" && results[4].value.success && results[4].value.data) {
         try {
           localStorage.setItem("sakuin_cached_accounts", JSON.stringify(results[4].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 6. Debts Cache
       if (results[5].status === "fulfilled" && results[5].value.success && results[5].value.data) {
         try {
           localStorage.setItem("sakuin_cached_debts", JSON.stringify(results[5].value.data));
-        } catch {}
+        } catch { }
       }
 
       // 7. Category Pots Cache
       if (results[6].status === "fulfilled" && results[6].value.success && results[6].value.data) {
         try {
           localStorage.setItem("sakuin_cached_budget_pots", JSON.stringify(results[6].value.data));
-        } catch {}
+        } catch { }
       }
     } catch (e) {
       console.warn("Background prefetch error:", e);
