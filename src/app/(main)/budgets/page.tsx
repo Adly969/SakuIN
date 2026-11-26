@@ -7,9 +7,10 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Circle,
   Lock,
   Plus,
-  Sparkles,
+  Calculator,
   AlertTriangle,
   Wallet,
   Utensils,
@@ -22,6 +23,12 @@ import {
   Tag,
   ArrowRight,
   RefreshCw,
+  Layers,
+  Sun,
+  CalendarRange,
+  Calendar,
+  ShieldCheck,
+  PieChart,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
@@ -40,10 +47,13 @@ import {
 
 const MAX_ACTIVE_POTS = 8;
 
-const CADENCE_LABELS: Record<PotCadence, string> = {
-  daily: "Harian",
-  weekly: "Mingguan",
-  monthly: "Bulanan",
+const CADENCE_META: Record<
+  PotCadence,
+  { label: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  daily: { label: "Harian", icon: Sun },
+  weekly: { label: "Mingguan", icon: CalendarRange },
+  monthly: { label: "Bulanan", icon: Calendar },
 };
 
 const PLACEHOLDER_BY_NAME: Record<string, string> = {
@@ -65,6 +75,7 @@ function getPotIcon(name: string, iconName?: string) {
   if (key.includes("kuliah") || key.includes("graduation")) return GraduationCap;
   if (key.includes("laundry") || key.includes("shirt")) return Shirt;
   if (key.includes("rokok") || key.includes("flame")) return Flame;
+  if (key.includes("lainnya") || key.includes("more")) return Layers;
   return Tag;
 }
 
@@ -72,9 +83,14 @@ export default function BudgetsPage() {
   const [workspace, setWorkspace] = useState<BudgetsWorkspaceData | null>(null);
   const [pots, setPots] = useState<BudgetPotWorkspaceItem[]>([]);
   const [expandedCatId, setExpandedCatId] = useState<string | null>(null);
+  const [isChecklistOpen, setIsChecklistOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [limitNotice, setLimitNotice] = useState<string | null>(null);
+
+  // Sticky top offset synced cleanly to TopHeader actual rendered height (handles iOS Dynamic Island / Notch & Android)
+  const [stickyTop, setStickyTop] = useState<number>(8);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   // "+ Tambah pos" inline creator
   const [showAddPos, setShowAddPos] = useState(false);
@@ -91,6 +107,41 @@ export default function BudgetsPage() {
   // Keyboard safe sticky button
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const addInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateHeaderOffset = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobileViewport(mobile);
+      if (!mobile) {
+        setStickyTop(8);
+        return;
+      }
+      const headerEl = document.querySelector("header.safe-top-header");
+      if (headerEl) {
+        const h = Math.round(headerEl.getBoundingClientRect().height);
+        setStickyTop(h > 0 ? h : 60);
+      } else {
+        setStickyTop(60);
+      }
+    };
+
+    updateHeaderOffset();
+    window.addEventListener("resize", updateHeaderOffset);
+
+    const headerEl = document.querySelector("header.safe-top-header");
+    let observer: ResizeObserver | null = null;
+    if (headerEl && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(updateHeaderOffset);
+      observer.observe(headerEl);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateHeaderOffset);
+      observer?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.visualViewport) return;
@@ -306,7 +357,9 @@ export default function BudgetsPage() {
           const exists = prev.some((p) => p.categoryId === added.categoryId);
           if (exists) {
             return prev.map((p) =>
-              p.categoryId === added.categoryId ? { ...p, isSelected: true, cadence: customCadence } : p
+              p.categoryId === added.categoryId
+                ? { ...p, isSelected: true, cadence: customCadence }
+                : p
             );
           }
           const others = prev.filter((p) => !p.isOther);
@@ -406,8 +459,8 @@ export default function BudgetsPage() {
           <div className="h-7 w-48 bg-card rounded-lg animate-pulse" />
           <div className="h-4 w-64 bg-card rounded animate-pulse" />
         </div>
-        <div className="h-28 bg-card border border-border rounded-xl animate-pulse" />
         <div className="h-24 bg-card border border-border rounded-xl animate-pulse" />
+        <div className="h-40 bg-card border border-border rounded-xl animate-pulse" />
         <div className="h-36 bg-card border border-border rounded-xl animate-pulse" />
       </div>
     );
@@ -436,8 +489,8 @@ export default function BudgetsPage() {
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-4 pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+188px)] md:pb-12">
-      {/* Header Judul Layar */}
+    <div className="max-w-xl mx-auto space-y-3.5 pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+184px)] md:pb-12">
+      {/* Judul Layar */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
@@ -447,88 +500,91 @@ export default function BudgetsPage() {
             Bagi uangmu ke pos yang dipakai saja dalam 1 layar, lalu simpan sekaligus.
           </p>
         </div>
-        <span className="shrink-0 text-xs font-extrabold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
-          Siklus {cycleDays} hari
+        <span className="shrink-0 inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
+          <Calendar className="w-3.5 h-3.5 text-accent" />
+          <span>{cycleDays} hari</span>
         </span>
       </div>
 
-      {/* Header Sticky: Dana Tersedia | Sudah Dibagi | Sisa Bebas */}
-      <section className="sticky top-[62px] md:top-2 z-30 bg-card border border-border rounded-xl p-3.5 shadow-md space-y-2.5">
-        <div className="grid grid-cols-3 gap-2 text-left">
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block truncate">
-              Dana Tersedia
-            </span>
-            <span className="text-xs sm:text-sm font-black text-foreground block truncate mt-0.5">
-              {formatRupiah(availableFunds)}
-            </span>
+      {/* Header Sticky Ringkas: menempel tepat di bawah TopHeader tanpa pernah terpotong */}
+      <div
+        style={{ top: isMobileViewport ? `${stickyTop}px` : "8px" }}
+        className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background md:mx-0 md:px-0"
+      >
+        <section className="bg-card border border-border rounded-xl p-3 shadow-md space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
+                <Wallet className="w-3 h-3 text-muted-foreground shrink-0" />
+                <span className="truncate">Tersedia</span>
+              </span>
+              <span className="text-xs sm:text-sm font-black text-foreground block truncate mt-0.5">
+                {formatRupiah(availableFunds)}
+              </span>
+            </div>
+
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
+                <PieChart className="w-3 h-3 text-accent shrink-0" />
+                <span className="truncate">Dibagi</span>
+              </span>
+              <span className="text-xs sm:text-sm font-black text-accent block truncate mt-0.5">
+                {formatRupiah(summary.totalAllocated)}
+              </span>
+            </div>
+
+            <div className="min-w-0 text-right">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block truncate">
+                {summary.isOverAllocated ? "Kelebihan" : "Sisa Bebas"}
+              </span>
+              <span
+                className={`text-xs sm:text-sm font-black block truncate mt-0.5 ${
+                  summary.isOverAllocated ? "text-expense" : "text-foreground"
+                }`}
+              >
+                {summary.isOverAllocated
+                  ? `-${formatRupiah(summary.overAllocatedAmount)}`
+                  : formatRupiah(summary.safeFreeRemaining)}
+              </span>
+            </div>
           </div>
 
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block truncate">
-              Sudah Dibagi
-            </span>
-            <span className="text-xs sm:text-sm font-black text-accent block truncate mt-0.5">
-              {formatRupiah(summary.totalAllocated)}
-            </span>
-          </div>
-
-          <div className="min-w-0 text-right">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block truncate">
-              {summary.isOverAllocated ? "Kelebihan" : "Sisa Bebas"}
-            </span>
-            <span
-              className={`text-xs sm:text-sm font-black block truncate mt-0.5 ${
-                summary.isOverAllocated ? "text-expense" : "text-foreground"
+          <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/70">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                summary.isOverAllocated ? "bg-expense" : "bg-accent"
               }`}
-            >
-              {summary.isOverAllocated
-                ? `-${formatRupiah(summary.overAllocatedAmount)}`
-                : formatRupiah(summary.safeFreeRemaining)}
-            </span>
+              style={{ width: `${usedPercent}%` }}
+            />
           </div>
-        </div>
 
-        {/* Progress Bar Alokasi */}
-        <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border/70">
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              summary.isOverAllocated ? "bg-expense" : "bg-accent"
-            }`}
-            style={{ width: `${usedPercent}%` }}
-          />
-        </div>
+          <div className="flex items-center justify-between gap-2 pt-0.5 text-xs flex-wrap">
+            <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
+              <Wallet className="w-3.5 h-3.5 text-accent shrink-0" />
+              <span>
+                Batas Hari Ini jadi{" "}
+                <strong className="text-foreground font-black">
+                  {formatRupiah(liveDailyLimit)}
+                </strong>
+              </span>
+            </div>
 
-        {summary.isOverAllocated && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-expense/15 border border-expense/40 text-xs font-bold text-expense">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              Kelebihan alokasi {formatRupiah(summary.overAllocatedAmount)} (tetap bisa disimpan).
-            </span>
+            {summary.isOverAllocated ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-expense/15 text-expense">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                <span>Tetap bisa disimpan</span>
+              </span>
+            ) : lockedPotsCount > 0 ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A]">
+                <Lock className="w-3 h-3 shrink-0" />
+                <span>{lockedPotsCount} dikunci</span>
+              </span>
+            ) : null}
           </div>
-        )}
+        </section>
+      </div>
 
-        {/* Dampak Langsung ke Batas Hari Ini */}
-        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/60 text-xs">
-          <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
-            <Wallet className="w-3.5 h-3.5 text-accent shrink-0" />
-            <span>
-              Batas Hari Ini jadi{" "}
-              <strong className="text-foreground font-black">
-                {formatRupiah(liveDailyLimit)}
-              </strong>
-            </span>
-          </div>
-          {lockedPotsCount > 0 && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A] shrink-0">
-              <Lock className="w-3 h-3" />
-              <span>{lockedPotsCount} dikunci</span>
-            </span>
-          )}
-        </div>
-      </section>
-
-      {/* Banner Feedback Simpan */}
+      {/* Feedback Simpan */}
       <AnimatePresence>
         {saveToast && (
           <motion.div
@@ -561,165 +617,222 @@ export default function BudgetsPage() {
         </div>
       )}
 
-      {/* Langkah 1: Centang Pos yang Dipakai */}
-      <section className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-3">
+      {/* Langkah 1: Centang Pos yang Dipakai (Grid 2 kolom rapi) */}
+      <section className="bg-card border border-border rounded-xl p-3.5 shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-              1. Pos yang Saya Pakai
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Aktif: <strong className="text-foreground">{activeNonOtherPots.length}</strong>/{MAX_ACTIVE_POTS} pos
-              (Kos, WiFi &amp; Listrik diatur di Dana Terkunci)
-            </p>
-          </div>
           <button
             type="button"
-            onClick={() => {
-              setShowAddPos((prev) => !prev);
-              setAddError(null);
-              setTimeout(() => addInputRef.current?.focus(), 60);
-            }}
-            className="inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-full bg-background border border-border hover:border-accent text-xs font-bold text-foreground transition-colors shrink-0"
+            onClick={() => setIsChecklistOpen((prev) => !prev)}
+            className="flex items-center gap-2 min-h-[44px] text-left min-w-0"
           >
-            <Plus className="w-3.5 h-3.5 stroke-[2.5] text-accent" />
-            <span>Tambah pos</span>
+            <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-xs font-black uppercase tracking-wider text-foreground">
+                  1. Pos Dipakai
+                </h2>
+                <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-background border border-border text-muted-foreground">
+                  {activeNonOtherPots.length}/{MAX_ACTIVE_POTS}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground truncate">
+                Kos, WiFi &amp; Listrik via Dana Terkunci
+              </p>
+            </div>
           </button>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          {checklistChips.map((pot) => {
-            const Icon = getPotIcon(pot.name, pot.icon);
-            if (pot.isOther) {
-              return (
-                <span
-                  key={pot.categoryId}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-full bg-background/70 border border-border text-xs font-bold text-muted-foreground"
-                  title="Selalu aktif sebagai penampung Sisa Bebas"
-                >
-                  <Check className="w-3.5 h-3.5 text-accent" />
-                  <span>{pot.name}</span>
-                </span>
-              );
-            }
-            return (
-              <button
-                key={pot.categoryId}
-                type="button"
-                onClick={() => handleTogglePot(pot.categoryId)}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
-                  pot.isSelected
-                    ? "bg-accent/15 border-accent text-foreground"
-                    : "bg-background border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 shrink-0 ${pot.isSelected ? "text-accent" : ""}`} />
-                <span>{pot.name}</span>
-                {pot.isSelected && <Check className="w-3.5 h-3.5 text-accent stroke-[2.5]" />}
-              </button>
-            );
-          })}
-        </div>
-
-        {limitNotice && (
-          <p className="text-xs font-bold text-[#FFB04A] bg-[#FFB04A]/15 border border-[#FFB04A]/30 rounded-lg px-3 py-2">
-            {limitNotice}
-          </p>
-        )}
-
-        {/* Panel "+ Tambah pos" inline */}
-        <AnimatePresence>
-          {showAddPos && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden pt-2 border-t border-border/60 space-y-3"
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setIsChecklistOpen(true);
+                setShowAddPos((prev) => !prev);
+                setAddError(null);
+                setTimeout(() => addInputRef.current?.focus(), 60);
+              }}
+              className="inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-full bg-background border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
             >
-              {secondaryUnselected.length > 0 && (
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                    Pos Tambahan Siap Pakai
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {secondaryUnselected.map((sec) => {
-                      const SecIcon = getPotIcon(sec.name, sec.icon);
-                      return (
-                        <button
-                          key={sec.categoryId}
-                          type="button"
-                          onClick={() => handleSelectSecondaryPot(sec.categoryId)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-full bg-background border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
-                        >
-                          <SecIcon className="w-3.5 h-3.5 text-accent" />
-                          <span>+ {sec.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <Plus className="w-3.5 h-3.5 stroke-[2.5] text-accent" />
+              <span>Tambah pos</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsChecklistOpen((prev) => !prev)}
+              aria-label={isChecklistOpen ? "Tutup daftar pilihan pos" : "Buka daftar pilihan pos"}
+              className="w-10 h-10 min-w-[40px] min-h-[44px] rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${isChecklistOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
+        </div>
 
-              <form onSubmit={handleCreateCustomPot} className="space-y-2.5">
-                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                  Buat Pos Kustom Baru
-                </span>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    ref={addInputRef}
-                    type="text"
-                    maxLength={40}
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Contoh: Skincare, Olahraga, Hobi..."
-                    className="flex-1 min-h-[44px] px-3.5 py-2 rounded-xl bg-background border border-border text-xs font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!customName.trim() || isAddingPos}
-                    className="px-4 py-2 min-h-[44px] rounded-xl bg-accent text-[#1F1F1F] text-xs font-black disabled:opacity-50 shrink-0"
-                  >
-                    {isAddingPos ? "Menambah..." : "Tambah"}
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs text-muted-foreground font-semibold mr-1">
-                    Sifat pos:
-                  </span>
-                  {(["daily", "weekly", "monthly"] as const).map((cad) => (
-                    <button
-                      key={cad}
-                      type="button"
-                      onClick={() => setCustomCadence(cad)}
-                      className={`px-3 py-1.5 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
-                        customCadence === cad
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-background text-muted-foreground border-border hover:text-foreground"
-                      }`}
+        {isChecklistOpen && (
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              {checklistChips.map((pot) => {
+                const Icon = getPotIcon(pot.name, pot.icon);
+                if (pot.isOther) {
+                  return (
+                    <div
+                      key={pot.categoryId}
+                      className="flex items-center justify-between gap-2 px-2.5 py-2 min-h-[44px] rounded-xl bg-background/70 border border-border text-xs font-bold text-muted-foreground"
+                      title="Selalu aktif sebagai penampung Sisa Bebas"
                     >
-                      {CADENCE_LABELS[cad]}
-                    </button>
-                  ))}
-                </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${pot.color}20`, color: pot.color }}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="truncate">{pot.name}</span>
+                      </div>
+                      <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
+                    </div>
+                  );
+                }
 
-                {addError && (
-                  <p className="text-xs font-bold text-expense">{addError}</p>
-                )}
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                return (
+                  <button
+                    key={pot.categoryId}
+                    type="button"
+                    onClick={() => handleTogglePot(pot.categoryId)}
+                    className={`flex items-center justify-between gap-2 px-2.5 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all text-left ${
+                      pot.isSelected
+                        ? "bg-accent/12 border-accent text-foreground"
+                        : "bg-background border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${pot.color}22`, color: pot.color }}
+                      >
+                        <Icon className="w-3.5 h-3.5 stroke-[2.2]" />
+                      </span>
+                      <span className="truncate">{pot.name}</span>
+                    </div>
+                    {pot.isSelected ? (
+                      <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {limitNotice && (
+              <p className="text-xs font-bold text-[#FFB04A] bg-[#FFB04A]/15 border border-[#FFB04A]/30 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{limitNotice}</span>
+              </p>
+            )}
+
+            {/* Panel "+ Tambah pos" inline */}
+            <AnimatePresence>
+              {showAddPos && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-2.5 border-t border-border/60 space-y-3"
+                >
+                  {secondaryUnselected.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
+                        Pos Tambahan Siap Pakai
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {secondaryUnselected.map((sec) => {
+                          const SecIcon = getPotIcon(sec.name, sec.icon);
+                          return (
+                            <button
+                              key={sec.categoryId}
+                              type="button"
+                              onClick={() => handleSelectSecondaryPot(sec.categoryId)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl bg-background border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
+                            >
+                              <SecIcon className="w-3.5 h-3.5 text-accent" />
+                              <span>{sec.name}</span>
+                              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleCreateCustomPot} className="space-y-2.5">
+                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
+                      Buat Pos Kustom Baru
+                    </span>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        ref={addInputRef}
+                        type="text"
+                        maxLength={40}
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        placeholder="Contoh: Skincare, Olahraga, Hobi..."
+                        className="flex-1 min-h-[44px] px-3.5 py-2 rounded-xl bg-background border border-border text-xs font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!customName.trim() || isAddingPos}
+                        className="px-4 py-2 min-h-[44px] rounded-xl bg-accent text-[#1F1F1F] text-xs font-black disabled:opacity-50 shrink-0"
+                      >
+                        {isAddingPos ? "Menambah..." : "Tambah"}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-muted-foreground font-semibold mr-1">
+                        Sifat pos:
+                      </span>
+                      {(["daily", "weekly", "monthly"] as const).map((cad) => {
+                        const CadIcon = CADENCE_META[cad].icon;
+                        return (
+                          <button
+                            key={cad}
+                            type="button"
+                            onClick={() => setCustomCadence(cad)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
+                              customCadence === cad
+                                ? "bg-foreground text-background border-foreground"
+                                : "bg-background text-muted-foreground border-border hover:text-foreground"
+                            }`}
+                          >
+                            <CadIcon className="w-3.5 h-3.5" />
+                            <span>{CADENCE_META[cad].label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {addError && (
+                      <p className="text-xs font-bold text-expense">{addError}</p>
+                    )}
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </section>
 
       {/* Langkah 2: Isi Jatah Per Pos (Accordion Ramping) */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-            2. Isi Jatah Per Pos (Ketuk Untuk Atur)
+            2. Isi Jatah Per Pos
           </h2>
           <span className="text-xs text-muted-foreground">
-            Boleh isi sebagian saja
+            Ketuk baris untuk atur
           </span>
         </div>
 
@@ -735,11 +848,11 @@ export default function BudgetsPage() {
           <div className="space-y-2.5">
             {activeNonOtherPots.map((pot) => {
               const Icon = getPotIcon(pot.name, pot.icon);
+              const CadenceIcon = CADENCE_META[pot.cadence].icon;
               const isExpanded = expandedCatId === pot.categoryId;
               const placeholder =
                 PLACEHOLDER_BY_NAME[pot.name.toLowerCase().trim()] || "Contoh: 150.000";
 
-              // Rumus hitungan yang tampil agar bisa dikoreksi user
               const formulaText =
                 pot.allocatedAmount > 0 && pot.unitAmount > 0
                   ? pot.cadence === "daily"
@@ -768,7 +881,7 @@ export default function BudgetsPage() {
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${pot.color}20`, color: pot.color }}
                       >
                         <Icon className="w-4 h-4 stroke-[2.2]" />
@@ -778,8 +891,9 @@ export default function BudgetsPage() {
                           <span className="text-xs font-extrabold text-foreground truncate">
                             {pot.name}
                           </span>
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
-                            {CADENCE_LABELS[pot.cadence]}
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
+                            <CadenceIcon className="w-3 h-3" />
+                            <span>{CADENCE_META[pot.cadence].label}</span>
                           </span>
                           {pot.isLockedFromDaily && (
                             <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A] shrink-0">
@@ -791,7 +905,7 @@ export default function BudgetsPage() {
                         <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                           {pot.periodSpent > 0
                             ? `Terpakai siklus ini ${formatRupiah(pot.periodSpent)}`
-                            : formulaText || "Ketuk untuk isi jatah & kalkulator cepat"}
+                            : formulaText || "Ketuk untuk isi jatah & kalkulator"}
                         </p>
                       </div>
                     </div>
@@ -816,8 +930,7 @@ export default function BudgetsPage() {
 
                   {/* Accordion Detail: Kalkulator Bantu + Toggle Kunci */}
                   {isExpanded && (
-                    <div className="px-3.5 pb-4 pt-2 border-t border-border/60 bg-background/40 space-y-3">
-                      {/* Input Nominal Jatah Periode */}
+                    <div className="px-3.5 pb-4 pt-2.5 border-t border-border/60 bg-background/40 space-y-3">
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-bold text-foreground">
@@ -853,8 +966,8 @@ export default function BudgetsPage() {
                         </div>
 
                         {formulaText && (
-                          <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
+                          <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                            <Calculator className="w-3.5 h-3.5 text-accent shrink-0" />
                             <span>
                               {formulaText}
                               {pot.cadence === "weekly" ? " (bulat ribuan)" : ""}
@@ -867,9 +980,9 @@ export default function BudgetsPage() {
                       <div className="space-y-1.5">
                         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
                           {pot.cadence === "daily"
-                            ? "Pilih Patokan Harian (otomatis × hari siklus)"
+                            ? "Patokan Harian (× hari siklus)"
                             : pot.cadence === "weekly"
-                            ? "Pilih Patokan Mingguan (otomatis × hari siklus / 7)"
+                            ? "Patokan Mingguan (× hari siklus / 7)"
                             : "Isi Cepat Bulanan"}
                         </span>
 
@@ -947,7 +1060,7 @@ export default function BudgetsPage() {
                         )}
                       </div>
 
-                      {/* Toggle Kunci Dari Batas Harian (Per Pos) */}
+                      {/* Toggle Kunci Dari Batas Harian */}
                       <div className="p-3 rounded-xl bg-card border border-border/80 space-y-1.5">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -995,13 +1108,19 @@ export default function BudgetsPage() {
         {/* Baris Info Sisa Bebas (Pos Lainnya — Tidak Bisa Dihapus) */}
         {lainnyaPot && (
           <div className="p-3.5 bg-card/70 border border-border rounded-xl flex items-center justify-between gap-2 text-xs">
-            <div className="min-w-0">
-              <p className="font-bold text-foreground">
-                {lainnyaPot.name} <span className="text-muted-foreground font-semibold">• Sisa Bebas</span>
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Menampung transaksi di kategori tanpa jatah ({formatRupiah(lainnyaPot.periodSpent)} terpakai)
-              </p>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-foreground">
+                  {lainnyaPot.name}{" "}
+                  <span className="text-muted-foreground font-semibold">• Sisa Bebas</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  Menampung transaksi tanpa jatah ({formatRupiah(lainnyaPot.periodSpent)} terpakai)
+                </p>
+              </div>
             </div>
             <span className="font-black text-foreground shrink-0">
               {formatRupiah(summary.safeFreeRemaining)}
@@ -1010,22 +1129,25 @@ export default function BudgetsPage() {
         )}
       </section>
 
-      {/* Langkah 3: Tombol Sticky "Simpan Semua Pos" (Aman safe-area + anti-kedip) */}
+      {/* Langkah 3: Dock Bawah Solid untuk "Simpan Semua Pos" (Menutup celah di bawah Bottom Bar) */}
       <div
         style={{
-          bottom:
-            keyboardOffset > 0
-              ? `${keyboardOffset + 12}px`
-              : "calc(max(env(safe-area-inset-bottom, 0px), 16px) + 104px)",
+          bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : "0px",
           transform: "translate3d(0, 0, 0)",
           WebkitBackfaceVisibility: "hidden",
           backfaceVisibility: "hidden",
         }}
-        className={`fixed left-0 right-0 px-4 pointer-events-none md:static md:bottom-auto md:px-0 md:z-auto md:pointer-events-auto md:!transform-none ${
+        className={`fixed left-0 right-0 bg-background border-t border-border shadow-[0_-8px_24px_rgba(0,0,0,0.12)] md:static md:bottom-auto md:bg-transparent md:border-0 md:shadow-none md:z-auto md:!transform-none ${
           keyboardOffset > 0 ? "z-[60]" : "z-40"
         }`}
       >
-        <div className="max-w-xl mx-auto pointer-events-auto rounded-2xl bg-card border border-border p-2 shadow-xl md:bg-transparent md:border-0 md:p-0 md:shadow-none">
+        <div
+          className={`max-w-xl mx-auto px-4 pt-2.5 md:p-0 ${
+            keyboardOffset > 0
+              ? "pb-3"
+              : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+96px)] md:pb-0"
+          }`}
+        >
           <button
             type="button"
             disabled={isSaving}

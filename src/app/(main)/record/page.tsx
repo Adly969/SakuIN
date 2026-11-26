@@ -897,22 +897,25 @@ export default function RecordPage() {
           )}
         </div>
 
-        {/* Tombol Simpan Transaksi (Layer GPU terpisah tanpa backdrop-blur agar tidak berkedip saat scroll cepat) */}
+        {/* Tombol Simpan Transaksi (Dock bawah solid di atas bottom bar + safe-area HP agar konten tak bocor di bawah bar) */}
         <div
           style={{
-            bottom:
-              keyboardOffset > 0
-                ? `${keyboardOffset + 12}px`
-                : "calc(max(env(safe-area-inset-bottom, 0px), 16px) + 104px)",
+            bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : "0px",
             transform: "translate3d(0, 0, 0)",
             WebkitBackfaceVisibility: "hidden",
             backfaceVisibility: "hidden",
           }}
-          className={`fixed left-0 right-0 px-4 pointer-events-none md:static md:bottom-auto md:px-0 md:z-auto md:pointer-events-auto md:!transform-none ${
+          className={`fixed left-0 right-0 bg-background border-t border-border shadow-[0_-8px_24px_rgba(0,0,0,0.12)] md:static md:bottom-auto md:bg-transparent md:border-0 md:shadow-none md:z-auto md:!transform-none ${
             keyboardOffset > 0 ? "z-[60]" : "z-40"
           }`}
         >
-          <div className="max-w-[480px] mx-auto pointer-events-auto rounded-2xl bg-card border border-border p-2 shadow-xl md:bg-transparent md:border-0 md:p-0 md:shadow-none">
+          <div
+            className={`max-w-[480px] mx-auto px-4 pt-2.5 md:p-0 ${
+              keyboardOffset > 0
+                ? "pb-3"
+                : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+96px)] md:pb-0"
+            }`}
+          >
             <button
               type="submit"
               disabled={

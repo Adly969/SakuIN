@@ -41,6 +41,7 @@ import {
   Trash2,
   Bell,
   Clock,
+  Moon,
   Sparkles,
   Download,
   Smartphone,
@@ -850,7 +851,7 @@ export default function ProfilePage() {
 
             {/* Banner Mode Tenang Jam Istirahat */}
             <div className="p-3 rounded-lg bg-background/40 border border-border/50 text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
-              <span className="text-sm">🌙</span>
+              <Moon className="w-4 h-4 text-accent shrink-0 mt-0.5" />
               <div>
                 <strong className="text-foreground font-semibold">Mode Hening Istirahat:</strong> Jam 00:00 (tengah malam), 03:00, dan 06:00 pagi otomatis tanpa notifikasi agar tidur dan waktu istirahatmu tidak terganggu.
               </div>
