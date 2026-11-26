@@ -7,6 +7,7 @@ import {
   categoryBudgets,
   categoryPots,
   categoryPotPeriods,
+  categoryPotTransfers,
   categories,
   profiles,
   transactions,
@@ -14,7 +15,7 @@ import {
   savingsEntries,
   lockedFunds,
 } from "@/db/schema";
-import { eq, and, isNull, asc } from "drizzle-orm";
+import { eq, and, isNull, asc, desc } from "drizzle-orm";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
 import {
   calculateAdaptiveDailyLimit,
@@ -256,12 +257,42 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
       isOverAllocated: totalAllocated > availableFunds,
     };
 
+    const periodTransfers =
+      isCurrentMonthView && userPots.length > 0
+        ? await db.query.categoryPotTransfers.findMany({
+            where: and(
+              eq(categoryPotTransfers.userId, userId),
+              eq(categoryPotTransfers.periodKey, activePeriodInfo.periodKey)
+            ),
+            orderBy: [desc(categoryPotTransfers.createdAt)],
+            limit: 15,
+          })
+        : [];
+    const catById = new Map(expenseCategories.map((c) => [c.id, c]));
+    const potById = new Map(userPots.map((p) => [p.id, p]));
+
+    const recentTransfers = periodTransfers.map((tr) => {
+      const fromPot = potById.get(tr.fromPotId);
+      const toPot = potById.get(tr.toPotId);
+      return {
+        id: tr.id,
+        fromCategoryId: fromPot?.categoryId || "",
+        fromName: (fromPot && catById.get(fromPot.categoryId)?.name) || "Pos Asal",
+        toCategoryId: toPot?.categoryId || "",
+        toName: (toPot && catById.get(toPot.categoryId)?.name) || "Pos Tujuan",
+        amount: Number(tr.amount || 0),
+        note: tr.note,
+        createdAt: tr.createdAt.toISOString(),
+      };
+    });
+
     return {
       success: true,
       data: {
         monthKey,
         items,
         summary,
+        recentTransfers,
         categories: expenseCategories.map((c) => ({
           id: c.id,
           name: c.name,

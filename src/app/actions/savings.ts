@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { savingsGoals, savingsEntries, motivations, accounts, profiles } from "@/db/schema";
+import { savingsGoals, savingsEntries, motivations, accounts, profiles, categoryPotPeriods } from "@/db/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -621,6 +621,26 @@ export async function claimCarryoverSavingsAction(rawInput: ClaimCarryoverInput)
       .update(profiles)
       .set({ autoCarryoverGoalId: input.goalId, updatedAt: new Date() })
       .where(eq(profiles.id, userId));
+
+    // Jika carryover berasal dari akhir periode pos kategori ("cycle:<periodKey>"), tandai sebagai sudah diklaim
+    if (input.carryoverKey.startsWith("cycle:")) {
+      const targetPeriodKey = input.carryoverKey.slice("cycle:".length);
+      if (targetPeriodKey) {
+        await db
+          .update(categoryPotPeriods)
+          .set({
+            carryoverClaimedAmount: BigInt(input.amount),
+            carryoverClaimedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(categoryPotPeriods.userId, userId),
+              eq(categoryPotPeriods.periodKey, targetPeriodKey)
+            )
+          );
+      }
+    }
 
     const motivationQuote = await pickTabunganMotivation(user.user_metadata?.name || "Kawan");
 

@@ -30,6 +30,8 @@ export function ReminderScheduler() {
     level: DailyLimitAlertPayload["level"];
     group?: string;
     url?: string;
+    actionLabel?: string;
+    actionUrl?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -146,6 +148,8 @@ export function ReminderScheduler() {
         level?: DailyLimitAlertPayload["level"];
         group?: string;
         url?: string;
+        actionLabel?: string;
+        actionUrl?: string;
         snapshot?: DailyLimitAlertPayload;
       };
       if (detail?.title && detail?.body) {
@@ -155,6 +159,8 @@ export function ReminderScheduler() {
           level: detail.level || detail.snapshot?.level || "warning",
           group: detail.group,
           url: detail.url,
+          actionLabel: detail.actionLabel,
+          actionUrl: detail.actionUrl,
         });
       }
     };
@@ -302,23 +308,39 @@ export function ReminderScheduler() {
         >
           <AlertTriangle className="w-5 h-5" />
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            const target = inAppAlert.url;
-            setInAppAlert(null);
-            if (target) router.push(target);
-          }}
-          className="min-w-0 flex-1 text-left focus:outline-none"
-        >
-          {inAppAlert.group && (
-            <span className="inline-block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
-              {inAppAlert.group}
-            </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              const target = inAppAlert.url;
+              setInAppAlert(null);
+              if (target) router.push(target);
+            }}
+            className="w-full text-left focus:outline-none"
+          >
+            {inAppAlert.group && (
+              <span className="inline-block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
+                {inAppAlert.group}
+              </span>
+            )}
+            <p className="text-xs font-black text-foreground">{inAppAlert.title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{inAppAlert.body}</p>
+          </button>
+
+          {inAppAlert.actionLabel && inAppAlert.actionUrl && (
+            <button
+              type="button"
+              onClick={() => {
+                const target = inAppAlert.actionUrl!;
+                setInAppAlert(null);
+                router.push(target);
+              }}
+              className="inline-flex items-center px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all"
+            >
+              {inAppAlert.actionLabel}
+            </button>
           )}
-          <p className="text-xs font-black text-foreground">{inAppAlert.title}</p>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{inAppAlert.body}</p>
-        </button>
+        </div>
         <button
           type="button"
           onClick={() => setInAppAlert(null)}

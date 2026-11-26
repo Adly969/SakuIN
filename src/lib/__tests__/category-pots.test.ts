@@ -13,6 +13,13 @@ import {
   resolvePotCategoryKey,
   aggregatePendingOfflineSpentByCategory,
   formatCompactRupiah,
+  calculatePotShift,
+  suggestDefaultShiftAmount,
+  getPreviousCyclePeriodInfo,
+  roundExpenseForNextBudget,
+  buildPreviousPeriodDrafts,
+  evaluatePeriodEndResetAndCarryover,
+  shouldSuggestArchivePot,
 } from "../category-pots";
 
 test("1. Jatah per sifat (Harian, Mingguan, Bulanan)", () => {
@@ -257,4 +264,128 @@ test("8. Konsistensi offline queue, alias kategori, & format ringkas", () => {
   assert.equal(formatCompactRupiah(540000), "Rp 540rb");
   assert.equal(formatCompactRupiah(542500), "Rp 542.500");
   assert.equal(formatCompactRupiah(0), "Rp 0");
+});
+
+test("9. Geser jatah: total dana tetap, tidak boleh melebihi sisa pos asal, & saran otomatis", () => {
+  // Nongkrong jatah 300rb (terpakai 100rb -> sisa 200rb), Makan jatah 500rb (terpakai 550rb -> defisit 50rb)
+  const suggested = suggestDefaultShiftAmount({
+    toAllocated: 500000,
+    toSpent: 550000,
+    fromRemaining: 200000,
+  });
+  assert.equal(suggested, 50000);
+
+  const shiftOk = calculatePotShift({
+    fromAllocated: 300000,
+    fromSpent: 100000,
+    toAllocated: 500000,
+    requestedAmount: suggested,
+  });
+  assert.equal(shiftOk.valid, true);
+  assert.equal(shiftOk.nextFromAllocated, 250000);
+  assert.equal(shiftOk.nextToAllocated, 550000);
+  assert.equal(shiftOk.totalBefore, shiftOk.totalAfter); // total dana tidak berubah (800rb)
+
+  // Melebihi sisa pos asal (sisa 200rb, minta 250rb) harus ditolak
+  const shiftFail = calculatePotShift({
+    fromAllocated: 300000,
+    fromSpent: 100000,
+    toAllocated: 500000,
+    requestedAmount: 250000,
+  });
+  assert.equal(shiftFail.valid, false);
+  assert.equal(shiftFail.totalBefore, shiftFail.totalAfter);
+});
+
+test("10. Pergantian periode (Bulanan, Mingguan, Fleksibel), pratinjau jatah lalu, & reset carryover tanpa defisit", () => {
+  // Siklus Bulanan tgl 25 melintasi Februari non-kabisat 2026 (28 hari)
+  const marMonthlyPrev = getPreviousCyclePeriodInfo(new Date(2026, 2, 10), "monthly", 25, 1);
+  // Periode aktif Mar 10 dg tgl kiriman 25 adalah 25 Feb..24 Mar; sebelumnya adalah 25 Jan..24 Feb (31 hari)
+  assert.equal(marMonthlyPrev.periodStart, "2026-01-25");
+  assert.equal(marMonthlyPrev.periodEnd, "2026-02-24");
+  assert.equal(marMonthlyPrev.cycleDays, 31);
+
+  // Siklus Fleksibel di bulan Maret 2026 -> periode sebelumnya adalah Februari 2026 (28 hari)
+  const flexPrev = getPreviousCyclePeriodInfo(new Date(2026, 2, 5), "flexible", 1, 1);
+  assert.equal(flexPrev.periodStart, "2026-02-01");
+  assert.equal(flexPrev.periodEnd, "2026-02-28");
+  assert.equal(flexPrev.cycleDays, 28);
+
+  // Siklus Mingguan (Senin = 1) saat Kamis 26 Nov 2026 -> periode aktif Sen 23..Min 29 Nov, sebelumnya Sen 16..Min 22 Nov
+  const weeklyPrev = getPreviousCyclePeriodInfo(new Date(2026, 10, 26), "weekly", 1, 1);
+  assert.equal(weeklyPrev.cycleDays, 7);
+  assert.equal(weeklyPrev.periodStart, "2026-11-16");
+  assert.equal(weeklyPrev.periodEnd, "2026-11-22");
+
+  // Pembulatan pengeluaran asli & dua preset periode berikutnya
+  assert.equal(roundExpenseForNextBudget(423000), 420000);
+  assert.equal(roundExpenseForNextBudget(426000), 430000);
+  assert.equal(roundExpenseForNextBudget(33000), 35000);
+
+  const presetInputs = [
+    {
+      categoryId: "c1",
+      name: "Makan",
+      cadence: "daily" as const,
+      currentAllocated: 750000,
+      prevAllocated: 800000,
+      prevSpent: 716000,
+      cycleDays: 30,
+    },
+  ];
+  const copied = buildPreviousPeriodDrafts(presetInputs, "copy_previous");
+  assert.equal(copied[0].nextAllocated, 800000);
+  const adjusted = buildPreviousPeriodDrafts(presetInputs, "adjust_to_spent");
+  assert.equal(adjusted[0].nextAllocated, 720000);
+
+  // Reset akhir periode & carryover:
+  // Makan sempat digeser ke 800rb tapi patokan semula 25rb/hari (30 hari -> 750rb), terpakai 650rb -> surplus 150rb
+  // Nongkrong jatah 200rb, terpakai 280rb -> defisit 80rb (TIDAK dibawa & TIDAK mengurangi surplus Makan!)
+  const resetResult = evaluatePeriodEndResetAndCarryover({
+    newCycleDays: 30,
+    pots: [
+      {
+        potId: "p1",
+        name: "Makan",
+        cadence: "daily",
+        unitAmount: 25000,
+        prevAllocatedAmount: 800000,
+        prevSpent: 650000,
+      },
+      {
+        potId: "p2",
+        name: "Jajan & Nongkrong",
+        cadence: "monthly",
+        unitAmount: 200000,
+        prevAllocatedAmount: 200000,
+        prevSpent: 280000,
+      },
+    ],
+  });
+
+  assert.equal(resetResult.totalPositiveSurplus, 150000);
+  assert.equal(resetResult.deficitPotsCount, 1);
+  assert.equal(resetResult.perPot[0].resetAllocatedAmount, 750000); // kembali ke patokan semula
+  assert.equal(resetResult.perPot[1].carriedDeficitAmount, 0); // defisit tidak dibawa
+  assert.equal(resetResult.perPot[1].resetAllocatedAmount, 200000); // tetap patokan semula
+
+  // Uji tawaran arsip 2 periode tanpa pemakaian
+  assert.equal(
+    shouldSuggestArchivePot({
+      isArchived: false,
+      existedInPrevPeriod: true,
+      prevPeriodSpent: 0,
+      currentPeriodSpent: 0,
+    }),
+    true
+  );
+  assert.equal(
+    shouldSuggestArchivePot({
+      isArchived: false,
+      existedInPrevPeriod: false, // pos baru dibuat di periode ini
+      prevPeriodSpent: 0,
+      currentPeriodSpent: 0,
+    }),
+    false
+  );
 });

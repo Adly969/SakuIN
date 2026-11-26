@@ -423,3 +423,262 @@ export function formatCompactRupiah(amount: number): string {
   }
   return `Rp ${abs.toLocaleString("id-ID")}`;
 }
+
+/* ------------------------------------------------------------------ */
+/*  SPRINT 5: GESER JATAH, PERIODE BERIKUTNYA, AKHIR PERIODE, ARSIP  */
+/* ------------------------------------------------------------------ */
+
+export interface PotShiftResult {
+  shiftedAmount: number;
+  nextFromAllocated: number;
+  nextToAllocated: number;
+  totalBefore: number;
+  totalAfter: number;
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Menghitung pemindahan jatah antar pos ("Geser Jatah") dalam satu periode.
+ * Menjamin total dana tidak berubah dan pos asal tidak boleh minus dari pengeluaran berjalannya.
+ */
+export function calculatePotShift(params: {
+  fromAllocated: number;
+  fromSpent: number;
+  toAllocated: number;
+  requestedAmount: number;
+}): PotShiftResult {
+  const fromAlloc = Math.max(0, Math.round(params.fromAllocated || 0));
+  const fromSpent = Math.max(0, Math.round(params.fromSpent || 0));
+  const toAlloc = Math.max(0, Math.round(params.toAllocated || 0));
+  const req = Math.round(params.requestedAmount || 0);
+  const fromRemaining = Math.max(0, fromAlloc - fromSpent);
+  const totalBefore = fromAlloc + toAlloc;
+
+  if (req <= 0) {
+    return {
+      shiftedAmount: 0,
+      nextFromAllocated: fromAlloc,
+      nextToAllocated: toAlloc,
+      totalBefore,
+      totalAfter: totalBefore,
+      valid: false,
+      error: "Nominal geser harus lebih dari Rp 0",
+    };
+  }
+
+  if (fromRemaining <= 0) {
+    return {
+      shiftedAmount: 0,
+      nextFromAllocated: fromAlloc,
+      nextToAllocated: toAlloc,
+      totalBefore,
+      totalAfter: totalBefore,
+      valid: false,
+      error: "Pos asal sudah tidak memiliki sisa jatah",
+    };
+  }
+
+  if (req > fromRemaining) {
+    return {
+      shiftedAmount: 0,
+      nextFromAllocated: fromAlloc,
+      nextToAllocated: toAlloc,
+      totalBefore,
+      totalAfter: totalBefore,
+      valid: false,
+      error: "Nominal melebihi sisa pos asal",
+    };
+  }
+
+  const nextFromAllocated = fromAlloc - req;
+  const nextToAllocated = toAlloc + req;
+
+  return {
+    shiftedAmount: req,
+    nextFromAllocated,
+    nextToAllocated,
+    totalBefore,
+    totalAfter: nextFromAllocated + nextToAllocated,
+    valid: true,
+  };
+}
+
+/**
+ * Menyarankan nominal otomatis untuk dialog Geser Jatah:
+ * memprioritaskan menutup defisit pos tujuan bila sudah over budget,
+ * dibatasi oleh sisa pos asal.
+ */
+export function suggestDefaultShiftAmount(params: {
+  toAllocated: number;
+  toSpent: number;
+  fromRemaining: number;
+}): number {
+  const safeFromRem = Math.max(0, Math.round(params.fromRemaining || 0));
+  if (safeFromRem === 0) return 0;
+  const deficit = Math.max(0, Math.round((params.toSpent || 0) - (params.toAllocated || 0)));
+  if (deficit > 0) {
+    return Math.min(safeFromRem, deficit);
+  }
+  const quarterRounded = Math.round((safeFromRem * 0.25) / 5000) * 5000;
+  if (quarterRounded > 0) {
+    return Math.min(safeFromRem, quarterRounded);
+  }
+  return safeFromRem;
+}
+
+/**
+ * Mendapatkan info periode tepat sebelum periode aktif saat ini
+ * untuk siklus bulanan, mingguan, dan fleksibel (termasuk 28/29/30/31 hari).
+ */
+export function getPreviousCyclePeriodInfo(
+  today: Date = new Date(),
+  cycle: AllowanceCycle = "monthly",
+  paydayDay: number = 1,
+  paydayWeekday: number = 1
+): CyclePeriodInfo {
+  const current = getCyclePeriodInfo(today, cycle, paydayDay, paydayWeekday);
+  const [y, m, d] = current.periodStart.split("-").map((n) => parseInt(n, 10));
+  const dayBeforeStart = new Date(y, (m || 1) - 1, (d || 1) - 1);
+  return getCyclePeriodInfo(dayBeforeStart, cycle, paydayDay, paydayWeekday);
+}
+
+/**
+ * Membulatkan pengeluaran asli periode lalu per pos untuk fitur
+ * "Sesuaikan dengan pengeluaran lalu" (kelipatan Rp 10.000 untuk >= Rp 50.000, Rp 5.000 di bawah itu).
+ */
+export function roundExpenseForNextBudget(spentAmount: number): number {
+  const safeSpent = Math.max(0, Math.round(spentAmount || 0));
+  if (safeSpent === 0) return 0;
+  const step = safeSpent >= 50000 ? 10000 : 5000;
+  return Math.round(safeSpent / step) * step;
+}
+
+export type NextPeriodPresetMode = "copy_previous" | "adjust_to_spent";
+
+export interface PreviousPeriodPotInput {
+  categoryId: string;
+  name: string;
+  cadence: PotCadence;
+  currentAllocated: number;
+  prevAllocated: number;
+  prevSpent: number;
+  cycleDays: number;
+}
+
+export interface NextPeriodPotDraft {
+  categoryId: string;
+  name: string;
+  currentAllocated: number;
+  prevAllocated: number;
+  prevSpent: number;
+  nextAllocated: number;
+  nextUnitAmount: number;
+}
+
+/**
+ * Menyusun pratinjau jatah periode berikutnya berdasarkan pilihan:
+ * - 'copy_previous': menyalin jatah periode lalu apa adanya
+ * - 'adjust_to_spent': memakai pembulatan pengeluaran asli periode lalu
+ */
+export function buildPreviousPeriodDrafts(
+  pots: PreviousPeriodPotInput[],
+  mode: NextPeriodPresetMode
+): NextPeriodPotDraft[] {
+  return pots.map((pot) => {
+    const nextAllocated =
+      mode === "copy_previous"
+        ? Math.max(0, Math.round(pot.prevAllocated || 0))
+        : roundExpenseForNextBudget(pot.prevSpent);
+
+    const safeDays = Math.max(1, Math.round(pot.cycleDays || 30));
+    const nextUnitAmount =
+      pot.cadence === "monthly"
+        ? nextAllocated
+        : pot.cadence === "daily"
+        ? Math.round(nextAllocated / safeDays)
+        : Math.round((nextAllocated * 7) / safeDays);
+
+    return {
+      categoryId: pot.categoryId,
+      name: pot.name,
+      currentAllocated: Math.max(0, Math.round(pot.currentAllocated || 0)),
+      prevAllocated: Math.max(0, Math.round(pot.prevAllocated || 0)),
+      prevSpent: Math.max(0, Math.round(pot.prevSpent || 0)),
+      nextAllocated,
+      nextUnitAmount,
+    };
+  });
+}
+
+export interface PeriodEndPotSnapshot {
+  potId: string;
+  name: string;
+  cadence: PotCadence;
+  unitAmount: number;
+  prevAllocatedAmount: number;
+  prevSpent: number;
+}
+
+/**
+ * Mengevaluasi reset akhir periode saat pergantian siklus:
+ * - Jatah baru di-reset ke patokan semula (`unitAmount` pada `newCycleDays`)
+ * - Hanya sisa positif (`max(0, prevAllocated - prevSpent)`) yang masuk ke carryover tabungan
+ * - Defisit (`prevSpent > prevAllocated`) TIDAK dibawa dan TIDAK memotong jatah baru atau surplus pos lain
+ */
+export function evaluatePeriodEndResetAndCarryover(params: {
+  pots: PeriodEndPotSnapshot[];
+  newCycleDays: number;
+}) {
+  const safeDays = Math.max(1, Math.round(params.newCycleDays || 30));
+  let totalPositiveSurplus = 0;
+  let deficitPotsCount = 0;
+
+  const perPot = params.pots.map((pot) => {
+    const rawDiff = Math.round(pot.prevAllocatedAmount || 0) - Math.max(0, Math.round(pot.prevSpent || 0));
+    const surplusAmount = Math.max(0, rawDiff);
+    const deficitAmount = rawDiff < 0 ? Math.abs(rawDiff) : 0;
+
+    if (surplusAmount > 0) totalPositiveSurplus += surplusAmount;
+    if (deficitAmount > 0) deficitPotsCount += 1;
+
+    const resetAllocatedAmount = calculatePotPeriodAllocation(
+      pot.unitAmount,
+      pot.cadence,
+      safeDays
+    );
+
+    return {
+      potId: pot.potId,
+      name: pot.name,
+      surplusAmount,
+      deficitAmount,
+      carriedDeficitAmount: 0, // Defisit tidak pernah dibawa ke periode berikutnya
+      resetAllocatedAmount,
+    };
+  });
+
+  return {
+    totalPositiveSurplus,
+    deficitPotsCount,
+    perPot,
+  };
+}
+
+/**
+ * Menentukan apakah pos layak ditawari pengarsipan karena tidak ada pemakaian
+ * selama 2 periode (periode lalu dan periode berjalan sama-sama Rp 0).
+ */
+export function shouldSuggestArchivePot(params: {
+  isArchived: boolean;
+  isOther?: boolean;
+  existedInPrevPeriod: boolean;
+  prevPeriodSpent: number;
+  currentPeriodSpent: number;
+  inactivePeriods?: number;
+}): boolean {
+  if (params.isArchived || params.isOther) return false;
+  if ((params.inactivePeriods || 0) >= 2 && params.currentPeriodSpent <= 0) return true;
+  if (!params.existedInPrevPeriod) return false;
+  return params.prevPeriodSpent <= 0 && params.currentPeriodSpent <= 0;
+}

@@ -7,6 +7,7 @@ import {
   categories,
   categoryPots,
   categoryPotPeriods,
+  categoryPotTransfers,
   transactions,
   accounts,
   savingsEntries,
@@ -14,7 +15,7 @@ import {
   budgets,
   categoryBudgets,
 } from "@/db/schema";
-import { eq, and, isNull, asc } from "drizzle-orm";
+import { eq, and, isNull, asc, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
@@ -24,13 +25,17 @@ import {
 } from "@/lib/finance";
 import {
   getCyclePeriodInfo,
+  getPreviousCyclePeriodInfo,
   calculatePotPeriodAllocation,
+  calculatePotShift,
+  shouldSuggestArchivePot,
   type PotCadence,
 } from "@/lib/category-pots";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
 import {
   ensureFallbackLainnyaCategory,
   EXCLUDED_BILL_CATEGORIES,
+  isProtectedCategory,
 } from "@/lib/category-pots-server";
 
 const INITIAL_PRIORITY_ORDER = [
@@ -57,6 +62,29 @@ export interface BudgetPotWorkspaceItem {
   isOther: boolean;
   isCustom: boolean;
   periodSpent: number;
+  prevAllocatedAmount: number;
+  prevPeriodSpent: number;
+  suggestArchive: boolean;
+}
+
+export interface PotTransferLogItem {
+  id: string;
+  fromCategoryId: string;
+  fromName: string;
+  toCategoryId: string;
+  toName: string;
+  amount: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface ArchivedPotSummary {
+  categoryId: string;
+  name: string;
+  icon: string;
+  color: string;
+  cadence: PotCadence;
+  unitAmount: number;
 }
 
 export interface BudgetsWorkspaceData {
@@ -66,6 +94,13 @@ export interface BudgetsWorkspaceData {
   cycleDays: number;
   remainingDays: number;
   allowanceCycle: AllowanceCycle;
+  previousPeriod: {
+    periodKey: string;
+    periodStart: string;
+    periodEnd: string;
+    cycleDays: number;
+    hasData: boolean;
+  };
   dailyLimitContext: {
     totalBalance: number;
     remainingDays: number;
@@ -76,6 +111,8 @@ export interface BudgetsWorkspaceData {
     availableFunds: number;
   };
   pots: BudgetPotWorkspaceItem[];
+  archivedPots: ArchivedPotSummary[];
+  recentTransfers: PotTransferLogItem[];
 }
 
 export async function getBudgetsWorkspaceAction(): Promise<{
@@ -123,8 +160,7 @@ export async function getBudgetsWorkspaceAction(): Promise<{
       db.query.categories.findMany({
         where: and(
           eq(categories.userId, userId),
-          eq(categories.type, "expense"),
-          eq(categories.isHidden, false)
+          eq(categories.type, "expense")
         ),
         orderBy: [asc(categories.sortOrder), asc(categories.name)],
       }),
@@ -142,13 +178,30 @@ export async function getBudgetsWorkspaceAction(): Promise<{
     const reserveValue = Number(userProfile?.reserveValue || 0);
 
     const periodInfo = getCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
+    const prevPeriodInfo = getPreviousCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
 
-    const periodOverrides = await db.query.categoryPotPeriods.findMany({
-      where: and(
-        eq(categoryPotPeriods.userId, userId),
-        eq(categoryPotPeriods.periodKey, periodInfo.periodKey)
-      ),
-    });
+    const [periodOverrides, prevPeriodOverrides, periodTransfers] = await Promise.all([
+      db.query.categoryPotPeriods.findMany({
+        where: and(
+          eq(categoryPotPeriods.userId, userId),
+          eq(categoryPotPeriods.periodKey, periodInfo.periodKey)
+        ),
+      }),
+      db.query.categoryPotPeriods.findMany({
+        where: and(
+          eq(categoryPotPeriods.userId, userId),
+          eq(categoryPotPeriods.periodKey, prevPeriodInfo.periodKey)
+        ),
+      }),
+      db.query.categoryPotTransfers.findMany({
+        where: and(
+          eq(categoryPotTransfers.userId, userId),
+          eq(categoryPotTransfers.periodKey, periodInfo.periodKey)
+        ),
+        orderBy: [desc(categoryPotTransfers.createdAt)],
+        limit: 15,
+      }),
+    ]);
 
     const legacyCategoryBudgets = monthBudget
       ? await db.query.categoryBudgets.findMany({
@@ -156,10 +209,11 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         })
       : [];
 
-    // Hitung total pengeluaran periode & bulan berjalan (selaras dengan Dashboard)
+    // Hitung total pengeluaran periode berjalan, periode lalu, & bulan berjalan (selaras dengan Dashboard)
     let totalExpenseMonth = 0;
     let totalIncomeMonth = 0;
     const spentByCategoryPeriod: Record<string, number> = {};
+    const spentByCategoryPrevPeriod: Record<string, number> = {};
 
     for (const tx of userTransactions) {
       const amt = Number(tx.amount || 0);
@@ -173,6 +227,14 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         ) {
           spentByCategoryPeriod[tx.categoryId] =
             (spentByCategoryPeriod[tx.categoryId] || 0) + amt;
+        }
+        if (
+          tx.occurredOn &&
+          tx.occurredOn >= prevPeriodInfo.periodStart &&
+          tx.occurredOn <= prevPeriodInfo.periodEnd
+        ) {
+          spentByCategoryPrevPeriod[tx.categoryId] =
+            (spentByCategoryPrevPeriod[tx.categoryId] || 0) + amt;
         }
       } else if (tx.type === "income") {
         if (txMonthKey === currentMonthKey) totalIncomeMonth += amt;
@@ -213,16 +275,37 @@ export async function getBudgetsWorkspaceAction(): Promise<{
     const availableFunds = baseAdaptive.spendableBalance;
 
     const potByCatId = new Map(userPots.map((p) => [p.categoryId, p]));
+    const potById = new Map(userPots.map((p) => [p.id, p]));
+    const catById = new Map(userCategories.map((c) => [c.id, c]));
     const overrideByPotId = new Map(periodOverrides.map((o) => [o.potId, o]));
+    const prevOverrideByPotId = new Map(prevPeriodOverrides.map((o) => [o.potId, o]));
     const legacyLimitByCatId = new Map(
       legacyCategoryBudgets.map((cb) => [cb.categoryId, Number(cb.limitAmount || 0)])
     );
 
-    const filteredCats = userCategories.filter(
-      (c) => !EXCLUDED_BILL_CATEGORIES.has((c.name || "").toLowerCase().trim())
+    const visibleCats = userCategories.filter(
+      (c) => !c.isHidden && !EXCLUDED_BILL_CATEGORIES.has((c.name || "").toLowerCase().trim())
     );
+    const archivedPots: ArchivedPotSummary[] = userCategories
+      .filter(
+        (c) =>
+          c.isHidden &&
+          !isProtectedCategory(c) &&
+          !EXCLUDED_BILL_CATEGORIES.has((c.name || "").toLowerCase().trim())
+      )
+      .map((c) => {
+        const p = potByCatId.get(c.id);
+        return {
+          categoryId: c.id,
+          name: c.name,
+          icon: c.icon,
+          color: c.color,
+          cadence: ((p?.cadence as PotCadence) || (c.defaultCadence as PotCadence) || "monthly"),
+          unitAmount: Number(p?.unitAmount || 0),
+        };
+      });
 
-    filteredCats.sort((a, b) => {
+    visibleCats.sort((a, b) => {
       const idxA = INITIAL_PRIORITY_ORDER.indexOf((a.name || "").toLowerCase().trim());
       const idxB = INITIAL_PRIORITY_ORDER.indexOf((b.name || "").toLowerCase().trim());
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -231,11 +314,12 @@ export async function getBudgetsWorkspaceAction(): Promise<{
       return (a.sortOrder ?? 99) - (b.sortOrder ?? 99);
     });
 
-    const pots: BudgetPotWorkspaceItem[] = filteredCats.map((cat) => {
+    const pots: BudgetPotWorkspaceItem[] = visibleCats.map((cat) => {
       const lower = (cat.name || "").toLowerCase().trim();
       const isOther = lower === "lainnya";
       const existingPot = potByCatId.get(cat.id);
       const override = existingPot ? overrideByPotId.get(existingPot.id) : undefined;
+      const prevOverride = existingPot ? prevOverrideByPotId.get(existingPot.id) : undefined;
       const legacyLimit = legacyLimitByCatId.get(cat.id) || 0;
 
       const defaultCadence = ((cat.defaultCadence as PotCadence) || "monthly");
@@ -262,6 +346,34 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         ? true
         : Boolean(cat.isDefault);
 
+      const prevAllocatedAmount = prevOverride
+        ? Number(prevOverride.allocatedAmount || 0)
+        : existingPot && !existingPot.isArchived && unitAmount > 0
+        ? calculatePotPeriodAllocation(unitAmount, cadence, prevPeriodInfo.cycleDays)
+        : 0;
+      const currentSpent = spentByCategoryPeriod[cat.id] || 0;
+      const prevSpent = spentByCategoryPrevPeriod[cat.id] || 0;
+
+      const potCreatedKey = existingPot?.createdAt
+        ? getJakartaDateKey(new Date(existingPot.createdAt))
+        : cat.createdAt
+        ? getJakartaDateKey(new Date(cat.createdAt))
+        : todayKey;
+      const existedInPrevPeriod =
+        Boolean(prevOverride) || potCreatedKey <= prevPeriodInfo.periodEnd;
+
+      const suggestArchive =
+        !isOther &&
+        isSelected &&
+        shouldSuggestArchivePot({
+          isArchived: Boolean(cat.isHidden),
+          isOther,
+          existedInPrevPeriod,
+          prevPeriodSpent: prevSpent,
+          currentPeriodSpent: currentSpent,
+          inactivePeriods: existingPot?.inactivePeriods || 0,
+        });
+
       return {
         categoryId: cat.id,
         name: cat.name,
@@ -276,7 +388,32 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         isDefault: Boolean(cat.isDefault),
         isOther,
         isCustom: !cat.isDefault && lower !== "laundry" && lower !== "rokok",
-        periodSpent: spentByCategoryPeriod[cat.id] || 0,
+        periodSpent: currentSpent,
+        prevAllocatedAmount,
+        prevPeriodSpent: prevSpent,
+        suggestArchive,
+      };
+    });
+
+    const hasPrevData =
+      prevPeriodOverrides.length > 0 ||
+      Object.values(spentByCategoryPrevPeriod).some((v) => v > 0) ||
+      pots.some((p) => !p.isOther && p.prevAllocatedAmount > 0);
+
+    const recentTransfers: PotTransferLogItem[] = periodTransfers.map((tr) => {
+      const fromPot = potById.get(tr.fromPotId);
+      const toPot = potById.get(tr.toPotId);
+      const fromCat = fromPot ? catById.get(fromPot.categoryId) : undefined;
+      const toCat = toPot ? catById.get(toPot.categoryId) : undefined;
+      return {
+        id: tr.id,
+        fromCategoryId: fromPot?.categoryId || "",
+        fromName: fromCat?.name || "Pos Asal",
+        toCategoryId: toPot?.categoryId || "",
+        toName: toCat?.name || "Pos Tujuan",
+        amount: Number(tr.amount || 0),
+        note: tr.note,
+        createdAt: tr.createdAt.toISOString(),
       };
     });
 
@@ -289,6 +426,13 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         cycleDays: periodInfo.cycleDays,
         remainingDays: periodInfo.remainingDays,
         allowanceCycle,
+        previousPeriod: {
+          periodKey: prevPeriodInfo.periodKey,
+          periodStart: prevPeriodInfo.periodStart,
+          periodEnd: prevPeriodInfo.periodEnd,
+          cycleDays: prevPeriodInfo.cycleDays,
+          hasData: hasPrevData,
+        },
         dailyLimitContext: {
           totalBalance: remainingBalance,
           remainingDays: periodInfo.remainingDays,
@@ -299,6 +443,8 @@ export async function getBudgetsWorkspaceAction(): Promise<{
           availableFunds,
         },
         pots,
+        archivedPots,
+        recentTransfers,
       },
     };
   } catch (error) {
@@ -597,6 +743,9 @@ export async function createCustomCategoryPotAction(
         isOther: false,
         isCustom: !categoryRow.isDefault && lower !== "laundry" && lower !== "rokok",
         periodSpent: 0,
+        prevAllocatedAmount: 0,
+        prevPeriodSpent: 0,
+        suggestArchive: false,
       },
     };
   } catch (error) {
@@ -607,8 +756,7 @@ export async function createCustomCategoryPotAction(
 
 /**
  * Aksi ringkas dari konfirmasi Hari Kiriman (Payday):
- * Memastikan pembagian jatah pos dari periode sebelumnya langsung aktif di periode baru.
- * (Penyesuaian lanjutan/salin detail akan disempurnakan di Sprint 5.)
+ * Me-reset jatah pos ke patokan semula untuk periode baru (bukan hasil geser sementara periode lalu).
  */
 export async function reusePreviousPeriodPotsAction(): Promise<{
   success: boolean;
@@ -624,13 +772,10 @@ export async function reusePreviousPeriodPotsAction(): Promise<{
     const userId = user?.id;
     if (!userId) return { success: false, error: "Pengguna belum login" };
 
-    const [userProfile, activePots, existingPeriodRows] = await Promise.all([
+    const [userProfile, activePots] = await Promise.all([
       db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
       db.query.categoryPots.findMany({
         where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
-      }),
-      db.query.categoryPotPeriods.findMany({
-        where: eq(categoryPotPeriods.userId, userId),
       }),
     ]);
 
@@ -644,26 +789,13 @@ export async function reusePreviousPeriodPotsAction(): Promise<{
     const paydayWeekday = userProfile?.paydayWeekday ?? 1;
     const periodInfo = getCyclePeriodInfo(new Date(), allowanceCycle, paydayDay, paydayWeekday);
 
-    const latestPrevByPot = new Map<string, number>();
-    const sortedPrev = existingPeriodRows
-      .filter((r) => r.periodKey !== periodInfo.periodKey)
-      .sort((a, b) => (a.periodStart > b.periodStart ? -1 : 1));
-    for (const row of sortedPrev) {
-      if (!latestPrevByPot.has(row.potId)) {
-        latestPrevByPot.set(row.potId, Number(row.allocatedAmount || 0));
-      }
-    }
-
     for (const pot of candidatePots) {
-      const prevAlloc = latestPrevByPot.get(pot.id);
-      const nextAlloc =
-        prevAlloc && prevAlloc > 0
-          ? prevAlloc
-          : calculatePotPeriodAllocation(
-              Number(pot.unitAmount || 0),
-              (pot.cadence as PotCadence) || "monthly",
-              periodInfo.cycleDays
-            );
+      // Reset ke patokan semula sesuai sifat pos dan panjang siklus baru
+      const nextAlloc = calculatePotPeriodAllocation(
+        Number(pot.unitAmount || 0),
+        (pot.cadence as PotCadence) || "monthly",
+        periodInfo.cycleDays
+      );
       if (nextAlloc <= 0) continue;
 
       await db
@@ -698,5 +830,328 @@ export async function reusePreviousPeriodPotsAction(): Promise<{
   } catch (error) {
     console.error("Gagal memakai pembagian periode lalu:", error);
     return { success: false, error: "Gagal memakai pembagian periode lalu" };
+  }
+}
+
+const shiftPotSchema = z.object({
+  fromCategoryId: z.string().uuid("Pos asal tidak valid"),
+  toCategoryId: z.string().uuid("Pos tujuan tidak valid"),
+  amount: z.number().positive("Nominal harus lebih dari Rp 0").max(1000000000),
+  note: z.string().max(120).optional(),
+});
+
+/**
+ * Menggeser sebagian jatah dari satu pos yang masih bersisa ke pos tujuan
+ * dalam periode berjalan. Total dana tidak berubah dan dicatat di `category_pot_transfers`.
+ */
+export async function shiftCategoryPotAction(
+  rawInput: z.infer<typeof shiftPotSchema>
+): Promise<{
+  success: boolean;
+  error?: string;
+  data?: {
+    fromName: string;
+    toName: string;
+    shiftedAmount: number;
+    nextFromAllocated: number;
+    nextToAllocated: number;
+  };
+}> {
+  try {
+    const validation = shiftPotSchema.safeParse(rawInput);
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.issues.map((i) => i.message).join(", "),
+      };
+    }
+    const input = validation.data;
+    if (input.fromCategoryId === input.toCategoryId) {
+      return { success: false, error: "Pos asal dan tujuan harus berbeda" };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id;
+    if (!userId) return { success: false, error: "Pengguna belum login" };
+
+    const [userProfile, userCats, userPots, userTransactions] = await Promise.all([
+      db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
+      db.query.categories.findMany({
+        where: and(eq(categories.userId, userId), eq(categories.type, "expense")),
+      }),
+      db.query.categoryPots.findMany({
+        where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
+      }),
+      db.query.transactions.findMany({
+        where: and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, "expense"),
+          isNull(transactions.deletedAt)
+        ),
+      }),
+    ]);
+
+    const catById = new Map(userCats.map((c) => [c.id, c]));
+    const potByCatId = new Map(userPots.map((p) => [p.categoryId, p]));
+    const fromCat = catById.get(input.fromCategoryId);
+    const toCat = catById.get(input.toCategoryId);
+    const fromPot = potByCatId.get(input.fromCategoryId);
+    const toPot = potByCatId.get(input.toCategoryId);
+
+    if (!fromCat || !toCat || !fromPot || !toPot) {
+      return { success: false, error: "Pos asal atau tujuan tidak ditemukan" };
+    }
+
+    const allowanceCycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
+    const paydayDay = userProfile?.paydayDay || 1;
+    const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const periodInfo = getCyclePeriodInfo(new Date(), allowanceCycle, paydayDay, paydayWeekday);
+
+    const periodRows = await db.query.categoryPotPeriods.findMany({
+      where: and(
+        eq(categoryPotPeriods.userId, userId),
+        eq(categoryPotPeriods.periodKey, periodInfo.periodKey)
+      ),
+    });
+    const rowByPotId = new Map(periodRows.map((r) => [r.potId, r]));
+
+    const fromBase = calculatePotPeriodAllocation(
+      Number(fromPot.unitAmount || 0),
+      (fromPot.cadence as PotCadence) || "monthly",
+      periodInfo.cycleDays
+    );
+    const toBase = calculatePotPeriodAllocation(
+      Number(toPot.unitAmount || 0),
+      (toPot.cadence as PotCadence) || "monthly",
+      periodInfo.cycleDays
+    );
+
+    const fromRow = rowByPotId.get(fromPot.id);
+    const toRow = rowByPotId.get(toPot.id);
+    const fromAllocated = fromRow ? Number(fromRow.allocatedAmount || 0) : fromBase;
+    const toAllocated = toRow ? Number(toRow.allocatedAmount || 0) : toBase;
+
+    const fromSpent = userTransactions
+      .filter(
+        (tx) =>
+          tx.categoryId === fromCat.id &&
+          tx.occurredOn &&
+          tx.occurredOn >= periodInfo.periodStart &&
+          tx.occurredOn <= periodInfo.periodEnd
+      )
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    const calc = calculatePotShift({
+      fromAllocated,
+      fromSpent,
+      toAllocated,
+      requestedAmount: input.amount,
+    });
+    if (!calc.valid) {
+      return { success: false, error: calc.error || "Nominal geser jatah tidak valid" };
+    }
+
+    await Promise.all([
+      db
+        .insert(categoryPotPeriods)
+        .values({
+          userId,
+          potId: fromPot.id,
+          periodKey: periodInfo.periodKey,
+          periodStart: periodInfo.periodStart,
+          periodEnd: periodInfo.periodEnd,
+          baseLimit: BigInt(fromRow ? Number(fromRow.baseLimit || fromBase) : fromBase),
+          allocatedAmount: BigInt(calc.nextFromAllocated),
+        })
+        .onConflictDoUpdate({
+          target: [categoryPotPeriods.potId, categoryPotPeriods.periodKey],
+          set: {
+            allocatedAmount: BigInt(calc.nextFromAllocated),
+            updatedAt: new Date(),
+          },
+        }),
+      db
+        .insert(categoryPotPeriods)
+        .values({
+          userId,
+          potId: toPot.id,
+          periodKey: periodInfo.periodKey,
+          periodStart: periodInfo.periodStart,
+          periodEnd: periodInfo.periodEnd,
+          baseLimit: BigInt(toRow ? Number(toRow.baseLimit || toBase) : toBase),
+          allocatedAmount: BigInt(calc.nextToAllocated),
+        })
+        .onConflictDoUpdate({
+          target: [categoryPotPeriods.potId, categoryPotPeriods.periodKey],
+          set: {
+            allocatedAmount: BigInt(calc.nextToAllocated),
+            updatedAt: new Date(),
+          },
+        }),
+      db.insert(categoryPotTransfers).values({
+        userId,
+        periodKey: periodInfo.periodKey,
+        fromPotId: fromPot.id,
+        toPotId: toPot.id,
+        amount: BigInt(calc.shiftedAmount),
+        note: input.note?.trim() || `Geser jatah ${fromCat.name} → ${toCat.name}`,
+      }),
+    ]);
+
+    // Sinkronkan category_budgets bulan berjalan jika sudah ada barisnya
+    const monthDate = `${getJakartaDateKey().slice(0, 7)}-01`;
+    const legacyBudget = await db.query.budgets.findFirst({
+      where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
+    });
+    if (legacyBudget) {
+      for (const pair of [
+        { categoryId: fromCat.id, nextVal: calc.nextFromAllocated },
+        { categoryId: toCat.id, nextVal: calc.nextToAllocated },
+      ]) {
+        if (pair.nextVal > 0) {
+          await db
+            .insert(categoryBudgets)
+            .values({
+              budgetId: legacyBudget.id,
+              categoryId: pair.categoryId,
+              limitAmount: BigInt(pair.nextVal),
+            })
+            .onConflictDoUpdate({
+              target: [categoryBudgets.budgetId, categoryBudgets.categoryId],
+              set: { limitAmount: BigInt(pair.nextVal), updatedAt: new Date() },
+            });
+        } else {
+          await db
+            .delete(categoryBudgets)
+            .where(
+              and(
+                eq(categoryBudgets.budgetId, legacyBudget.id),
+                eq(categoryBudgets.categoryId, pair.categoryId)
+              )
+            );
+        }
+      }
+    }
+
+    revalidatePath("/budgets");
+    revalidatePath("/statistics");
+    revalidatePath("/dashboard");
+    revalidatePath("/record");
+
+    return {
+      success: true,
+      data: {
+        fromName: fromCat.name,
+        toName: toCat.name,
+        shiftedAmount: calc.shiftedAmount,
+        nextFromAllocated: calc.nextFromAllocated,
+        nextToAllocated: calc.nextToAllocated,
+      },
+    };
+  } catch (error) {
+    console.error("Gagal memindahkan jatah antar pos:", error);
+    return { success: false, error: "Gagal memindahkan jatah antar pos" };
+  }
+}
+
+const archivePotSchema = z.object({
+  categoryId: z.string().uuid("Kategori tidak valid"),
+  archive: z.boolean(),
+});
+
+/**
+ * Mengarsipkan atau memulihkan pos kategori (bisa dibatalkan kapan saja).
+ * Pos terarsip tidak tampil di grid Catat maupun daftar aktif Atur Jatah,
+ * tetapi riwayat transaksinya di tabel `transactions` tetap utuh.
+ */
+export async function archiveCategoryPotAction(
+  rawInput: z.infer<typeof archivePotSchema>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const validation = archivePotSchema.safeParse(rawInput);
+    if (!validation.success) {
+      return { success: false, error: validation.error.issues.map((i) => i.message).join(", ") };
+    }
+    const { categoryId, archive } = validation.data;
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id;
+    if (!userId) return { success: false, error: "Pengguna belum login" };
+
+    const cat = await db.query.categories.findFirst({
+      where: and(
+        eq(categories.id, categoryId),
+        eq(categories.userId, userId),
+        eq(categories.type, "expense")
+      ),
+    });
+    if (!cat) return { success: false, error: "Kategori tidak ditemukan" };
+    if (archive && isProtectedCategory(cat)) {
+      return { success: false, error: "Kategori Lainnya tidak dapat diarsipkan" };
+    }
+
+    await db
+      .update(categories)
+      .set({ isHidden: archive, updatedAt: new Date() })
+      .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)));
+
+    const existingPot = await db.query.categoryPots.findFirst({
+      where: and(eq(categoryPots.userId, userId), eq(categoryPots.categoryId, categoryId)),
+    });
+
+    if (existingPot) {
+      await db
+        .update(categoryPots)
+        .set({
+          isArchived: archive,
+          isLockedFromDaily: archive ? false : existingPot.isLockedFromDaily,
+          inactivePeriods: archive ? Math.max(2, existingPot.inactivePeriods || 2) : 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(categoryPots.id, existingPot.id));
+    } else if (archive) {
+      await db.insert(categoryPots).values({
+        userId,
+        categoryId,
+        cadence: (cat.defaultCadence as PotCadence) || "monthly",
+        unitAmount: BigInt(0),
+        isLockedFromDaily: false,
+        isArchived: true,
+        inactivePeriods: 2,
+      });
+    }
+
+    if (archive) {
+      const monthDate = `${getJakartaDateKey().slice(0, 7)}-01`;
+      const legacyBudget = await db.query.budgets.findFirst({
+        where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
+      });
+      if (legacyBudget) {
+        await db
+          .delete(categoryBudgets)
+          .where(
+            and(
+              eq(categoryBudgets.budgetId, legacyBudget.id),
+              eq(categoryBudgets.categoryId, categoryId)
+            )
+          );
+      }
+    }
+
+    revalidatePath("/budgets");
+    revalidatePath("/record");
+    revalidatePath("/statistics");
+    revalidatePath("/dashboard");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Gagal mengarsipkan/memulihkan pos:", error);
+    return { success: false, error: "Gagal mengubah status arsip pos" };
   }
 }

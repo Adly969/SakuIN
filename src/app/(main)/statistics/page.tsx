@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   Plus,
   Lock,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -44,6 +45,8 @@ import {
   type CategoryBudgetItem,
   type CategoryPotsSummaryMeta,
 } from "@/app/actions/category-budgets";
+import type { PotTransferLogItem } from "@/app/actions/category-pots";
+import { ShiftPotModal } from "@/components/budgets/shift-pot-modal";
 import { getOfflineQueue } from "@/lib/offline-queue";
 import {
   aggregatePendingOfflineSpentByCategory,
@@ -61,8 +64,13 @@ export default function StatisticsPage() {
   const [statsData, setStatsData] = useState<StatisticsData | null>(null);
   const [catBudgets, setCatBudgets] = useState<CategoryBudgetItem[]>([]);
   const [catSummary, setCatSummary] = useState<CategoryPotsSummaryMeta | null>(null);
+  const [recentTransfers, setRecentTransfers] = useState<PotTransferLogItem[]>([]);
   const [pendingOfflineByCat, setPendingOfflineByCat] = useState<Record<string, number>>({});
   const [highlightedPos, setHighlightedPos] = useState<string>("");
+  const [pendingAutoShift, setPendingAutoShift] = useState<boolean>(false);
+  const [shiftModalOpen, setShiftModalOpen] = useState<boolean>(false);
+  const [shiftTargetCategoryId, setShiftTargetCategoryId] = useState<string | undefined>(undefined);
+  const [shiftToast, setShiftToast] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
@@ -73,8 +81,12 @@ export default function StatisticsPage() {
     try {
       const params = new URLSearchParams(window.location.search);
       const posParam = params.get("pos");
+      const shiftParam = params.get("shift");
       if (posParam) {
         setHighlightedPos(resolvePotCategoryKey(posParam));
+      }
+      if (shiftParam === "1") {
+        setPendingAutoShift(true);
       }
     } catch {}
 
@@ -139,9 +151,20 @@ export default function StatisticsPage() {
       const target = document.getElementById(`pos-${highlightedPos.replace(/\s+/g, "-")}`)
         || document.getElementById("ringkasan-pos");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      if (pendingAutoShift) {
+        const matched = catBudgets.find(
+          (b) => resolvePotCategoryKey(b.categoryName) === highlightedPos
+        );
+        if (matched) {
+          setShiftTargetCategoryId(matched.categoryId);
+          setShiftModalOpen(true);
+        }
+        setPendingAutoShift(false);
+      }
     }, 250);
     return () => clearTimeout(timer);
-  }, [highlightedPos, catBudgets.length]);
+  }, [highlightedPos, pendingAutoShift, catBudgets]);
 
   // Load statistics data
   const loadData = (
@@ -177,6 +200,7 @@ export default function StatisticsPage() {
         if (catBudgetRes.success && catBudgetRes.data) {
           setCatBudgets(catBudgetRes.data.items);
           setCatSummary(catBudgetRes.data.summary ?? null);
+          setRecentTransfers(catBudgetRes.data.recentTransfers ?? []);
         }
       } catch (err) {
         console.error("Gagal memuat statistik:", err);
@@ -941,6 +965,12 @@ export default function StatisticsPage() {
               </Link>
             </div>
 
+            {shiftToast && (
+              <div className="p-3 rounded-xl bg-accent/15 border border-accent/40 text-xs font-bold text-[color:var(--accent-text)]">
+                {shiftToast}
+              </div>
+            )}
+
             {catSummary && catBudgets.length > 0 && (() => {
               const allocatedKeySet = new Set(
                 catBudgets.map((b) => resolvePotCategoryKey(b.categoryName))
@@ -1108,12 +1138,84 @@ export default function StatisticsPage() {
                           </span>
                         </div>
                       </div>
+
+                      {catSummary?.isCurrentView && catBudgets.length >= 2 && (
+                        <div className="pt-1.5 border-t border-border/50 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShiftTargetCategoryId(item.categoryId);
+                              setShiftModalOpen(true);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-full text-xs font-bold border transition-all ${
+                              isOver
+                                ? "bg-accent text-[#1F1F1F] border-accent font-black hover:brightness-105"
+                                : "bg-card border-border text-foreground hover:border-accent"
+                            }`}
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                            <span>
+                              {isOver ? "Geser dari pos lain" : "Geser jatah"}
+                            </span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
+
+            {recentTransfers.length > 0 && (
+              <div className="pt-2 border-t border-border/60 space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Riwayat Geser Jatah Periode Ini
+                </p>
+                <div className="space-y-1.5">
+                  {recentTransfers.slice(0, 5).map((tr) => (
+                    <div
+                      key={tr.id}
+                      className="flex items-center justify-between gap-2 text-xs px-2.5 py-2 rounded-lg bg-background/60 border border-border/60"
+                    >
+                      <span className="text-muted-foreground truncate">
+                        <strong className="text-foreground">{tr.fromName}</strong>
+                        {" → "}
+                        <strong className="text-foreground">{tr.toName}</strong>
+                      </span>
+                      <span className="font-black text-[color:var(--accent-text)] shrink-0">
+                        {formatRupiah(tr.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
+
+          <ShiftPotModal
+            open={shiftModalOpen}
+            onClose={() => setShiftModalOpen(false)}
+            initialToCategoryId={shiftTargetCategoryId}
+            pots={catBudgets.map((b) => ({
+              categoryId: b.categoryId,
+              name: b.categoryName,
+              allocatedAmount: b.limitAmount,
+              spent:
+                b.spent +
+                (catSummary?.isCurrentView
+                  ? pendingOfflineByCat[resolvePotCategoryKey(b.categoryName)] || 0
+                  : 0),
+            }))}
+            onShifted={(res) => {
+              setShiftToast(
+                `Berhasil menggeser ${formatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
+              );
+              const today = new Date();
+              const curKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+              loadData(period, selectedMonthKey || curKey, selectedYear, type, true);
+              setTimeout(() => setShiftToast(null), 6000);
+            }}
+          />
 
           {/* Section 5: Smart Insights Otomatis (PRD G9) */}
           {smartInsights.length > 0 && (

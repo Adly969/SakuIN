@@ -150,8 +150,15 @@ interface DashboardData {
     amount: number;
     yesterdayBudget: number;
     yesterdayExpense: number;
+    titleText?: string;
+    subtitleText?: string;
     preferredGoalId: string | null;
     goals: Array<{ id: string; name: string }>;
+  } | null;
+  midCycleExtraIncomeOffer?: {
+    key: string;
+    amount: number;
+    freeRemaining: number;
   } | null;
   paydayPrompt?: {
     dateKey: string;
@@ -242,6 +249,7 @@ export default function DashboardPage() {
   const [dismissedPaydayKey, setDismissedPaydayKey] = useState<string | null>(null);
   const [paydaySuccessMsg, setPaydaySuccessMsg] = useState<string | null>(null);
   const [paydayCanReusePrev, setPaydayCanReusePrev] = useState<boolean>(false);
+  const [dismissedExtraIncomeKey, setDismissedExtraIncomeKey] = useState<string | null>(null);
   const { isOnline, queueCount, isSyncing, manualSync } = useOfflineSync();
   const shouldReduceMotion = useReducedMotion();
 
@@ -486,6 +494,17 @@ export default function DashboardPage() {
 
   const carryoverOffer = dashboardData?.carryoverOffer || null;
   const paydayPrompt = dashboardData?.paydayPrompt || null;
+  const midCycleExtraIncomeOffer = dashboardData?.midCycleExtraIncomeOffer || null;
+
+  useEffect(() => {
+    if (!midCycleExtraIncomeOffer) return;
+    try {
+      const dismissed = localStorage.getItem(
+        `sakuin_dismissed_extra_income_${midCycleExtraIncomeOffer.key}`
+      );
+      if (dismissed) setDismissedExtraIncomeKey(midCycleExtraIncomeOffer.key);
+    } catch {}
+  }, [midCycleExtraIncomeOffer?.key]);
 
   useEffect(() => {
     if (!carryoverOffer) return;
@@ -1140,11 +1159,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-black text-foreground">
-                      Hemat {formatRupiah(carryoverOffer.amount)} kemarin ({carryoverOffer.dateLabel})!
+                      {carryoverOffer.titleText ||
+                        `Hemat ${formatRupiah(carryoverOffer.amount)} kemarin (${carryoverOffer.dateLabel})!`}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Jatah harian {formatRupiah(carryoverOffer.yesterdayBudget)}, terpakai{" "}
-                      {formatRupiah(carryoverOffer.yesterdayExpense)}. Mau pindahkan sisa ini ke tabungan?
+                      {carryoverOffer.subtitleText ||
+                        `Jatah harian ${formatRupiah(carryoverOffer.yesterdayBudget)}, terpakai ${formatRupiah(carryoverOffer.yesterdayExpense)}. Mau pindahkan sisa ini ke tabungan?`}
                     </p>
                   </div>
                 </div>
@@ -1228,6 +1248,45 @@ export default function DashboardPage() {
               )}
             </section>
           )}
+
+          {/* 2.15 Penawaran Lembut Dana Tambahan Tengah Siklus -> Sisa Bebas */}
+          {midCycleExtraIncomeOffer &&
+            dismissedExtraIncomeKey !== midCycleExtraIncomeOffer.key && (
+              <div className="p-3.5 rounded-xl bg-card border border-accent/35 shadow-sm flex items-center justify-between gap-3 flex-wrap text-xs">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="font-black text-foreground">
+                    Ada dana tambahan {formatRupiah(midCycleExtraIncomeOffer.amount)} masuk ke Sisa Bebas
+                  </p>
+                  <p className="text-muted-foreground">
+                    Sisa Bebas sekarang {formatRupiah(midCycleExtraIncomeOffer.freeRemaining)}. Mau dibagi lagi ke pos kategori?
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDismissedExtraIncomeKey(midCycleExtraIncomeOffer.key);
+                      try {
+                        localStorage.setItem(
+                          `sakuin_dismissed_extra_income_${midCycleExtraIncomeOffer.key}`,
+                          "1"
+                        );
+                      } catch {}
+                    }}
+                    className="px-3 py-1.5 min-h-[36px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                  >
+                    Biarkan bebas
+                  </button>
+                  <Link
+                    href="/budgets"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105"
+                  >
+                    <span>Bagi jatah</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            )}
 
           {/* 2.2 Kartu Rekening (Tanpa teks terpotong & tanpa badge total ganda) */}
           <div className="space-y-2.5">

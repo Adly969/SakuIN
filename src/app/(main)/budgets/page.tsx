@@ -29,21 +29,30 @@ import {
   Calendar,
   ShieldCheck,
   PieChart,
+  ArrowRightLeft,
+  Archive,
+  ArchiveRestore,
+  History,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import {
   calculatePotPeriodAllocation,
   calculateAllocationSummary,
   calculateDailyLimitWithLockedPots,
+  buildPreviousPeriodDrafts,
   type PotCadence,
+  type NextPeriodPresetMode,
+  type NextPeriodPotDraft,
 } from "@/lib/category-pots";
 import {
   getBudgetsWorkspaceAction,
   saveCategoryPotsBatchAction,
   createCustomCategoryPotAction,
+  archiveCategoryPotAction,
   type BudgetPotWorkspaceItem,
   type BudgetsWorkspaceData,
 } from "@/app/actions/category-pots";
+import { ShiftPotModal } from "@/components/budgets/shift-pot-modal";
 
 const MAX_ACTIVE_POTS = 8;
 
@@ -103,6 +112,15 @@ export default function BudgetsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Sprint 5: Pratinjau periode berikutnya, Geser jatah, & Pengarsipan
+  const [presetMode, setPresetMode] = useState<NextPeriodPresetMode | null>(null);
+  const [previewDrafts, setPreviewDrafts] = useState<NextPeriodPotDraft[]>([]);
+  const [shiftModalOpen, setShiftModalOpen] = useState(false);
+  const [shiftTargetCategoryId, setShiftTargetCategoryId] = useState<string | undefined>(undefined);
+  const [dismissedArchiveIds, setDismissedArchiveIds] = useState<string[]>([]);
+  const [archivingCategoryId, setArchivingCategoryId] = useState<string | null>(null);
+  const [showArchivedList, setShowArchivedList] = useState(false);
 
   // Keyboard safe sticky button
   const [keyboardOffset, setKeyboardOffset] = useState(0);
@@ -180,6 +198,92 @@ export default function BudgetsPage() {
   useEffect(() => {
     void loadWorkspace();
   }, []);
+
+  useEffect(() => {
+    if (!workspace?.periodKey) return;
+    const dismissed: string[] = [];
+    for (const pot of workspace.pots) {
+      try {
+        if (localStorage.getItem(`sakuin_dismissed_archive_${workspace.periodKey}_${pot.categoryId}`)) {
+          dismissed.push(pot.categoryId);
+        }
+      } catch {}
+    }
+    setDismissedArchiveIds(dismissed);
+  }, [workspace?.periodKey, workspace?.pots]);
+
+  const handleOpenPresetPreview = (mode: NextPeriodPresetMode) => {
+    if (!workspace) return;
+    const targets = activeNonOtherPots.length > 0 ? activeNonOtherPots : pots.filter((p) => !p.isOther && p.prevAllocatedAmount > 0);
+    const drafts = buildPreviousPeriodDrafts(
+      targets.map((p) => ({
+        categoryId: p.categoryId,
+        name: p.name,
+        cadence: p.cadence,
+        currentAllocated: p.allocatedAmount,
+        prevAllocated: p.prevAllocatedAmount > 0 ? p.prevAllocatedAmount : p.allocatedAmount,
+        prevSpent: p.prevPeriodSpent,
+        cycleDays,
+      })),
+      mode
+    );
+    setPresetMode(mode);
+    setPreviewDrafts(drafts);
+  };
+
+  const handleApplyPresetDrafts = () => {
+    if (previewDrafts.length === 0) return;
+    const draftByCat = new Map(previewDrafts.map((d) => [d.categoryId, d]));
+    setPots((prev) =>
+      prev.map((p) => {
+        const draft = draftByCat.get(p.categoryId);
+        if (!draft) return p;
+        return {
+          ...p,
+          isSelected: true,
+          allocatedAmount: draft.nextAllocated,
+          unitAmount: draft.nextUnitAmount,
+        };
+      })
+    );
+    const label = presetMode === "copy_previous" ? "jatah periode lalu" : "penyesuaian pengeluaran lalu";
+    setSaveToast(`Pratinjau ${label} diterapkan ke daftar. Tekan "Simpan Semua Pos" untuk menyimpan.`);
+    setPresetMode(null);
+    setPreviewDrafts([]);
+  };
+
+  const handleArchivePot = async (categoryId: string, archive: boolean) => {
+    if (archivingCategoryId) return;
+    setArchivingCategoryId(categoryId);
+    setSaveError(null);
+    try {
+      const res = await archiveCategoryPotAction({ categoryId, archive });
+      if (res.success) {
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+        setSaveToast(
+          archive
+            ? "Pos berhasil diarsipkan (riwayat transaksinya tetap tersimpan). Kamu bisa memulihkannya kapan saja."
+            : "Pos berhasil dipulihkan ke daftar aktif."
+        );
+        await loadWorkspace();
+      } else {
+        setSaveError(res.error || "Gagal mengubah status arsip pos");
+      }
+    } catch {
+      setSaveError("Gagal menghubungi server saat mengubah arsip pos.");
+    } finally {
+      setArchivingCategoryId(null);
+    }
+  };
+
+  const handleDismissArchiveSuggestion = (categoryId: string) => {
+    setDismissedArchiveIds((prev) => [...prev, categoryId]);
+    if (workspace?.periodKey) {
+      try {
+        localStorage.setItem(`sakuin_dismissed_archive_${workspace.periodKey}_${categoryId}`, "1");
+      } catch {}
+    }
+  };
 
   const cycleDays = workspace?.cycleDays ?? 30;
   const availableFunds = workspace?.dailyLimitContext.availableFunds ?? 0;
@@ -615,6 +719,164 @@ export default function BudgetsPage() {
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{saveError}</span>
         </div>
+      )}
+
+      {/* Sprint 5: Tawaran Arsip Pos Tanpa Pemakaian 2 Periode */}
+      {(() => {
+        const idleCandidates = pots.filter(
+          (p) => p.suggestArchive && !dismissedArchiveIds.includes(p.categoryId)
+        );
+        if (idleCandidates.length === 0) return null;
+        return (
+          <section className="bg-card border border-[#FFB04A]/40 rounded-xl p-3.5 shadow-sm space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <Archive className="w-4 h-4 text-[color:var(--warning-text)] shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-xs font-black text-foreground">
+                  {idleCandidates.length === 1
+                    ? `Pos ${idleCandidates[0].name} belum dipakai selama 2 periode`
+                    : `${idleCandidates.length} pos belum dipakai selama 2 periode`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Arsipkan pos yang jarang terpakai agar layar Catat &amp; Atur Jatah tetap ringkas. Riwayat transaksinya tetap aman.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {idleCandidates.map((cand) => (
+                <div
+                  key={cand.categoryId}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-background/70 border border-border/70 text-xs"
+                >
+                  <span className="font-bold text-foreground truncate">{cand.name}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDismissArchiveSuggestion(cand.categoryId)}
+                      className="px-2.5 py-1.5 min-h-[36px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                    >
+                      Biarkan
+                    </button>
+                    <button
+                      type="button"
+                      disabled={archivingCategoryId === cand.categoryId}
+                      onClick={() => void handleArchivePot(cand.categoryId, true)}
+                      className="px-3 py-1.5 min-h-[36px] rounded-full bg-[#FFB04A]/20 text-[color:var(--warning-text)] font-black hover:bg-[#FFB04A]/30 disabled:opacity-50"
+                    >
+                      {archivingCategoryId === cand.categoryId ? "Mengarsip..." : "Arsipkan"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Sprint 5: Opsi Periode Berikutnya + Pratinjau Sebelum Disimpan */}
+      {workspace?.previousPeriod.hasData && (
+        <section className="bg-card border border-border rounded-xl p-3.5 shadow-sm space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-wider text-foreground">
+                Isi Cepat dari Periode Lalu
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Lihat pratinjau dulu sebelum menekan Simpan Semua Pos.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenPresetPreview("copy_previous")}
+              className={`px-3 py-2.5 min-h-[44px] rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between gap-2 ${
+                presetMode === "copy_previous"
+                  ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
+                  : "bg-background border-border text-foreground hover:border-accent"
+              }`}
+            >
+              <span>Pakai jatah lalu</span>
+              <ArrowRight className="w-3.5 h-3.5 text-[color:var(--accent-text)] shrink-0" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenPresetPreview("adjust_to_spent")}
+              className={`px-3 py-2.5 min-h-[44px] rounded-xl border text-xs font-bold text-left transition-all flex items-center justify-between gap-2 ${
+                presetMode === "adjust_to_spent"
+                  ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
+                  : "bg-background border-border text-foreground hover:border-accent"
+              }`}
+            >
+              <span>Sesuaikan dengan pengeluaran lalu</span>
+              <Calculator className="w-3.5 h-3.5 text-[color:var(--accent-text)] shrink-0" />
+            </button>
+          </div>
+
+          {presetMode && previewDrafts.length > 0 && (
+            <div className="p-3 rounded-xl bg-background border border-accent/40 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-black text-foreground">
+                  Pratinjau:{" "}
+                  {presetMode === "copy_previous"
+                    ? "Salin jatah periode lalu"
+                    : "Pembulatan pengeluaran asli lalu"}
+                </span>
+                <span className="font-bold text-[color:var(--accent-text)]">
+                  Total {formatRupiah(previewDrafts.reduce((s, d) => s + d.nextAllocated, 0))}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                {previewDrafts.map((d) => (
+                  <div
+                    key={d.categoryId}
+                    className="flex items-center justify-between gap-2 text-xs py-1 border-b border-border/40 last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-bold text-foreground truncate">{d.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {presetMode === "copy_previous"
+                          ? `Jatah lalu: ${formatRupiah(d.prevAllocated)}`
+                          : `Terpakai lalu: ${formatRupiah(d.prevSpent)}`}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 font-bold flex items-center gap-1.5">
+                      <span className="text-muted-foreground line-through">
+                        {formatRupiah(d.currentAllocated)}
+                      </span>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-[color:var(--accent-text)] font-black">
+                        {formatRupiah(d.nextAllocated)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPresetMode(null);
+                    setPreviewDrafts([]);
+                  }}
+                  className="px-3.5 py-2 min-h-[40px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyPresetDrafts}
+                  className="flex-1 py-2 px-4 min-h-[40px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105"
+                >
+                  Terapkan ke Daftar
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Langkah 1: Centang Pos yang Dipakai (Grid 2 kolom rapi) */}
@@ -1089,11 +1351,27 @@ export default function BudgetsPage() {
 
                         <p className="text-xs font-bold text-foreground pt-1 border-t border-border/50">
                           Dampak langsung: Batas Hari Ini jadi{" "}
-                          <span className="text-accent font-black">
+                          <span className="text-[color:var(--accent-text)] font-black">
                             {formatRupiah(liveDailyLimit)}
                           </span>
                         </p>
                       </div>
+
+                      {activeNonOtherPots.filter((p) => p.allocatedAmount > 0).length >= 2 && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShiftTargetCategoryId(pot.categoryId);
+                              setShiftModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-full bg-card border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5 text-[color:var(--accent-text)]" />
+                            <span>Geser jatah ke / dari pos lain</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1124,7 +1402,99 @@ export default function BudgetsPage() {
             </span>
           </div>
         )}
+
+        {/* Riwayat Geser Jatah (Audit Trail) */}
+        {workspace && workspace.recentTransfers.length > 0 && (
+          <div className="p-3.5 bg-card border border-border rounded-xl space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-black text-foreground">
+              <History className="w-3.5 h-3.5 text-[color:var(--accent-text)]" />
+              <span>Riwayat Geser Jatah Periode Ini</span>
+            </div>
+            <div className="space-y-1.5">
+              {workspace.recentTransfers.slice(0, 5).map((tr) => (
+                <div
+                  key={tr.id}
+                  className="flex items-center justify-between gap-2 text-xs px-2.5 py-2 rounded-lg bg-background/60 border border-border/60"
+                >
+                  <span className="text-muted-foreground truncate">
+                    <strong className="text-foreground">{tr.fromName}</strong>
+                    {" → "}
+                    <strong className="text-foreground">{tr.toName}</strong>
+                  </span>
+                  <span className="font-black text-[color:var(--accent-text)] shrink-0">
+                    {formatRupiah(tr.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Daftar Pos Diarsipkan (Bisa Dibatalkan Kapan Saja) */}
+        {workspace && workspace.archivedPots.length > 0 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowArchivedList((prev) => !prev)}
+              className="w-full px-3.5 py-3 min-h-[44px] flex items-center justify-between gap-2 text-xs font-bold text-muted-foreground hover:text-foreground"
+            >
+              <span className="flex items-center gap-2">
+                <Archive className="w-4 h-4 shrink-0" />
+                <span>Pos Diarsipkan ({workspace.archivedPots.length})</span>
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${showArchivedList ? "rotate-180" : ""}`}
+              />
+            </button>
+            {showArchivedList && (
+              <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-border/60">
+                <p className="text-[11px] text-muted-foreground">
+                  Pos terarsip disembunyikan dari layar Catat dan daftar jatah, riwayat transaksinya tetap ada.
+                </p>
+                {workspace.archivedPots.map((arch) => (
+                  <div
+                    key={arch.categoryId}
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-background border border-border/70 text-xs"
+                  >
+                    <span className="font-bold text-foreground truncate">{arch.name}</span>
+                    <button
+                      type="button"
+                      disabled={archivingCategoryId === arch.categoryId}
+                      onClick={() => void handleArchivePot(arch.categoryId, false)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent/15 text-[color:var(--accent-text)] font-bold hover:bg-accent/25 shrink-0 disabled:opacity-50"
+                    >
+                      <ArchiveRestore className="w-3.5 h-3.5" />
+                      <span>
+                        {archivingCategoryId === arch.categoryId ? "Memulihkan..." : "Batal arsipkan"}
+                      </span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
+
+      <ShiftPotModal
+        open={shiftModalOpen}
+        onClose={() => setShiftModalOpen(false)}
+        initialToCategoryId={shiftTargetCategoryId}
+        pots={activeNonOtherPots
+          .filter((p) => p.allocatedAmount > 0)
+          .map((p) => ({
+            categoryId: p.categoryId,
+            name: p.name,
+            allocatedAmount: p.allocatedAmount,
+            spent: p.periodSpent,
+          }))}
+        onShifted={(res) => {
+          setSaveToast(
+            `Berhasil menggeser ${formatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
+          );
+          void loadWorkspace();
+        }}
+      />
 
       {/* Langkah 3: Dock Bawah Solid untuk "Simpan Semua Pos" (Menutup celah di bawah Bottom Bar) */}
       <div

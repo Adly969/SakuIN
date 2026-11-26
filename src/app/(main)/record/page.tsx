@@ -402,11 +402,16 @@ export default function RecordPage() {
     return Tag;
   };
 
+  const archivedIdSet = React.useMemo(() => {
+    return new Set((potsWorkspace?.archivedPots || []).map((a) => a.categoryId));
+  }, [potsWorkspace?.archivedPots]);
+
   const currentCategories = categoriesList.filter(
     (c) =>
       c.type === recordType &&
       c.name !== "Kebutuhan Lain" &&
-      c.name !== "Lainnya"
+      c.name !== "Lainnya" &&
+      !archivedIdSet.has(c.id)
   );
 
   // Fallback if dbCategories empty yet
@@ -613,6 +618,8 @@ export default function RecordPage() {
               ? `Pos ${res.categoryLimitAlert.categoryName} over budget ${formatCompactRupiah(res.categoryLimitAlert.overAmount)}`
               : `Sisa jatah ${res.categoryLimitAlert.categoryName} ${formatCompactRupiah(res.categoryLimitAlert.remaining)}`
           );
+        } else if (recordType === "income" && potByCategoryKey.size > 0) {
+          setToastPotImpact("Masuk ke Sisa Bebas. Mau dibagi lagi ke pos kategori?");
         } else {
           setToastPotImpact("");
         }
@@ -717,9 +724,19 @@ export default function RecordPage() {
               </p>
             )}
             {toastPotImpact && (
-              <p className="text-xs font-bold text-[color:var(--accent-text)] pl-7">
-                {toastPotImpact}
-              </p>
+              <div className="flex items-center justify-between gap-2 pl-7">
+                <p className="text-xs font-bold text-[color:var(--accent-text)]">
+                  {toastPotImpact}
+                </p>
+                {toastPotImpact.includes("Sisa Bebas") && (
+                  <Link
+                    href="/budgets"
+                    className="text-xs font-black px-2.5 py-1 rounded-full bg-accent text-[#1F1F1F] shrink-0"
+                  >
+                    Bagi lagi
+                  </Link>
+                )}
+              </div>
             )}
             {toastQuote && (
               <p className="text-xs text-muted-foreground italic pl-7">

@@ -11,6 +11,7 @@ import {
   accounts,
   lockedFunds,
   categoryPots,
+  categoryPotPeriods,
 } from "@/db/schema";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import {
@@ -21,6 +22,13 @@ import {
   type AllowanceCycle,
   type ReserveMode,
 } from "@/lib/finance";
+import {
+  calculatePotPeriodAllocation,
+  evaluatePeriodEndResetAndCarryover,
+  getCyclePeriodInfo,
+  getPreviousCyclePeriodInfo,
+  type PotCadence,
+} from "@/lib/category-pots";
 import { getJakartaDateKey, getJakartaDayAndWeekday } from "@/lib/daily-limit-server";
 import { getLockedCategoryDeductionsForUser } from "@/lib/category-pots-server";
 
@@ -230,12 +238,131 @@ export async function getDashboardDataAction() {
     );
     const todayBudget = todayAdaptive.dailyLimit;
 
-    // Evaluasi Penawaran Auto-Carryover Sisa Hemat Kemarin -> Tabungan (PRD S9)
-    const carryoverKey = `daily:${yesterdayKey}`;
-    const alreadyClaimedYesterday = userSavings.some((s) => s.carryoverKey === carryoverKey);
+    // Evaluasi Penawaran Auto-Carryover Sisa Hemat (Prioritas: Sisa Pos Akhir Siklus, lalu Sisa Harian Kemarin)
+    const activeSavedPots = userId
+      ? await db.query.categoryPots.findMany({
+          where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
+        })
+      : [];
+    const savedPotsWithAlloc = activeSavedPots.filter((p) => Number(p.unitAmount || 0) > 0);
+    const savedPotsCount = savedPotsWithAlloc.length;
+    const hasSavedPots = savedPotsCount > 0;
+
+    const currentPeriodInfo = getCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
+    const prevPeriodInfo = getPreviousCyclePeriodInfo(today, allowanceCycle, paydayDay, paydayWeekday);
+
     const profileCreatedKey = userProfile?.createdAt
       ? getJakartaDateKey(new Date(userProfile.createdAt))
       : todayKey;
+
+    let cycleCarryoverOffer: {
+      carryoverKey: string;
+      dateKey: string;
+      dateLabel: string;
+      amount: number;
+      yesterdayBudget: number;
+      yesterdayExpense: number;
+      titleText: string;
+      subtitleText: string;
+      preferredGoalId: string | null;
+      goals: Array<{ id: string; name: string }>;
+    } | null = null;
+
+    if (Boolean(userId) && hasSavedPots && profileCreatedKey <= prevPeriodInfo.periodEnd) {
+      const potCarryoverKey = `cycle:${prevPeriodInfo.periodKey}`;
+      const [prevPeriodRows, alreadyClaimedSavings] = await Promise.all([
+        db.query.categoryPotPeriods.findMany({
+          where: and(
+            eq(categoryPotPeriods.userId, userId!),
+            eq(categoryPotPeriods.periodKey, prevPeriodInfo.periodKey)
+          ),
+        }),
+        Promise.resolve(userSavings.some((s) => s.carryoverKey === potCarryoverKey)),
+      ]);
+      const alreadyClaimedPeriodRows = prevPeriodRows.some(
+        (r) => Number(r.carryoverClaimedAmount || 0) > 0
+      );
+
+      if (!alreadyClaimedSavings && !alreadyClaimedPeriodRows) {
+        const prevRowByPot = new Map(prevPeriodRows.map((r) => [r.potId, r]));
+        const prevSpentByCat: Record<string, number> = {};
+        for (const tx of userTransactions) {
+          if (
+            tx.type === "expense" &&
+            tx.occurredOn &&
+            tx.occurredOn >= prevPeriodInfo.periodStart &&
+            tx.occurredOn <= prevPeriodInfo.periodEnd
+          ) {
+            prevSpentByCat[tx.categoryId] =
+              (prevSpentByCat[tx.categoryId] || 0) + Number(tx.amount || 0);
+          }
+        }
+
+        const evalPrev = evaluatePeriodEndResetAndCarryover({
+          newCycleDays: currentPeriodInfo.cycleDays,
+          pots: savedPotsWithAlloc.map((pot) => {
+            const row = prevRowByPot.get(pot.id);
+            const fallbackAlloc = calculatePotPeriodAllocation(
+              Number(pot.unitAmount || 0),
+              (pot.cadence as PotCadence) || "monthly",
+              prevPeriodInfo.cycleDays
+            );
+            return {
+              potId: pot.id,
+              name: pot.categoryId,
+              cadence: (pot.cadence as PotCadence) || "monthly",
+              unitAmount: Number(pot.unitAmount || 0),
+              prevAllocatedAmount: row ? Number(row.allocatedAmount || 0) : fallbackAlloc,
+              prevSpent: prevSpentByCat[pot.categoryId] || 0,
+            };
+          }),
+        });
+
+        const totalAllocatedPrev = evalPrev.perPot.reduce(
+          (sum, _, idx) => {
+            const pot = savedPotsWithAlloc[idx];
+            const row = prevRowByPot.get(pot.id);
+            const alloc = row
+              ? Number(row.allocatedAmount || 0)
+              : calculatePotPeriodAllocation(
+                  Number(pot.unitAmount || 0),
+                  (pot.cadence as PotCadence) || "monthly",
+                  prevPeriodInfo.cycleDays
+                );
+            return sum + alloc;
+          },
+          0
+        );
+        const totalSpentPrev = savedPotsWithAlloc.reduce(
+          (sum, p) => sum + (prevSpentByCat[p.categoryId] || 0),
+          0
+        );
+
+        if (
+          evalPrev.totalPositiveSurplus >= 1000 &&
+          remainingBalance >= evalPrev.totalPositiveSurplus
+        ) {
+          cycleCarryoverOffer = {
+            carryoverKey: potCarryoverKey,
+            dateKey: prevPeriodInfo.periodEnd,
+            dateLabel: `${prevPeriodInfo.periodStart} s/d ${prevPeriodInfo.periodEnd}`,
+            amount: evalPrev.totalPositiveSurplus,
+            yesterdayBudget: totalAllocatedPrev,
+            yesterdayExpense: totalSpentPrev,
+            titleText: `Sisa positif pos periode lalu ${formatIndonesianDate(new Date(prevPeriodInfo.periodEnd)).short}: Rp ${evalPrev.totalPositiveSurplus.toLocaleString("id-ID")}!`,
+            subtitleText:
+              evalPrev.deficitPotsCount > 0
+                ? "Sisa pos positif siap masuk tabungan (pos yang over budget tidak dibawa ke periode baru)."
+                : "Sisa pos periode lalu siap dipindahkan ke target tabunganmu.",
+            preferredGoalId: userProfile?.autoCarryoverGoalId || userGoals[0]?.id || null,
+            goals: userGoals.map((g) => ({ id: g.id, name: g.name })),
+          };
+        }
+      }
+    }
+
+    const carryoverKey = `daily:${yesterdayKey}`;
+    const alreadyClaimedYesterday = userSavings.some((s) => s.carryoverKey === carryoverKey);
     const yesterdayStartBalance = remainingBalance + todayExpense + yesterdayExpense;
     const yesterdayAdaptive = calculateAdaptiveDailyLimit(
       yesterdayStartBalance,
@@ -253,18 +380,22 @@ export async function getDashboardDataAction() {
       yesterdaySavedAmount >= 1000 &&
       remainingBalance >= yesterdaySavedAmount;
 
-    const carryoverOffer = canOfferCarryover
-      ? {
-          carryoverKey,
-          dateKey: yesterdayKey,
-          dateLabel: formatIndonesianDate(yesterdayDate).short,
-          amount: yesterdaySavedAmount,
-          yesterdayBudget: yesterdayAdaptive.dailyLimit,
-          yesterdayExpense,
-          preferredGoalId: userProfile?.autoCarryoverGoalId || userGoals[0]?.id || null,
-          goals: userGoals.map((g) => ({ id: g.id, name: g.name })),
-        }
-      : null;
+    const carryoverOffer =
+      cycleCarryoverOffer ||
+      (canOfferCarryover
+        ? {
+            carryoverKey,
+            dateKey: yesterdayKey,
+            dateLabel: formatIndonesianDate(yesterdayDate).short,
+            amount: yesterdaySavedAmount,
+            yesterdayBudget: yesterdayAdaptive.dailyLimit,
+            yesterdayExpense,
+            titleText: `Hemat Rp ${yesterdaySavedAmount.toLocaleString("id-ID")} kemarin (${formatIndonesianDate(yesterdayDate).short})!`,
+            subtitleText: `Jatah harian Rp ${yesterdayAdaptive.dailyLimit.toLocaleString("id-ID")}, terpakai Rp ${yesterdayExpense.toLocaleString("id-ID")}. Mau pindahkan sisa ini ke tabungan?`,
+            preferredGoalId: userProfile?.autoCarryoverGoalId || userGoals[0]?.id || null,
+            goals: userGoals.map((g) => ({ id: g.id, name: g.name })),
+          }
+        : null);
     const todayRemaining = Math.max(0, todayBudget - todayExpense);
     const overLimitAmount = Math.max(0, todayExpense - todayBudget);
     const todayUsagePercent =
@@ -331,13 +462,6 @@ export async function getDashboardDataAction() {
     const hasIncomeToday = userTransactions.some(
       (tx) => tx.type === "income" && tx.occurredOn === todayKey
     );
-    const activeSavedPots = userId
-      ? await db.query.categoryPots.findMany({
-          where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
-        })
-      : [];
-    const savedPotsCount = activeSavedPots.filter((p) => Number(p.unitAmount || 0) > 0).length;
-    const hasSavedPots = savedPotsCount > 0;
 
     const paydayPrompt =
       Boolean(userId) &&
@@ -354,6 +478,55 @@ export async function getDashboardDataAction() {
             savedPotsCount,
           }
         : null;
+
+    // Penawaran lembut jika ada dana tambahan masuk di tengah siklus ketika pos sudah dibagi
+    let midCycleExtraIncomeOffer: {
+      key: string;
+      amount: number;
+      freeRemaining: number;
+    } | null = null;
+
+    if (Boolean(userId) && hasSavedPots && !paydayPrompt) {
+      const cycleIncomes = userTransactions.filter(
+        (tx) =>
+          tx.type === "income" &&
+          tx.occurredOn &&
+          tx.occurredOn >= currentPeriodInfo.periodStart &&
+          tx.occurredOn <= todayKey
+      );
+      const midCycleIncomes = cycleIncomes.filter(
+        (tx) => tx.occurredOn! > currentPeriodInfo.periodStart || cycleIncomes.length > 1
+      );
+      if (midCycleIncomes.length > 0) {
+        const latestExtra = midCycleIncomes[0];
+        const currentPeriodRows = await db.query.categoryPotPeriods.findMany({
+          where: and(
+            eq(categoryPotPeriods.userId, userId!),
+            eq(categoryPotPeriods.periodKey, currentPeriodInfo.periodKey)
+          ),
+        });
+        const rowByPot = new Map(currentPeriodRows.map((r) => [r.potId, r]));
+        const totalAllocatedCurrent = savedPotsWithAlloc.reduce((sum, pot) => {
+          const row = rowByPot.get(pot.id);
+          const alloc = row
+            ? Number(row.allocatedAmount || 0)
+            : calculatePotPeriodAllocation(
+                Number(pot.unitAmount || 0),
+                (pot.cadence as PotCadence) || "monthly",
+                currentPeriodInfo.cycleDays
+              );
+          return sum + alloc;
+        }, 0);
+        const freeRemaining = Math.max(0, spendableBalance - totalAllocatedCurrent);
+        if (freeRemaining >= 1000) {
+          midCycleExtraIncomeOffer = {
+            key: `extra:${latestExtra.id}`,
+            amount: Number(latestExtra.amount || 0),
+            freeRemaining,
+          };
+        }
+      }
+    }
 
     let eligible = allMotivations.filter((m) => !recentIds.includes(m.id));
     if (eligible.length === 0) {
@@ -530,6 +703,7 @@ export async function getDashboardDataAction() {
         freeBalance,
         carryoverOffer,
         paydayPrompt,
+        midCycleExtraIncomeOffer,
         remainingDays,
         remainingBalance,
         remainingBudget,

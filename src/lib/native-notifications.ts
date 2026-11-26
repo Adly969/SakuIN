@@ -394,18 +394,22 @@ export async function notifyCategoryLimitAlert(
 
   let title = "";
   let body = "";
+  const canSuggestShift =
+    snapshot.level === "reached" || snapshot.level === "exceeded";
   if (snapshot.level === "warning") {
     title = `Jatah ${snapshot.categoryName} hampir habis (${snapshot.usagePercent}%)`;
     body = `Terpakai ${formatRp(snapshot.spent)} dari ${formatRp(snapshot.limit)}. Sisa ${formatRp(snapshot.remaining)} lagi sampai akhir periode.`;
   } else if (snapshot.level === "reached") {
-    title = `Jatah ${snapshot.categoryName} pas habis (100%)`;
-    body = `Pengeluaran ${snapshot.categoryName} sudah mencapai ${formatRp(snapshot.limit)}. Catatan berikutnya bakal lewat batas.`;
+    title = `Jatah ${snapshot.categoryName} habis (100%)`;
+    body = `${snapshot.categoryName} habis. Mau geser dari pos lain? Ketuk untuk atur.`;
   } else {
     title = `Pos ${snapshot.categoryName} over budget ${formatRp(snapshot.overAmount)}`;
-    body = `Sudah terpakai ${formatRp(snapshot.spent)} dari jatah ${formatRp(snapshot.limit)}. Ketuk untuk cek rinciannya di Statistik.`;
+    body = `Sudah terpakai ${formatRp(snapshot.spent)} dari ${formatRp(snapshot.limit)}. Geser dari pos lain yang masih bersisa?`;
   }
 
-  const targetUrl = `/statistics?pos=${encodeURIComponent(snapshot.categoryName)}#ringkasan-pos`;
+  const targetUrl = canSuggestShift
+    ? `/statistics?pos=${encodeURIComponent(snapshot.categoryName)}&shift=1#ringkasan-pos`
+    : `/statistics?pos=${encodeURIComponent(snapshot.categoryName)}#ringkasan-pos`;
 
   window.dispatchEvent(
     new CustomEvent("sakuin:smart-alert", {
@@ -415,6 +419,8 @@ export async function notifyCategoryLimitAlert(
         level: snapshot.level,
         group: "Peringatan batas",
         url: targetUrl,
+        actionLabel: canSuggestShift ? "Geser dari pos lain" : undefined,
+        actionUrl: canSuggestShift ? targetUrl : undefined,
       },
     })
   );
