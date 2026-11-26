@@ -489,7 +489,7 @@ export default function BudgetsPage() {
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-3.5 pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+184px)] md:pb-12">
+    <div className="max-w-xl mx-auto space-y-3.5 mobile-page-dock-pb">
       {/* Judul Layar */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -1140,9 +1140,7 @@ export default function BudgetsPage() {
       >
         <div
           className={`max-w-xl mx-auto px-4 pt-2.5 md:p-0 ${
-            keyboardOffset > 0
-              ? "pb-3"
-              : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+104px)] md:pb-0"
+            keyboardOffset > 0 ? "pb-3" : "mobile-dock-spacer"
           }`}
         >
           <button

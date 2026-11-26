@@ -96,6 +96,25 @@ body {
   }
 }
 
+/* Dock bawah aman di atas MobileBottomBar + lingkaran aktif + safe-area iOS/Android */
+.mobile-dock-spacer {
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 114px);
+}
+
+.mobile-page-dock-pb {
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 196px);
+}
+
+@media (min-width: 768px) {
+  .mobile-dock-spacer {
+    padding-bottom: 0;
+  }
+
+  .mobile-page-dock-pb {
+    padding-bottom: 3rem;
+  }
+}
+
 /* Sembunyikan scrollbar di seluruh aplikasi agar tampilan mobile-first tetap bersih */
 html,
 body,

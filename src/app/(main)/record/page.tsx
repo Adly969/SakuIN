@@ -527,7 +527,7 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-[480px] mx-auto pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+188px)] md:pb-12">
+    <div className="space-y-5 max-w-[480px] mx-auto mobile-page-dock-pb">
       {/* 1. Header Halaman */}
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
@@ -911,9 +911,7 @@ export default function RecordPage() {
         >
           <div
             className={`max-w-[480px] mx-auto px-4 pt-2.5 md:p-0 ${
-              keyboardOffset > 0
-                ? "pb-3"
-                : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+104px)] md:pb-0"
+              keyboardOffset > 0 ? "pb-3" : "mobile-dock-spacer"
             }`}
           >
             <button
