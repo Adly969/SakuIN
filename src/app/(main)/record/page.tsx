@@ -110,19 +110,18 @@ export default function RecordPage() {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const amountInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Jaga tombol Simpan sticky tetap terlihat di atas keyboard HP (Android WebView)
+  // Jaga tombol Simpan sticky tetap terlihat di atas keyboard HP tanpa memicu re-render saat scroll
   useEffect(() => {
     if (typeof window === "undefined" || !window.visualViewport) return;
     const vv = window.visualViewport;
     const updateKeyboardOffset = () => {
       const diff = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKeyboardOffset(diff > 80 ? diff : 0);
+      const next = diff > 140 ? Math.round(diff) : 0;
+      setKeyboardOffset((prev) => (prev === next ? prev : next));
     };
     vv.addEventListener("resize", updateKeyboardOffset);
-    vv.addEventListener("scroll", updateKeyboardOffset);
     return () => {
       vv.removeEventListener("resize", updateKeyboardOffset);
-      vv.removeEventListener("scroll", updateKeyboardOffset);
     };
   }, []);
 
@@ -910,19 +909,22 @@ export default function RecordPage() {
           )}
         </div>
 
-        {/* Tombol Simpan Transaksi (Melayang rapi di atas bottom bar + safe-area HP & aman dari keyboard via visualViewport) */}
+        {/* Tombol Simpan Transaksi (Layer GPU terpisah tanpa backdrop-blur agar tidak berkedip saat scroll cepat) */}
         <div
           style={{
             bottom:
               keyboardOffset > 0
                 ? `${keyboardOffset + 12}px`
                 : "calc(max(env(safe-area-inset-bottom, 0px), 16px) + 104px)",
+            transform: "translate3d(0, 0, 0)",
+            WebkitBackfaceVisibility: "hidden",
+            backfaceVisibility: "hidden",
           }}
-          className={`fixed left-0 right-0 px-4 pointer-events-none md:static md:bottom-auto md:px-0 md:z-auto md:pointer-events-auto ${
+          className={`fixed left-0 right-0 px-4 pointer-events-none md:static md:bottom-auto md:px-0 md:z-auto md:pointer-events-auto md:!transform-none ${
             keyboardOffset > 0 ? "z-[60]" : "z-40"
           }`}
         >
-          <div className="max-w-[480px] mx-auto pointer-events-auto rounded-2xl bg-card/95 backdrop-blur-md border border-border p-2 shadow-xl md:bg-transparent md:backdrop-blur-none md:border-0 md:p-0 md:shadow-none">
+          <div className="max-w-[480px] mx-auto pointer-events-auto rounded-2xl bg-card border border-border p-2 shadow-xl md:bg-transparent md:border-0 md:p-0 md:shadow-none">
             <button
               type="submit"
               disabled={
@@ -931,7 +933,7 @@ export default function RecordPage() {
                 (isCustomCategory && !customCategory.trim()) ||
                 isInsufficientBalance
               }
-              className={`w-full py-3.5 min-h-[48px] rounded-pill text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md ${
+              className={`w-full py-3.5 min-h-[48px] rounded-pill text-sm font-black transition-transform flex items-center justify-center gap-2 shadow-md ${
                 isInsufficientBalance
                   ? "bg-expense/15 border border-expense/40 text-expense cursor-not-allowed"
                   : amount > 0 && (!isCustomCategory || customCategory.trim())
