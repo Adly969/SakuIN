@@ -2,27 +2,21 @@
 
 import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
-import { formatRupiah } from "@/lib/utils";
 import {
   ChevronLeft,
   ChevronRight,
-  TrendingDown,
+  ChevronDown,
   TrendingUp,
-  Target,
   Flame,
-  Tag,
   Sparkles,
-  Receipt,
-  Layers,
-  HelpCircle,
   Lightbulb,
   ShieldCheck,
-  Calendar,
   AlertTriangle,
   SlidersHorizontal,
   Plus,
   Lock,
   ArrowRightLeft,
+  Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -54,6 +48,16 @@ import {
   resolvePotCategoryKey,
 } from "@/lib/category-pots";
 import { getJakartaCalendarParts, getJakartaDateString } from "@/lib/finance";
+import {
+  formatStatRupiah,
+  formatCompactStatRupiah,
+  formatAxisRupiah,
+  formatStatShortDate,
+  isSameTitleAndCategory,
+  shouldShowTrendChart,
+  prepareInsightsForDisplay,
+  evaluateCompositionDisplay,
+} from "./_lib/stat-guards";
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<"month" | "year">("month");
@@ -75,6 +79,12 @@ export default function StatisticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
+
+  // Pure UI disclosure states
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllInsights, setShowAllInsights] = useState(false);
+  const [showAllPots, setShowAllPots] = useState(false);
+  const [isOtherExpanded, setIsOtherExpanded] = useState(false);
 
   // Instant Cache Hydration on initial mount (0ms delay)
   useEffect(() => {
@@ -153,9 +163,11 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     if (!highlightedPos || catBudgets.length === 0) return;
+    setShowAllPots(true);
     const timer = setTimeout(() => {
-      const target = document.getElementById(`pos-${highlightedPos.replace(/\s+/g, "-")}`)
-        || document.getElementById("ringkasan-pos");
+      const target =
+        document.getElementById(`pos-${highlightedPos.replace(/\s+/g, "-")}`) ||
+        document.getElementById("ringkasan-pos");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
 
       if (pendingAutoShift) {
@@ -218,15 +230,18 @@ export default function StatisticsPage() {
 
   const handlePeriodChange = (newPeriod: "month" | "year") => {
     setPeriod(newPeriod);
+    setShowAllCategories(false);
     loadData(newPeriod, selectedMonthKey, selectedYear, type);
   };
 
   const handleTypeChange = (newType: "expense" | "income" | "savings") => {
     setType(newType);
+    setShowAllCategories(false);
     loadData(period, selectedMonthKey, selectedYear, newType);
   };
 
   const handlePrevPeriod = () => {
+    setShowAllCategories(false);
     if (period === "month") {
       const [yStr, mStr] = selectedMonthKey.split("-");
       let y = parseInt(yStr, 10);
@@ -247,6 +262,7 @@ export default function StatisticsPage() {
 
   const handleNextPeriod = () => {
     if (!statsData?.canGoNext) return;
+    setShowAllCategories(false);
     if (period === "month") {
       const [yStr, mStr] = selectedMonthKey.split("-");
       let y = parseInt(yStr, 10);
@@ -269,6 +285,7 @@ export default function StatisticsPage() {
     const { year: curYear, monthKey: curMonthKey } = getJakartaCalendarParts();
     setSelectedMonthKey(curMonthKey);
     setSelectedYear(curYear);
+    setShowAllCategories(false);
     loadData(period, curMonthKey, curYear, type);
   };
 
@@ -276,7 +293,6 @@ export default function StatisticsPage() {
   const topCategory = statsData?.topCategory;
   const comp = statsData?.monthlyComposition;
   const trend8Months = statsData?.trend8Months || [];
-  const topCategoriesRanking = statsData?.topCategoriesRanking || [];
   const otherNeeds = statsData?.otherNeedsBreakdown || [];
   const topTransactions = statsData?.topTransactions || [];
   const smartInsights = statsData?.smartInsights || [];
@@ -288,992 +304,1141 @@ export default function StatisticsPage() {
       ? statsData?.totalIncome || 0
       : statsData?.totalSavings || 0;
 
-  // Active month trend point
   const activeTrendPoint = trend8Months.find((t) => t.isCurrent);
+  const referenceYear = statsData?.selectedYear || selectedYear;
 
-  return (
-    <div className="space-y-5 max-w-[1100px] mx-auto pb-28 md:pb-12">
-      {/* 1. Page Header */}
-      <div className="flex flex-col gap-1 px-1">
-        <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-          Statistik Keuangan
-        </h1>
-        <p className="text-xs text-muted-foreground">
-          Analisis alokasi, tren 8 bulan, dan evaluasi uang sakumu
-        </p>
-      </div>
+  const displayedInsights = prepareInsightsForDisplay(smartInsights, comp, trend8Months);
+  const visibleInsights = showAllInsights ? displayedInsights : displayedInsights.slice(0, 3);
+  const visibleCategories = showAllCategories ? categories : categories.slice(0, 5);
+  const visiblePots = showAllPots ? catBudgets : catBudgets.slice(0, 3);
+  const showTrendGraph = shouldShowTrendChart(trend8Months, trendType);
+  const compState = evaluateCompositionDisplay(comp);
 
-      {/* 2. Global Period Navigation & Segmented Toggle (MonthPicker 7.3 & PRD G3) */}
-      <section className="bg-card border border-border rounded-xl p-3 shadow-sm space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          {/* Left: Previous / Label / Next */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handlePrevPeriod}
-              className="w-11 h-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center shrink-0"
-              aria-label="Periode Sebelumnya"
-            >
-              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-            </button>
+  const isPeriodCompletelyEmpty =
+    !isLoading &&
+    !isPending &&
+    statsData !== null &&
+    statsData.totalExpense === 0 &&
+    statsData.totalIncome === 0 &&
+    statsData.totalSavings === 0 &&
+    categories.length === 0;
 
-            <div className="flex items-center gap-2 px-1">
-              <Calendar className="w-3.5 h-3.5 text-accent" />
-              <span className="text-sm font-extrabold text-foreground">
-                {statsData?.displayPeriodLabel || "Memuat..."}
-              </span>
-            </div>
+  const totalTypeLabel =
+    type === "expense"
+      ? "Total pengeluaran"
+      : type === "income"
+      ? "Total pemasukan"
+      : "Total tabungan";
 
-            <button
-              type="button"
-              onClick={handleNextPeriod}
-              disabled={!statsData?.canGoNext}
-              className={`w-11 h-11 rounded-lg transition-colors flex items-center justify-center shrink-0 ${
-                statsData?.canGoNext
-                  ? "text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                  : "text-muted-foreground/30 cursor-not-allowed"
-              }`}
-              aria-label="Periode Berikutnya"
-            >
-              <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-            </button>
-          </div>
+  const controlSection = (
+    <section className="bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2">
+      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={handlePrevPeriod}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center shrink-0"
+            aria-label="Periode Sebelumnya"
+          >
+            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+          </button>
 
-          {/* Right: Bulan | Tahun Segmented Toggle */}
-          <div className="inline-flex p-0.5 bg-muted rounded-full text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => handlePeriodChange("month")}
-              className={`px-3.5 py-1.5 min-h-[44px] rounded-full transition-all text-xs font-bold ${
-                period === "month"
-                  ? "bg-foreground text-background shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Bulan
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePeriodChange("year")}
-              className={`px-3.5 py-1.5 min-h-[44px] rounded-full transition-all text-xs font-bold ${
-                period === "year"
-                  ? "bg-foreground text-background shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Tahun
-            </button>
-          </div>
+          <span className="text-sm font-extrabold text-foreground whitespace-nowrap px-1">
+            {statsData?.displayPeriodLabel || "Memuat..."}
+          </span>
+
+          <button
+            type="button"
+            onClick={handleNextPeriod}
+            disabled={!statsData?.canGoNext}
+            className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl transition-colors flex items-center justify-center shrink-0 ${
+              statsData?.canGoNext
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                : "text-muted-foreground/30 cursor-not-allowed"
+            }`}
+            aria-label="Periode Berikutnya"
+          >
+            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+          </button>
         </div>
 
-        {/* Quick jump to current month if navigated away */}
-        {statsData && statsData.canGoNext && (
-          <div className="pt-2 border-t border-border/40 flex justify-end">
-            <button
-              type="button"
-              onClick={handleResetToCurrent}
-              className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2"
-            >
-              Kembali ke Bulan Sekarang
-            </button>
-          </div>
-        )}
-      </section>
+        <div
+          role="group"
+          aria-label="Pilih rentang periode"
+          className="inline-flex p-0.5 bg-muted rounded-xl shrink-0 ml-auto"
+        >
+          <button
+            type="button"
+            onClick={() => handlePeriodChange("month")}
+            aria-pressed={period === "month"}
+            className={`px-3 min-h-[44px] rounded-lg transition-all text-xs font-bold whitespace-nowrap ${
+              period === "month"
+                ? "bg-foreground text-background shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Bulan
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePeriodChange("year")}
+            aria-pressed={period === "year"}
+            className={`px-3 min-h-[44px] rounded-lg transition-all text-xs font-bold whitespace-nowrap ${
+              period === "year"
+                ? "bg-foreground text-background shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Tahun
+          </button>
+        </div>
+      </div>
 
-      {/* 3. Transaction Type Selector Tabs (PRD G3: Pengeluaran / Pemasukan / Tabungan) */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Pilihan Jenis: Pengeluaran | Pemasukan | Tabungan */}
+      <div
+        role="group"
+        aria-label="Pilih jenis transaksi"
+        className="grid grid-cols-3 p-1 bg-muted rounded-xl gap-1"
+      >
         <button
           type="button"
           onClick={() => handleTypeChange("expense")}
-          className={`flex items-center justify-center gap-2 py-3 px-3 min-h-[44px] rounded-xl border text-xs font-bold transition-all shadow-xs ${
+          aria-pressed={type === "expense"}
+          className={`flex items-center justify-center gap-1.5 px-1.5 min-h-[44px] rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
             type === "expense"
-              ? "bg-expense/10 border-expense text-foreground"
-              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              ? "bg-card text-foreground shadow-xs font-black"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-expense shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-expense shrink-0" />
           <span>Pengeluaran</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleTypeChange("income")}
-          className={`flex items-center justify-center gap-2 py-3 px-3 min-h-[44px] rounded-xl border text-xs font-bold transition-all shadow-xs ${
+          aria-pressed={type === "income"}
+          className={`flex items-center justify-center gap-1.5 px-1.5 min-h-[44px] rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
             type === "income"
-              ? "bg-accent/10 border-accent text-foreground"
-              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              ? "bg-card text-foreground shadow-xs font-black"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-accent shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-[var(--accent-border)] dark:bg-accent shrink-0" />
           <span>Pemasukan</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleTypeChange("savings")}
-          className={`flex items-center justify-center gap-2 py-3 px-3 min-h-[44px] rounded-xl border text-xs font-bold transition-all shadow-xs ${
+          aria-pressed={type === "savings"}
+          className={`flex items-center justify-center gap-1.5 px-1.5 min-h-[44px] rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
             type === "savings"
-              ? "bg-[#FFB04A]/10 border-[#FFB04A] text-foreground"
-              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              ? "bg-card text-foreground shadow-xs font-black"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FFB04A] shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-[#FFB04A] shrink-0" />
           <span>Tabungan</span>
         </button>
       </div>
 
-      {/* Visualisasi Utama: Donut Chart & Tren 8 Bulan (HP: bertumpuk; lg: berdampingan) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
-        {/* Section 4: Donut Chart Card */}
-        <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                Total {type === "expense" ? "Pengeluaran" : type === "income" ? "Pemasukan" : "Tabungan Terkumpul"}
-              </span>
-              <div className="text-2xl sm:text-3xl font-black text-foreground mt-0.5 tracking-tight">
-                {isLoading || isPending ? "..." : formatRupiah(displayTotal)}
-              </div>
-            </div>
+      {statsData && statsData.canGoNext && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleResetToCurrent}
+            className="text-xs font-bold text-[color:var(--accent-text)] hover:underline px-2 min-h-[44px] inline-flex items-center"
+          >
+            Kembali ke periode sekarang
+          </button>
+        </div>
+      )}
+    </section>
+  );
 
-            <div
-              className={`p-2.5 rounded-xl ${
-                type === "expense"
-                  ? "bg-expense/15 text-expense"
-                  : type === "income"
-                  ? "bg-accent/15 text-accent"
-                  : "bg-[#FFB04A]/15 text-[#FFB04A]"
-              }`}
+  const summarySection = (
+    <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
+      <div>
+        <span className="text-xs font-semibold text-muted-foreground block">
+          {totalTypeLabel}
+        </span>
+        <div className="text-[28px] sm:text-[32px] leading-tight font-black text-foreground mt-0.5 tracking-tight tabular-nums whitespace-nowrap">
+          {isLoading || isPending ? "..." : formatStatRupiah(displayTotal)}
+        </div>
+      </div>
+
+      {/* Donut 160-180px dengan label tengah 2 baris */}
+      <div className="relative w-full h-[176px] flex items-center justify-center">
+        {categories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center p-2 space-y-2">
+            <span className="text-3xl font-black text-muted-foreground/30 tabular-nums">0%</span>
+            <p className="text-xs font-bold text-muted-foreground">
+              Belum ada data {type === "expense" ? "pengeluaran" : type === "income" ? "pemasukan" : "tabungan"}
+            </p>
+            <Link
+              href={type === "savings" ? "/savings" : "/record"}
+              className="inline-flex items-center gap-1.5 bg-accent text-[#1F1F1F] font-black text-xs px-4 min-h-[44px] rounded-full shadow-xs hover:brightness-105 transition-all"
             >
-              {type === "expense" ? (
-                <TrendingDown className="w-5 h-5 stroke-[2.5]" />
-              ) : type === "income" ? (
-                <TrendingUp className="w-5 h-5 stroke-[2.5]" />
-              ) : (
-                <Target className="w-5 h-5 stroke-[2.5]" />
-              )}
-            </div>
-          </div>
-
-          {/* Donut Chart with Dynamic Central Label */}
-          <div className="relative w-full h-52 flex items-center justify-center">
-            {categories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-3">
-                <span className="text-4xl font-black text-muted-foreground/30">0%</span>
-                <p className="text-xs font-bold text-muted-foreground mt-2">
-                  Belum ada data {type === "expense" ? "pengeluaran" : type === "income" ? "pemasukan" : "tabungan"}
-                </p>
-                <p className="text-xs text-muted-foreground/70 max-w-[220px] mt-0.5">
-                  {type === "expense"
-                    ? "Catat pengeluaran harianmu untuk melihat sebaran porsi"
-                    : type === "income"
-                    ? "Atur uang kiriman atau catat pemasukan baru"
-                    : "Mulai sisihkan uang ke target tabungan impianmu"}
-                </p>
-                <Link
-                  href={type === "savings" ? "/savings" : "/record"}
-                  className="mt-3 inline-flex items-center gap-1.5 bg-accent text-[#1F1F1F] font-black text-xs px-4 py-2.5 min-h-[44px] rounded-full shadow-sm hover:brightness-110 transition-all"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>
-                    {type === "expense"
-                      ? "Catat Pengeluaran"
-                      : type === "income"
-                      ? "Catat Pemasukan"
-                      : "Buat Target Tabungan"}
-                  </span>
-                </Link>
-              </div>
-            ) : (
-              <>
-                {isMounted && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={categories}
-                        dataKey="value"
-                        innerRadius={65}
-                        outerRadius={85}
-                        paddingAngle={4}
-                        cornerRadius={6}
-                        stroke="none"
-                      >
-                        {categories.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="bg-popover border border-border px-3 py-2 rounded-xl shadow-xl text-xs font-bold text-foreground">
-                                <p className="flex items-center gap-1.5">
-                                  <span
-                                    className="w-2 h-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: data.color }}
-                                  />
-                                  {data.name}
-                                </p>
-                                <p className="text-muted-foreground mt-0.5">
-                                  {formatRupiah(data.amount)} ({data.value}%)
-                                </p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-
-                {/* Central Metric in Donut Ring */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-3xl font-black tracking-tight text-foreground">
-                    {topCategory?.percentage || 0}%
-                  </span>
-                  <span className="text-xs font-bold text-muted-foreground truncate max-w-[100px] text-center">
-                    {topCategory?.name || "-"}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-semibold">
-                    Terbesar
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Legend Grid with Category, Percentage, and Amount */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-3 border-t border-border/60">
-            {categories.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center col-span-2 py-2">
-                Tidak ada data kategori di periode ini
-              </p>
-            ) : (
-              categories.map((cat) => (
-                <div
-                  key={cat.name}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-background/50 border border-border/40 text-xs font-semibold"
-                >
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: cat.color }}
-                    />
-                    <div className="truncate">
-                      <span className="text-foreground font-bold block truncate">{cat.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {cat.count} transaksi • {formatRupiah(cat.amount)}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-foreground font-black shrink-0 text-sm">{cat.value}%</span>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* Section 7: Tren 8 Bulan Terakhir */}
-        <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4 flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
-                  Tren 8 Bulan Terakhir
-                </h2>
-                {statsData?.highestExpenseMonth && trendType === "expense" && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-expense/15 text-expense flex items-center gap-1">
-                    <Flame className="w-3 h-3" />
-                    <span>{statsData.highestExpenseMonth.month} Terboros</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Riwayat fluktuasi finansial dari waktu ke waktu
-              </p>
-            </div>
-
-            {/* Sub-toggle: Pengeluaran vs Pemasukan */}
-            <div className="inline-flex p-0.5 bg-muted rounded-lg self-start sm:self-auto text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setTrendType("expense")}
-                className={`px-3 py-1 rounded-md transition-all text-xs font-bold ${
-                  trendType === "expense"
-                    ? "bg-card text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Pengeluaran
-              </button>
-              <button
-                type="button"
-                onClick={() => setTrendType("income")}
-                className={`px-3 py-1 rounded-md transition-all text-xs font-bold ${
-                  trendType === "income"
-                    ? "bg-card text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Pemasukan
-              </button>
-            </div>
-          </div>
-
-          {/* Current Active Month Value Bubble */}
-          {activeTrendPoint && (
-            <div className="p-3 rounded-lg bg-background/50 border border-border/40 flex items-center justify-between">
-              <span className="text-xs font-bold text-muted-foreground">
-                {trendType === "expense" ? "Pengeluaran" : "Pemasukan"} Bulan Ini ({activeTrendPoint.month})
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>
+                {type === "expense"
+                  ? "Catat pengeluaran"
+                  : type === "income"
+                  ? "Catat pemasukan"
+                  : "Buat target tabungan"}
               </span>
-              <span className="text-sm font-black text-accent">
-                {formatRupiah(trendType === "expense" ? activeTrendPoint.expense : activeTrendPoint.income)}
-              </span>
-            </div>
-          )}
-
-          {/* Area / Wave Chart with Monotone Bezier Curve (DESIGN 8.2) */}
-          <div className="h-56 w-full pt-2">
+            </Link>
+          </div>
+        ) : (
+          <>
             {isMounted && (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={trend8Months}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop
-                        offset="5%"
-                        stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
-                        stopOpacity={0.35}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
-                        stopOpacity={0}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11, fontWeight: 700 }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                    tickFormatter={(val) => `${Math.round(val / 1000)}k`}
-                  />
+                <PieChart>
+                  <Pie
+                    data={categories}
+                    dataKey="value"
+                    innerRadius={56}
+                    outerRadius={78}
+                    paddingAngle={3}
+                    cornerRadius={5}
+                    stroke="none"
+                  >
+                    {categories.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
                   <Tooltip
-                    cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
-                        const data = payload[0].payload as MonthlyComp;
-                        const val = trendType === "expense" ? data.expense : data.income;
+                        const data = payload[0].payload;
                         return (
-                          <div className="bg-popover border border-border rounded-xl p-2.5 shadow-xl text-xs font-bold text-foreground">
-                            <p className="text-xs text-muted-foreground">{data.month} {data.year}</p>
-                            <p className="text-sm font-black mt-0.5">{formatRupiah(val)}</p>
-                            {trendType === "expense" && data.isHighestExpense && val > 0 && (
-                              <span className="text-xs font-bold text-expense flex items-center gap-1 mt-1">
-                                <Flame className="w-3 h-3" /> Bulan Terboros
-                              </span>
-                            )}
+                          <div className="bg-popover border border-border px-3 py-2 rounded-xl shadow-xl text-xs font-bold text-foreground">
+                            <p className="flex items-center gap-1.5">
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: data.color }}
+                              />
+                              <span>{data.name}</span>
+                            </p>
+                            <p className="text-muted-foreground mt-0.5 tabular-nums">
+                              {formatStatRupiah(data.amount)} ({data.value}%)
+                            </p>
                           </div>
                         );
                       }
                       return null;
                     }}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey={trendType}
-                    stroke={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#trendGradient)"
-                    dot={(props: { cx?: number; cy?: number; payload?: MonthlyComp; index?: number }) => {
-                      const isCur = props.payload?.isCurrent;
-                      const isHigh = trendType === "expense" ? props.payload?.isHighestExpense : props.payload?.isHighestIncome;
-                      if (isCur || isHigh) {
-                        return (
-                          <circle
-                            key={`dot-${props.index}`}
-                            cx={props.cx || 0}
-                            cy={props.cy || 0}
-                            r={5}
-                            fill={isHigh ? "#FF7B7B" : "var(--accent-text)"}
-                            stroke="#1E1E1E"
-                            strokeWidth={2}
-                          />
-                        );
-                      }
-                      return <circle key={`dot-${props.index}`} cx={props.cx || 0} cy={props.cy || 0} r={2} fill="#8A8A8A" />;
-                    }}
-                  />
-                </AreaChart>
+                </PieChart>
               </ResponsiveContainer>
             )}
-          </div>
-        </section>
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4">
+              <span className="text-2xl font-black tracking-tight text-foreground tabular-nums leading-none">
+                {topCategory?.percentage || 0}%
+              </span>
+              <span className="text-xs font-bold text-muted-foreground max-w-[96px] text-center line-clamp-2 leading-tight mt-1">
+                {topCategory?.name || "-"}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Komposisi Alokasi & Peringkat Terbanyak (HP: bertumpuk; lg: berdampingan) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
-        {/* Section 6: Grafik Komposisi Bulan (PRD G4: Pemasukan vs Pengeluaran vs Tabungan) */}
-        {comp && (
-          <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
-                  Komposisi Alokasi Uang
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Proporsi pengeluaran dan tabungan terhadap pemasukan
-                </p>
-              </div>
-              <Layers className="w-4 h-4 text-muted-foreground" />
-            </div>
-
-            {/* Stacked Composition Progress Bar */}
-            <div className="w-full h-4 bg-muted rounded-full overflow-hidden flex shadow-inner">
-              <div
-                style={{ width: `${comp.expensePct}%` }}
-                className="h-full bg-expense transition-all duration-500"
-                title={`Pengeluaran ${comp.expensePct}%`}
-              />
-              <div
-                style={{ width: `${comp.savingsPct}%` }}
-                className="h-full bg-[#FFB04A] transition-all duration-500"
-                title={`Tabungan ${comp.savingsPct}%`}
-              />
-              <div
-                style={{ width: `${comp.remainingPct}%` }}
-                className="h-full bg-accent transition-all duration-500"
-                title={`Sisa Saldo ${comp.remainingPct}%`}
-              />
-            </div>
-
-            {/* 3 Metric Summary Boxes */}
-            <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-              <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
-                  <span className="w-2 h-2 rounded-full bg-expense shrink-0" />
-                  Pengeluaran
-                </span>
-                <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
-                  {comp.expensePct}%
-                </p>
-                <p className="text-xs text-muted-foreground font-semibold truncate">
-                  {formatRupiah(comp.totalExpense)}
-                </p>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
-                  <span className="w-2 h-2 rounded-full bg-[#FFB04A] shrink-0" />
-                  Tabungan
-                </span>
-                <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
-                  {comp.savingsPct}%
-                </p>
-                <p className="text-xs text-muted-foreground font-semibold truncate">
-                  {formatRupiah(comp.totalSavings)}
-                </p>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
-                  <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                  Sisa Saldo
-                </span>
-                <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
-                  {comp.remainingPct}%
-                </p>
-                <p className="text-xs text-muted-foreground font-semibold truncate">
-                  {formatRupiah(comp.remainingBalance)}
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Section 8: Peringkat 5 Kategori Pengeluaran Teratas (PRD G6 & DESIGN 8.3) */}
-        <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-          <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
-            Peringkat Pengeluaran Terbanyak
-          </h2>
-
-          {topCategoriesRanking.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Belum ada transaksi pengeluaran di periode ini.
-            </p>
-          ) : (
-            <div className="space-y-3.5">
-              {topCategoriesRanking.map((cat, idx) => (
-                <div key={cat.name} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="flex items-center gap-2 text-foreground font-bold">
-                      <span className="w-5 text-muted-foreground font-extrabold text-xs">
-                        #{idx + 1}
+      {/* Daftar Kategori Terpadu (5 baris default + Lihat semua) */}
+      {categories.length > 0 && (
+        <div className="space-y-3 pt-2 border-t border-border/60">
+          {visibleCategories.map((cat) => {
+            const barWidth = cat.value > 0 ? Math.min(100, Math.max(cat.value, 3)) : 0;
+            return (
+              <div key={cat.name} className="space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <div className="min-w-0">
+                      <span className="text-sm font-bold text-foreground block truncate">
+                        {cat.name}
                       </span>
-                      <Tag className="w-3.5 h-3.5" style={{ color: cat.color }} />
-                      <span className="truncate max-w-[140px] sm:max-w-xs">{cat.name}</span>
-                    </span>
-                    <span className="text-foreground font-black">
-                      {formatRupiah(cat.amount)}{" "}
-                      <span className="text-muted-foreground font-normal">({cat.value}%)</span>
-                    </span>
+                      <span className="text-xs text-muted-foreground block">
+                        {cat.count} transaksi
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Horizontal Progress Bar */}
-                  <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${cat.value}%`, backgroundColor: cat.color }}
-                    />
+                  <div className="flex items-baseline gap-2.5 shrink-0 text-right">
+                    <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                      {formatStatRupiah(cat.amount)}
+                    </span>
+                    <span className="text-xs font-bold text-muted-foreground tabular-nums w-9 text-right">
+                      {cat.value}%
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${barWidth}%`, backgroundColor: cat.color }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+
+          {categories.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setShowAllCategories((prev) => !prev)}
+              className="w-full min-h-[44px] rounded-xl border border-border bg-background hover:bg-muted text-xs font-bold text-foreground transition-colors"
+            >
+              {showAllCategories
+                ? "Tampilkan 5 teratas"
+                : `Lihat semua (${categories.length} kategori)`}
+            </button>
           )}
-        </section>
+        </div>
+      )}
+    </section>
+  );
+
+  const insightsSection = displayedInsights.length > 0 && (
+    <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-[color:var(--accent-text)] shrink-0" />
+        <h2 className="text-base font-semibold text-foreground tracking-tight">Sorotan</h2>
       </div>
 
-      {/* Rincian Transaksi & Insight Cerdas (HP: bertumpuk; lg: berdampingan) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        {/* Section 10: Daftar 5 Transaksi Pengeluaran Terbesar (PRD G8) */}
-        <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
-                5 Transaksi Terbesar
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Transaksi tunggal paling memakan saldo di periode ini
+      <div className="space-y-2.5">
+        {visibleInsights.map((insight) => (
+          <div
+            key={insight.id}
+            className="p-3 rounded-xl border border-border/70 bg-background/60 flex items-start gap-2.5"
+          >
+            <div
+              className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                insight.type === "positive"
+                  ? "bg-accent/15 text-[color:var(--accent-text)]"
+                  : insight.type === "warning"
+                  ? "bg-expense/15 text-[color:var(--expense-text)]"
+                  : "bg-muted text-foreground border border-border/60"
+              }`}
+            >
+              {insight.type === "positive" ? (
+                <ShieldCheck className="w-4 h-4" />
+              ) : insight.type === "warning" ? (
+                <AlertTriangle className="w-4 h-4" />
+              ) : (
+                <Lightbulb className="w-4 h-4" />
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-sm font-bold text-foreground">{insight.title}</span>
+                {insight.badge && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-muted text-foreground/85 shrink-0 whitespace-nowrap">
+                    {insight.badge}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground leading-snug line-clamp-2">
+                {insight.description}
               </p>
             </div>
-            <Receipt className="w-4 h-4 text-muted-foreground" />
+          </div>
+        ))}
+      </div>
+
+      {displayedInsights.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setShowAllInsights((prev) => !prev)}
+          className="w-full min-h-[44px] rounded-xl border border-border bg-background hover:bg-muted text-xs font-bold text-foreground transition-colors"
+        >
+          {showAllInsights
+            ? "Tampilkan lebih sedikit"
+            : `Lihat semua (${displayedInsights.length})`}
+        </button>
+      )}
+    </section>
+  );
+
+  const potsSection = (
+    <section
+      id="ringkasan-pos"
+      className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground tracking-tight">
+            Jatah per pos
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pengeluaran di kategori tanpa jatah dihitung ke Sisa Bebas.
+          </p>
+        </div>
+
+        <Link
+          href="/budgets"
+          className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all shrink-0 whitespace-nowrap"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span>Atur jatah</span>
+        </Link>
+      </div>
+
+      {shiftToast && (
+        <div className="p-3 rounded-xl bg-accent/15 border border-[var(--accent-border)]/40 text-xs font-bold text-[color:var(--accent-text)]">
+          {shiftToast}
+        </div>
+      )}
+
+      {catSummary &&
+        catBudgets.length > 0 &&
+        (() => {
+          const allocatedKeySet = new Set(
+            catBudgets.map((b) => resolvePotCategoryKey(b.categoryName))
+          );
+          const pendingUnallocated = Object.entries(pendingOfflineByCat).reduce(
+            (sum, [k, amt]) => (allocatedKeySet.has(k) ? sum : sum + amt),
+            0
+          );
+          const totalUnallocatedSpent = catSummary.unallocatedSpent + pendingUnallocated;
+          const liveFreeRemaining =
+            Math.max(0, catSummary.freeRemainingBeforeUnallocated) - totalUnallocatedSpent;
+
+          return (
+            <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-background/70 border border-border/70 text-xs">
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground block">
+                  Total jatah
+                </span>
+                <span className="font-black text-foreground tabular-nums whitespace-nowrap">
+                  {formatStatRupiah(catSummary.totalAllocated)}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground block">
+                  Tanpa jatah
+                </span>
+                <span className="font-black text-foreground tabular-nums whitespace-nowrap">
+                  {formatStatRupiah(totalUnallocatedSpent)}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-semibold text-muted-foreground block">
+                  Sisa bebas
+                </span>
+                <span
+                  className={`font-black tabular-nums whitespace-nowrap ${
+                    catSummary.isOverAllocated || liveFreeRemaining < 0
+                      ? "text-[color:var(--expense-text)]"
+                      : "text-[color:var(--accent-text)]"
+                  }`}
+                >
+                  {formatStatRupiah(liveFreeRemaining)}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+
+      {catBudgets.length === 0 ? (
+        <p className="text-sm text-muted-foreground leading-snug">
+          Belum ada jatah bulan ini. Bagi uangmu ke beberapa pos supaya pengeluaran lebih terkontrol.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {visiblePots.map((item) => {
+            const itemKey = resolvePotCategoryKey(item.categoryName);
+            const pendingSpent = catSummary?.isCurrentView
+              ? pendingOfflineByCat[itemKey] || 0
+              : 0;
+            const liveUsage = evaluatePotUsage(item.limitAmount, item.spent + pendingSpent);
+            const isOver = liveUsage.status === "exceeded" || liveUsage.status === "reached";
+            const isWarn = liveUsage.status === "warning";
+            const isHighlighted = highlightedPos === itemKey;
+            const statusText =
+              liveUsage.status === "exceeded"
+                ? "Melebihi"
+                : liveUsage.status === "reached"
+                ? "Habis"
+                : isWarn
+                ? "Waspada"
+                : "Aman";
+
+            return (
+              <div
+                key={item.categoryId}
+                id={`pos-${itemKey.replace(/\s+/g, "-")}`}
+                className={`p-3 rounded-xl bg-background/70 border space-y-2 transition-all ${
+                  isHighlighted
+                    ? "border-[var(--accent-border)] ring-2 ring-accent/60"
+                    : "border-border/70"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-sm font-bold text-foreground truncate">
+                      {item.categoryName}
+                    </span>
+                    {item.isLockedFromDaily && (
+                      <Lock
+                        className="w-3.5 h-3.5 text-[color:var(--warning-text)] shrink-0"
+                        aria-label="Terkunci"
+                      />
+                    )}
+                  </div>
+
+                  <span
+                    className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
+                      isOver
+                        ? "bg-expense/15 text-[color:var(--expense-text)]"
+                        : isWarn
+                        ? "bg-[#FFB04A]/20 text-[color:var(--warning-text)]"
+                        : "bg-accent/15 text-[color:var(--accent-text)]"
+                    }`}
+                  >
+                    {statusText}
+                  </span>
+                </div>
+
+                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isOver
+                        ? "bg-expense"
+                        : isWarn
+                        ? "bg-[#FFB04A]"
+                        : "bg-[var(--accent-border)] dark:bg-accent"
+                    }`}
+                    style={{ width: `${Math.min(100, liveUsage.usagePercent)}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatCompactStatRupiah(liveUsage.spent)} dari{" "}
+                    {formatCompactStatRupiah(liveUsage.allocatedAmount)}
+                  </span>
+                  <span
+                    className={`font-bold tabular-nums whitespace-nowrap ${
+                      liveUsage.overAmount > 0 || liveUsage.remaining === 0
+                        ? "text-[color:var(--expense-text)]"
+                        : isWarn
+                        ? "text-[color:var(--warning-text)]"
+                        : "text-[color:var(--accent-text)]"
+                    }`}
+                  >
+                    {liveUsage.overAmount > 0
+                      ? `Melebihi ${formatCompactStatRupiah(liveUsage.overAmount)}`
+                      : `Sisa ${formatCompactStatRupiah(liveUsage.remaining)}`}
+                  </span>
+                </div>
+
+                {catSummary?.isCurrentView && catBudgets.length >= 2 && (
+                  <div className="pt-1 border-t border-border/50 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShiftTargetCategoryId(item.categoryId);
+                        setShiftModalOpen(true);
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
+                        isOver
+                          ? "bg-accent text-[#1F1F1F] border-[var(--accent-border)] font-black hover:brightness-105"
+                          : "bg-card border-border text-foreground hover:border-[var(--accent-border)]"
+                      }`}
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      <span>{isOver ? "Geser dari pos lain" : "Geser jatah"}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {catBudgets.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAllPots((prev) => !prev)}
+              className="w-full min-h-[44px] rounded-xl border border-border bg-background hover:bg-muted text-xs font-bold text-foreground transition-colors"
+            >
+              {showAllPots
+                ? "Tampilkan 3 pos"
+                : `Lihat semua (${catBudgets.length} pos)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {recentTransfers.length > 0 && (
+        <div className="pt-2 border-t border-border/60 space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Riwayat geser jatah periode ini
+          </p>
+          <div className="space-y-1.5">
+            {recentTransfers.slice(0, 5).map((tr) => (
+              <div
+                key={tr.id}
+                className="flex items-center justify-between gap-2 text-xs px-2.5 py-2 rounded-lg bg-background/60 border border-border/60"
+              >
+                <span className="text-muted-foreground truncate">
+                  <strong className="text-foreground">{tr.fromName}</strong>
+                  {" → "}
+                  <strong className="text-foreground">{tr.toName}</strong>
+                </span>
+                <span className="font-black text-[color:var(--accent-text)] tabular-nums whitespace-nowrap shrink-0">
+                  {formatStatRupiah(tr.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
+  const compositionSection = comp && (
+    <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">
+      <div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="text-base font-semibold text-foreground tracking-tight">
+            Pengeluaran vs pemasukan
+          </h2>
+          {compState.isOverspent && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-expense/15 text-[color:var(--expense-text)] text-xs font-bold shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>Pengeluaran melebihi pemasukan</span>
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Porsi pengeluaran dan tabungan dari pemasukanmu
+        </p>
+      </div>
+
+      {compState.mode === "no_income" ? (
+        <div className="space-y-3">
+          <div className="w-full h-3 bg-muted rounded-full overflow-hidden" />
+          <p className="text-xs font-semibold text-muted-foreground">
+            Belum ada pemasukan tercatat bulan ini
+          </p>
+          <div className="divide-y divide-border/60 border-t border-border/60">
+            <div className="py-2.5 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-expense shrink-0" />
+                <span>Pengeluaran</span>
+              </span>
+              <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                {formatStatRupiah(comp.totalExpense)}
+              </span>
+            </div>
+            <div className="py-2.5 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FFB04A] shrink-0" />
+                <span>Tabungan</span>
+              </span>
+              <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                {formatStatRupiah(comp.totalSavings)}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Bar bertumpuk dengan lebar minimum visual agar segmen kecil tetap terlihat */}
+          <div className="w-full h-3 bg-muted rounded-full overflow-hidden flex gap-px">
+            {compState.barWidths.expense > 0 && (
+              <div
+                style={{ width: `${compState.barWidths.expense}%` }}
+                className="h-full min-w-[6px] bg-expense transition-all duration-500"
+              />
+            )}
+            {compState.barWidths.savings > 0 && (
+              <div
+                style={{ width: `${compState.barWidths.savings}%` }}
+                className="h-full min-w-[6px] bg-[#FFB04A] transition-all duration-500"
+              />
+            )}
+            {compState.barWidths.remaining > 0 && (
+              <div
+                style={{ width: `${compState.barWidths.remaining}%` }}
+                className="h-full min-w-[6px] bg-[var(--accent-border)] dark:bg-accent transition-all duration-500"
+              />
+            )}
           </div>
 
-          {topTransactions.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Belum ada data transaksi di periode ini.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {topTransactions.map((tx, idx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-background/50 border border-border/40 text-xs font-semibold"
-                >
-                  <div className="flex items-center gap-3 truncate pr-2">
-                    <span className="w-5 text-center font-black text-muted-foreground text-xs shrink-0">
-                      #{idx + 1}
-                    </span>
-                    <div className="truncate">
-                      <p className="text-foreground font-bold truncate text-xs sm:text-sm">
-                        {tx.title}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span
-                          className="px-1.5 py-0.2 rounded font-bold"
-                          style={{ backgroundColor: `${tx.categoryColor}22`, color: tx.categoryColor }}
-                        >
-                          {tx.categoryName}
-                        </span>
-                        <span>•</span>
-                        <span>{tx.occurredOn}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="text-expense font-black text-xs sm:text-sm">
-                      -{formatRupiah(tx.amount)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Kolom Kanan: Rincian Kebutuhan Lain & Smart Insights */}
-        <div className="space-y-5">
-          {/* Section 9: Breakdown Kebutuhan Lain (PRD G7: 5 Keterangan Teratas) */}
-          {otherNeeds.length > 0 && (
-            <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm sm:text-base font-extrabold text-foreground tracking-tight">
-                    Rincian Kebutuhan Lain
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    5 keterangan kustom teratas yang kamu catat
-                  </p>
-                </div>
-                <HelpCircle className="w-4 h-4 text-muted-foreground" />
+          {/* 3 baris rapi (BUG 10: tidak memakai 3 kotak, tidak ada label terpotong) */}
+          <div className="divide-y divide-border/60">
+            <div className="py-2.5 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-expense shrink-0" />
+                <span>Pengeluaran</span>
+              </span>
+              <div className="flex items-baseline gap-2.5 shrink-0 text-right">
+                <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                  {formatStatRupiah(comp.totalExpense)}
+                </span>
+                {compState.showPercentages && (
+                  <span className="text-xs font-bold text-muted-foreground tabular-nums w-9 text-right">
+                    {comp.expensePct}%
+                  </span>
+                )}
               </div>
-
-              <div className="space-y-2.5">
-                {otherNeeds.map((item, idx) => (
-                  <div
-                    key={item.name}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-background/50 border border-border/40 text-xs font-semibold"
-                  >
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <span className="w-4 text-center font-bold text-muted-foreground text-xs">
-                        {idx + 1}.
-                      </span>
-                      <div>
-                        <span className="text-foreground font-bold block truncate">{item.name}</span>
-                        <span className="text-xs text-muted-foreground">{item.count}x transaksi</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="text-foreground font-black block">{formatRupiah(item.amount)}</span>
-                      <span className="text-xs text-muted-foreground">{item.percentage}% dari pos lain</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Section 4.5: Ringkasan Semua Pos Jatah Kategori & Sisa Bebas */}
-          <section
-            id="ringkasan-pos"
-            className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-extrabold text-foreground tracking-tight">
-                  Ringkasan Pos Kategori
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Transaksi pada kategori tanpa jatah otomatis dihitung ke Sisa Bebas.
-                </p>
-              </div>
-              <Link
-                href="/budgets"
-                className="inline-flex items-center gap-1 px-3.5 py-2 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all shrink-0"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Atur jatah</span>
-              </Link>
             </div>
 
-            {shiftToast && (
-              <div className="p-3 rounded-xl bg-accent/15 border border-accent/40 text-xs font-bold text-[color:var(--accent-text)]">
-                {shiftToast}
+            <div className="py-2.5 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FFB04A] shrink-0" />
+                <span>Tabungan</span>
+              </span>
+              <div className="flex items-baseline gap-2.5 shrink-0 text-right">
+                <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                  {formatStatRupiah(comp.totalSavings)}
+                </span>
+                {compState.showPercentages && (
+                  <span className="text-xs font-bold text-muted-foreground tabular-nums w-9 text-right">
+                    {comp.savingsPct}%
+                  </span>
+                )}
               </div>
+            </div>
+
+            <div className="py-2.5 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-[var(--accent-border)] dark:bg-accent shrink-0" />
+                <span>Sisa saldo</span>
+              </span>
+              <div className="flex items-baseline gap-2.5 shrink-0 text-right">
+                <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+                  {formatStatRupiah(comp.remainingBalance)}
+                </span>
+                {compState.showPercentages && (
+                  <span className="text-xs font-bold text-muted-foreground tabular-nums w-9 text-right">
+                    {comp.remainingPct}%
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
+  const topTransactionsSection = (
+    <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-foreground tracking-tight">
+          5 transaksi terbesar
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Transaksi tunggal paling memakan saldo di periode ini
+        </p>
+      </div>
+
+      {topTransactions.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-2">
+          Belum ada data transaksi di periode ini.
+        </p>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {topTransactions.map((tx, idx) => {
+            const sameTitleCat = isSameTitleAndCategory(tx.title, tx.categoryName);
+            const shortDate = formatStatShortDate(tx.occurredOn, referenceYear);
+
+            return (
+              <div key={tx.id} className="py-2.5 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="w-5 text-xs font-extrabold text-muted-foreground shrink-0 tabular-nums">
+                    #{idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-foreground truncate">{tx.title}</p>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5 min-w-0">
+                      {!sameTitleCat && (
+                        <>
+                          <span className="truncate font-medium">{tx.categoryName}</span>
+                          <span aria-hidden="true">-</span>
+                        </>
+                      )}
+                      <span className="shrink-0 whitespace-nowrap">{shortDate}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <span className="text-sm font-black text-[color:var(--expense-text)] tabular-nums whitespace-nowrap shrink-0 text-right">
+                  {formatStatRupiah(tx.amount, "minus")}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
+  const trendSection = (
+    <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-base font-semibold text-foreground tracking-tight">
+          Tren 8 bulan terakhir
+        </h2>
+        {showTrendGraph && statsData?.highestExpenseMonth && trendType === "expense" && (
+          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-expense/15 text-[color:var(--expense-text)] whitespace-nowrap">
+            <Flame className="w-3.5 h-3.5 shrink-0" />
+            <span>{statsData.highestExpenseMonth.month} Terboros</span>
+          </span>
+        )}
+      </div>
+
+      {/* Pilihan Pengeluaran | Pemasukan 44px */}
+      <div
+        role="group"
+        aria-label="Pilih jenis grafik tren"
+        className="grid grid-cols-2 p-1 bg-muted rounded-xl gap-1"
+      >
+        <button
+          type="button"
+          onClick={() => setTrendType("expense")}
+          aria-pressed={trendType === "expense"}
+          className={`min-h-[44px] px-3 rounded-lg text-xs font-bold transition-all ${
+            trendType === "expense"
+              ? "bg-card text-foreground shadow-xs font-black"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Pengeluaran
+        </button>
+        <button
+          type="button"
+          onClick={() => setTrendType("income")}
+          aria-pressed={trendType === "income"}
+          className={`min-h-[44px] px-3 rounded-lg text-xs font-bold transition-all ${
+            trendType === "income"
+              ? "bg-card text-foreground shadow-xs font-black"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Pemasukan
+        </button>
+      </div>
+
+      {/* Ringkasan bulan ini dalam warna netral (BUG 8) */}
+      {activeTrendPoint && (
+        <div className="px-3 py-2.5 rounded-xl bg-background/70 border border-border/70 flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Bulan ini ({activeTrendPoint.month})
+          </span>
+          <span className="text-sm font-black text-foreground tabular-nums whitespace-nowrap">
+            {formatStatRupiah(
+              trendType === "expense" ? activeTrendPoint.expense : activeTrendPoint.income
             )}
+          </span>
+        </div>
+      )}
 
-            {catSummary && catBudgets.length > 0 && (() => {
-              const allocatedKeySet = new Set(
-                catBudgets.map((b) => resolvePotCategoryKey(b.categoryName))
-              );
-              const pendingUnallocated = Object.entries(pendingOfflineByCat).reduce(
-                (sum, [k, amt]) => (allocatedKeySet.has(k) ? sum : sum + amt),
-                0
-              );
-              const totalUnallocatedSpent = catSummary.unallocatedSpent + pendingUnallocated;
-              const liveFreeRemaining =
-                Math.max(0, catSummary.freeRemainingBeforeUnallocated) - totalUnallocatedSpent;
-
-              return (
-                <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-background/70 border border-border/70 text-xs">
-                  <div>
-                    <span className="text-xs font-semibold text-muted-foreground block">
-                      Total Jatah Pos
-                    </span>
-                    <span className="font-black text-foreground">
-                      {formatRupiah(catSummary.totalAllocated)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-muted-foreground block">
-                      Tanpa Jatah
-                    </span>
-                    <span className="font-black text-foreground">
-                      {formatRupiah(totalUnallocatedSpent)}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-semibold text-muted-foreground block">
-                      Sisa Bebas
-                    </span>
-                    <span
-                      className={`font-black ${
-                        catSummary.isOverAllocated || liveFreeRemaining < 0
-                          ? "text-[color:var(--expense-text)]"
-                          : "text-[color:var(--accent-text)]"
-                      }`}
-                    >
-                      {liveFreeRemaining < 0
-                        ? `-${formatRupiah(Math.abs(liveFreeRemaining))}`
-                        : formatRupiah(liveFreeRemaining)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {catBudgets.length === 0 ? (
-              <div className="p-4 rounded-xl bg-background/60 border border-dashed border-border text-center text-xs text-muted-foreground">
-                Belum ada pos jatah aktif periode ini. Ketuk <strong>Atur jatah</strong> untuk membagi jatah pos sekaligus.
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {catBudgets.map((item) => {
-                  const itemKey = resolvePotCategoryKey(item.categoryName);
-                  const pendingSpent = catSummary?.isCurrentView
-                    ? pendingOfflineByCat[itemKey] || 0
-                    : 0;
-                  const liveUsage = evaluatePotUsage(
-                    item.limitAmount,
-                    item.spent + pendingSpent
-                  );
-                  const isOver =
-                    liveUsage.status === "exceeded" || liveUsage.status === "reached";
-                  const isWarn = liveUsage.status === "warning";
-                  const isHighlighted = highlightedPos === itemKey;
-                  const cadenceLabel =
-                    item.cadence === "daily"
-                      ? "Harian"
-                      : item.cadence === "weekly"
-                      ? "Mingguan"
-                      : "Bulanan";
-
-                  return (
-                    <div
-                      key={item.categoryId}
-                      id={`pos-${itemKey.replace(/\s+/g, "-")}`}
-                      className={`p-3 rounded-xl bg-background/70 border space-y-2 transition-all ${
-                        isHighlighted
-                          ? "border-accent ring-2 ring-accent/60"
-                          : "border-border/70"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: item.color }}
-                          />
-                          <span className="font-bold text-foreground truncate">
-                            {item.categoryName}
-                          </span>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                            {cadenceLabel}
-                          </span>
-                          {item.isLockedFromDaily && (
-                            <span
-                              title="Dikunci dari Batas Hari Ini"
-                              className="inline-flex items-center text-[color:var(--warning-text)] shrink-0"
-                            >
-                              <Lock className="w-3 h-3" aria-label="Terkunci" />
+      {/* Grafik 160-180px atau keadaan kosong jika < 2 bulan data (BUG 3 & BUG 5) */}
+      {!showTrendGraph ? (
+        <div className="h-[164px] rounded-xl bg-background/50 border border-border/60 flex flex-col items-center justify-center text-center px-4 gap-2">
+          <TrendingUp className="w-6 h-6 text-muted-foreground" />
+          <p className="text-xs font-semibold text-muted-foreground max-w-[230px]">
+            Tren muncul setelah ada data dari 2 bulan atau lebih
+          </p>
+        </div>
+      ) : (
+        <div className="h-[172px] w-full pt-1">
+          {isMounted && (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={trend8Months}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
+                      stopOpacity={0.35}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
+                      stopOpacity={0}
+                    />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="month"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontWeight: 600 }}
+                />
+                <YAxis
+                  width={54}
+                  tickCount={3}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                  tickFormatter={formatAxisRupiah}
+                />
+                <Tooltip
+                  cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload as MonthlyComp;
+                      const val = trendType === "expense" ? data.expense : data.income;
+                      return (
+                        <div className="bg-popover border border-border rounded-xl p-2.5 shadow-xl text-xs font-bold text-foreground">
+                          <p className="text-xs text-muted-foreground">
+                            {data.month} {data.year}
+                          </p>
+                          <p className="text-sm font-black mt-0.5 tabular-nums">
+                            {formatStatRupiah(val)}
+                          </p>
+                          {trendType === "expense" && data.isHighestExpense && val > 0 && (
+                            <span className="text-xs font-bold text-[color:var(--expense-text)] flex items-center gap-1 mt-1">
+                              <Flame className="w-3 h-3" /> Bulan Terboros
                             </span>
                           )}
                         </div>
-                        <span
-                          className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${
-                            isOver
-                              ? "bg-expense/15 text-[color:var(--expense-text)]"
-                              : isWarn
-                              ? "bg-[#FFB04A]/20 text-[color:var(--warning-text)]"
-                              : "bg-accent/15 text-[color:var(--accent-text)]"
-                          }`}
-                        >
-                          {liveUsage.status === "exceeded"
-                            ? `Over (${liveUsage.usagePercent}%)`
-                            : liveUsage.status === "reached"
-                            ? `Habis (${liveUsage.usagePercent}%)`
-                            : isWarn
-                            ? `Waspada (${liveUsage.usagePercent}%)`
-                            : `Aman (${liveUsage.usagePercent}%)`}
-                        </span>
-                      </div>
-
-                      <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isOver ? "bg-expense" : isWarn ? "bg-[#FFB04A]" : "bg-accent"
-                          }`}
-                          style={{ width: `${Math.min(100, liveUsage.usagePercent)}%` }}
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey={trendType}
+                  stroke={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#trendGradient)"
+                  dot={(props: { cx?: number; cy?: number; payload?: MonthlyComp; index?: number }) => {
+                    const isCur = props.payload?.isCurrent;
+                    const isHigh =
+                      trendType === "expense"
+                        ? props.payload?.isHighestExpense
+                        : props.payload?.isHighestIncome;
+                    if (isCur || isHigh) {
+                      return (
+                        <circle
+                          key={`dot-${props.index}`}
+                          cx={props.cx || 0}
+                          cy={props.cy || 0}
+                          r={4.5}
+                          fill={isHigh ? "#FF7B7B" : "var(--accent-text)"}
+                          stroke="var(--card)"
+                          strokeWidth={2}
                         />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-xs font-semibold pt-0.5">
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Jatah</span>
-                          <span className="font-bold text-foreground">
-                            {formatRupiah(liveUsage.allocatedAmount)}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Terpakai</span>
-                          <span className="font-bold text-foreground">
-                            {formatRupiah(liveUsage.spent)}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-xs text-muted-foreground block">
-                            {liveUsage.overAmount > 0 ? "Over" : "Sisa"}
-                          </span>
-                          <span
-                            className={`font-black ${
-                              liveUsage.overAmount > 0 || liveUsage.remaining === 0
-                                ? "text-[color:var(--expense-text)]"
-                                : isWarn
-                                ? "text-[color:var(--warning-text)]"
-                                : "text-[color:var(--accent-text)]"
-                            }`}
-                          >
-                            {liveUsage.overAmount > 0
-                              ? `+${formatRupiah(liveUsage.overAmount)}`
-                              : formatRupiah(liveUsage.remaining)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {catSummary?.isCurrentView && catBudgets.length >= 2 && (
-                        <div className="pt-1.5 border-t border-border/50 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShiftTargetCategoryId(item.categoryId);
-                              setShiftModalOpen(true);
-                            }}
-                            className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
-                              isOver
-                                ? "bg-accent text-[#1F1F1F] border-accent font-black hover:brightness-105"
-                                : "bg-card border-border text-foreground hover:border-accent"
-                            }`}
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                            <span>
-                              {isOver ? "Geser dari pos lain" : "Geser jatah"}
-                            </span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {recentTransfers.length > 0 && (
-              <div className="pt-2 border-t border-border/60 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Riwayat Geser Jatah Periode Ini
-                </p>
-                <div className="space-y-1.5">
-                  {recentTransfers.slice(0, 5).map((tr) => (
-                    <div
-                      key={tr.id}
-                      className="flex items-center justify-between gap-2 text-xs px-2.5 py-2 rounded-lg bg-background/60 border border-border/60"
-                    >
-                      <span className="text-muted-foreground truncate">
-                        <strong className="text-foreground">{tr.fromName}</strong>
-                        {" → "}
-                        <strong className="text-foreground">{tr.toName}</strong>
-                      </span>
-                      <span className="font-black text-[color:var(--accent-text)] shrink-0">
-                        {formatRupiah(tr.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-
-          <ShiftPotModal
-            open={shiftModalOpen}
-            onClose={() => setShiftModalOpen(false)}
-            initialToCategoryId={shiftTargetCategoryId}
-            pots={catBudgets.map((b) => ({
-              categoryId: b.categoryId,
-              name: b.categoryName,
-              allocatedAmount: b.limitAmount,
-              spent:
-                b.spent +
-                (catSummary?.isCurrentView
-                  ? pendingOfflineByCat[resolvePotCategoryKey(b.categoryName)] || 0
-                  : 0),
-            }))}
-            onShifted={(res) => {
-              setShiftToast(
-                `Berhasil menggeser ${formatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
-              );
-              const { monthKey: curKey } = getJakartaCalendarParts();
-              loadData(period, selectedMonthKey || curKey, selectedYear, type, true);
-              setTimeout(() => setShiftToast(null), 6000);
-            }}
-          />
-
-          {/* Section 5: Smart Insights Otomatis (PRD G9) */}
-          {smartInsights.length > 0 && (
-            <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-accent" />
-                <h2 className="text-sm font-extrabold text-foreground tracking-tight">
-                  Insight Cerdas Keuangan
-                </h2>
-              </div>
-
-              <div className="space-y-2.5">
-                {smartInsights.map((insight) => (
-                  <div
-                    key={insight.id}
-                    className="p-3 rounded-lg border bg-background/60 border-border/60 flex items-start gap-3"
-                  >
-                    <div
-                      className={`p-1.5 rounded-md shrink-0 mt-0.5 ${
-                        insight.type === "positive"
-                          ? "bg-accent/15 text-accent"
-                          : insight.type === "warning"
-                          ? "bg-expense/15 text-expense"
-                          : "bg-muted text-foreground border border-border/60"
-                      }`}
-                    >
-                      {insight.type === "positive" ? (
-                        <ShieldCheck className="w-4 h-4" />
-                      ) : insight.type === "warning" ? (
-                        <AlertTriangle className="w-4 h-4" />
-                      ) : (
-                        <Lightbulb className="w-4 h-4" />
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-foreground">{insight.title}</span>
-                        {insight.badge && (
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                            {insight.badge}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                        {insight.description}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+                      );
+                    }
+                    return (
+                      <circle
+                        key={`dot-${props.index}`}
+                        cx={props.cx || 0}
+                        cy={props.cy || 0}
+                        r={2}
+                        fill="#8A8A8A"
+                      />
+                    );
+                  }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           )}
         </div>
+      )}
+    </section>
+  );
+
+  const otherNeedsSection = otherNeeds.length > 0 && (
+    <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsOtherExpanded((prev) => !prev)}
+        aria-expanded={isOtherExpanded}
+        className="w-full min-h-[44px] p-4 flex items-center justify-between gap-3 text-left hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground tracking-tight">
+            Apa saja isi &ldquo;Lainnya&rdquo;?
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+            Terbesar: {otherNeeds[0].name}{" "}
+            <strong className="text-foreground tabular-nums">
+              {formatStatRupiah(otherNeeds[0].amount)}
+            </strong>
+          </p>
+        </div>
+
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${
+            isOtherExpanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOtherExpanded && (
+        <div className="px-4 pb-4 pt-3 border-t border-border/60 space-y-3">
+          <p className="text-xs text-muted-foreground leading-relaxed bg-background/60 border border-border/60 rounded-xl p-3">
+            Menampilkan 5 keterangan terbanyak dari kategori{" "}
+            <strong className="text-foreground">Lainnya / Kebutuhan Lain</strong> maupun transaksi kategori lain yang memiliki{" "}
+            <strong className="text-foreground">keterangan kustom</strong> (total{" "}
+            <strong className="text-foreground tabular-nums">
+              {formatStatRupiah(statsData?.otherNeedsTotal || 0)}
+            </strong>
+            ).
+          </p>
+
+          <div className="divide-y divide-border/60">
+            {otherNeeds.map((item, idx) => (
+              <div key={item.name} className="py-2.5 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="w-4 text-xs font-bold text-muted-foreground shrink-0 tabular-nums">
+                    {idx + 1}.
+                  </span>
+                  <div className="min-w-0">
+                    <span className="text-sm font-bold text-foreground block truncate">
+                      {item.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground block">
+                      {item.count}x transaksi
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-sm font-black text-foreground block tabular-nums whitespace-nowrap">
+                    {formatStatRupiah(item.amount)}
+                  </span>
+                  <span className="text-xs text-muted-foreground block">
+                    {item.percentage}% dari pos berketerangan
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
+  return (
+    <div className="space-y-4 max-w-[1100px] mx-auto pb-[calc(72px+env(safe-area-inset-bottom,16px)+24px)] md:pb-10">
+      {/* Header Halaman */}
+      <div className="px-0.5">
+        <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+          Statistik
+        </h1>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Lihat ke mana uangmu pergi
+        </p>
       </div>
+
+      {isLoading ? (
+        <div
+          className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start animate-pulse"
+          aria-busy="true"
+          aria-label="Memuat statistik"
+        >
+          <div className="lg:col-span-6 space-y-4">
+            <div className="h-[112px] bg-card border border-border rounded-2xl" />
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
+              <div className="space-y-1.5">
+                <div className="h-3.5 w-28 rounded bg-muted" />
+                <div className="h-8 w-40 rounded-lg bg-muted" />
+              </div>
+              <div className="w-40 h-40 rounded-full bg-muted mx-auto" />
+              <div className="space-y-2.5 pt-2">
+                <div className="h-10 rounded-lg bg-muted" />
+                <div className="h-10 rounded-lg bg-muted" />
+                <div className="h-10 rounded-lg bg-muted" />
+              </div>
+            </div>
+          </div>
+          <div className="lg:col-span-6 space-y-4">
+            <div className="h-36 bg-card border border-border rounded-2xl" />
+            <div className="h-44 bg-card border border-border rounded-2xl" />
+          </div>
+        </div>
+      ) : isPeriodCompletelyEmpty ? (
+        <div className="space-y-4 max-w-xl">
+          {controlSection}
+          <section className="bg-card border border-border rounded-2xl p-6 text-center space-y-3 shadow-sm">
+            <div className="w-11 h-11 rounded-2xl bg-accent/15 text-[color:var(--accent-text)] flex items-center justify-center mx-auto">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-base font-bold text-foreground">
+                Belum ada transaksi di periode ini
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                Mulai catat pengeluaran atau pemasukan pertamamu untuk melihat ringkasan di sini.
+              </p>
+            </div>
+            <Link
+              href="/record"
+              className="inline-flex items-center justify-center gap-1.5 px-5 min-h-[44px] bg-accent text-[#1F1F1F] font-black text-xs rounded-full shadow-xs hover:brightness-105 transition-all"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Catat transaksi</span>
+            </Link>
+          </section>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Kolom Kiri (lg+): [1] Kontrol, [2] Ringkasan, [3] Sorotan */}
+          <div className="lg:col-span-6 space-y-4">
+            {controlSection}
+            {summarySection}
+            {insightsSection}
+          </div>
+
+          {/* Kolom Kanan (lg+): [4] Jatah per pos, [5] Pengeluaran vs pemasukan, [6] 5 Transaksi Terbesar, [7] Tren 8 Bulan, [8] Isi Lainnya */}
+          <div className="lg:col-span-6 space-y-4">
+            {potsSection}
+            {compositionSection}
+            {topTransactionsSection}
+            {trendSection}
+            {otherNeedsSection}
+          </div>
+        </div>
+      )}
+
+      <ShiftPotModal
+        open={shiftModalOpen}
+        onClose={() => setShiftModalOpen(false)}
+        initialToCategoryId={shiftTargetCategoryId}
+        pots={catBudgets.map((b) => ({
+          categoryId: b.categoryId,
+          name: b.categoryName,
+          allocatedAmount: b.limitAmount,
+          spent:
+            b.spent +
+            (catSummary?.isCurrentView
+              ? pendingOfflineByCat[resolvePotCategoryKey(b.categoryName)] || 0
+              : 0),
+        }))}
+        onShifted={(res) => {
+          setShiftToast(
+            `Berhasil menggeser ${formatStatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
+          );
+          const { monthKey: curKey } = getJakartaCalendarParts();
+          loadData(period, selectedMonthKey || curKey, selectedYear, type, true);
+          setTimeout(() => setShiftToast(null), 6000);
+        }}
+      />
     </div>
   );
 }
