@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
 import { profiles, transactions, savingsEntries } from "@/db/schema";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { INDONESIAN_MONTHS, INDONESIAN_MONTHS_SHORT } from "@/lib/finance";
+import {
+  INDONESIAN_MONTHS,
+  INDONESIAN_MONTHS_SHORT,
+  getJakartaCalendarParts,
+} from "@/lib/finance";
 
 export interface StatCategory {
   name: string;
@@ -165,10 +169,11 @@ export async function getStatisticsDataAction(
       return { success: false, error: "Pengguna belum login" };
     }
 
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonthIdx = today.getMonth();
-    const currentMonthKey = `${currentYear}-${String(currentMonthIdx + 1).padStart(2, "0")}`;
+    const {
+      year: currentYear,
+      monthIndex: currentMonthIdx,
+      monthKey: currentMonthKey,
+    } = getJakartaCalendarParts(new Date());
 
     const period: "month" | "year" = filter?.period === "year" ? "year" : "month";
     const selectedMonthKey: string = filter?.monthKey || currentMonthKey;
@@ -217,12 +222,11 @@ export async function getStatisticsDataAction(
     // 1. Calculate 8-Month Trend (G5)
     // We calculate 8 consecutive months leading up to today (or selected month)
     const trendMonths: MonthlyComp[] = [];
-    const baseDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
     for (let i = 7; i >= 0; i--) {
-      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1);
-      const y = d.getFullYear();
-      const m = d.getMonth();
+      const d = new Date(Date.UTC(currentYear, currentMonthIdx - i, 1));
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth();
       const key = `${y}-${String(m + 1).padStart(2, "0")}`;
       const label = INDONESIAN_MONTHS_SHORT[m];
 

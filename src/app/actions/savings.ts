@@ -385,7 +385,7 @@ export async function depositToGoalAction(rawInput: SavingsEntryInput) {
       return { success: false, error: "Target tabungan tidak ditemukan" };
     }
 
-    const dateStr = input.date || new Date().toISOString().split("T")[0];
+    const dateStr = input.date || getJakartaDateKey();
 
     const accResult = await applySavingsAccountMutation(userId, input.accountId, input.amount, "deposit");
     if (accResult.error) {
@@ -475,7 +475,7 @@ export async function withdrawFromGoalAction(rawInput: SavingsEntryInput) {
       };
     }
 
-    const dateStr = input.date || new Date().toISOString().split("T")[0];
+    const dateStr = input.date || getJakartaDateKey();
 
     const accResult = await applySavingsAccountMutation(userId, input.accountId, input.amount, "withdraw");
     if (accResult.error) {

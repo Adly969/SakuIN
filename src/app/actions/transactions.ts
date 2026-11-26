@@ -117,7 +117,7 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
     }
 
     const finalCustomLabel = input.customLabel || (input.categoryName !== category.name ? input.categoryName : null);
-    const dateStr = input.occurredOn || new Date().toISOString().split("T")[0];
+    const dateStr = input.occurredOn || getJakartaDateKey();
     const targetAccountId = input.accountId && input.accountId.trim() ? input.accountId : null;
 
     // Validasi saldo rekening jika pengeluaran memakai rekening tertentu

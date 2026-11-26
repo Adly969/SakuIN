@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/transactions";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { notifyDailyLimitAlert } from "@/lib/native-notifications";
+import { getJakartaCalendarParts, getJakartaDateString, INDONESIAN_MONTHS } from "@/lib/finance";
 import {
   Search,
   Plus,
@@ -124,9 +125,8 @@ function formatShortDate(dateStr: string) {
 function TransactionsContent() {
   const searchParams = useSearchParams();
 
-  // Filter States
-  const now = new Date();
-  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  // Filter States (selalu WIB Asia/Jakarta)
+  const currentMonthStr = getJakartaCalendarParts().monthKey;
   const [filterMonth, setFilterMonth] = useState<string>(currentMonthStr);
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
@@ -275,11 +275,13 @@ function TransactionsContent() {
   // Generate 6 months dropdown list
   const monthOptions = useMemo(() => {
     const list: { label: string; value: string }[] = [];
-    const base = new Date();
+    const { year: curY, monthIndex: curM } = getJakartaCalendarParts();
     for (let i = 0; i < 6; i++) {
-      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+      const d = new Date(Date.UTC(curY, curM - i, 1));
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth();
+      const val = `${y}-${String(m + 1).padStart(2, "0")}`;
+      const label = `${INDONESIAN_MONTHS[m]} ${y}`;
       list.push({
         label: i === 0 ? `Bulan Ini (${label})` : label,
         value: val,
@@ -343,7 +345,7 @@ function TransactionsContent() {
     }
 
     setEditNote(tx.note || "");
-    setEditDate(tx.date.includes("Hari ini") ? new Date().toISOString().split("T")[0] : tx.date);
+    setEditDate(tx.date.includes("Hari ini") ? getJakartaDateString() : tx.date);
   };
 
   // Close Edit Modal

@@ -23,6 +23,7 @@ import {
   REMINDER_SCHEDULE_SLOTS,
 } from "@/lib/native-notifications";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
+import { getJakartaCalendarParts } from "@/lib/finance";
 import {
   LogOut,
   Wallet,
@@ -965,7 +966,7 @@ export default function ProfilePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-border/60">
           <a
-            href={`/api/export/transactions?month=${new Date().toISOString().slice(0, 7)}`}
+            href={`/api/export/transactions?month=${getJakartaCalendarParts().monthKey}`}
             download
             className="py-2.5 px-3 rounded-full bg-background hover:bg-muted border border-border text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 text-center"
           >

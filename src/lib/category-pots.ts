@@ -1,6 +1,7 @@
 import {
   calculateAdaptiveDailyLimit,
   calculateRemainingDays,
+  getJakartaCalendarParts,
   type AllowanceCycle,
   type ReserveMode,
 } from "./finance";
@@ -57,20 +58,16 @@ export interface AllocationSummary {
   overAllocatedAmount: number;
 }
 
-function toIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+function toUtcIsoDate(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function normalizeLocalDate(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 /**
  * Menghitung periode aktif (periodKey, tanggal mulai/akhir, total hari siklus, dan sisa hari)
- * untuk siklus bulanan, mingguan, dan fleksibel — termasuk bulan 28/29/30/31 hari.
+ * berbasis kalender WIB (Asia/Jakarta) agar konsisten di server UTC maupun browser.
  */
 export function getCyclePeriodInfo(
   today: Date = new Date(),
@@ -78,21 +75,21 @@ export function getCyclePeriodInfo(
   paydayDay: number = 1,
   paydayWeekday: number = 1
 ): CyclePeriodInfo {
-  const startToday = normalizeLocalDate(today);
-  const year = startToday.getFullYear();
-  const month = startToday.getMonth();
-  const day = startToday.getDate();
+  const { year, monthIndex: month, day } = getJakartaCalendarParts(today);
+  const startTodayUtcMs = Date.UTC(year, month, day);
 
   if (cycle === "weekly") {
-    const remainingDays = calculateRemainingDays(startToday, paydayDay, "weekly", paydayWeekday);
-    const periodEndDate = new Date(year, month, day + remainingDays - 1);
+    const remainingDays = calculateRemainingDays(today, paydayDay, "weekly", paydayWeekday);
+    const periodEndDate = new Date(Date.UTC(year, month, day + remainingDays - 1));
     const periodStartDate = new Date(
-      periodEndDate.getFullYear(),
-      periodEndDate.getMonth(),
-      periodEndDate.getDate() - 6
+      Date.UTC(
+        periodEndDate.getUTCFullYear(),
+        periodEndDate.getUTCMonth(),
+        periodEndDate.getUTCDate() - 6
+      )
     );
-    const periodStart = toIsoDate(periodStartDate);
-    const periodEnd = toIsoDate(periodEndDate);
+    const periodStart = toUtcIsoDate(periodStartDate);
+    const periodEnd = toUtcIsoDate(periodEndDate);
     return {
       periodKey: `${periodStart}_${periodEnd}`,
       periodStart,
@@ -103,14 +100,14 @@ export function getCyclePeriodInfo(
   }
 
   if (cycle === "flexible") {
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const periodStartDate = new Date(year, month, 1);
-    const periodEndDate = new Date(year, month, lastDay);
-    const remainingDays = calculateRemainingDays(startToday, paydayDay, "flexible", paydayWeekday);
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const periodStartDate = new Date(Date.UTC(year, month, 1));
+    const periodEndDate = new Date(Date.UTC(year, month, lastDay));
+    const remainingDays = calculateRemainingDays(today, paydayDay, "flexible", paydayWeekday);
     return {
       periodKey: `${year}-${String(month + 1).padStart(2, "0")}`,
-      periodStart: toIsoDate(periodStartDate),
-      periodEnd: toIsoDate(periodEndDate),
+      periodStart: toUtcIsoDate(periodStartDate),
+      periodEnd: toUtcIsoDate(periodEndDate),
       cycleDays: lastDay,
       remainingDays,
     };
@@ -118,7 +115,7 @@ export function getCyclePeriodInfo(
 
   // Monthly cycle berdasarkan paydayDay (clamp ke hari terakhir bulan bila tanggal gajian 29/30/31)
   const clampDay = (y: number, m: number, targetDay: number) => {
-    const maxD = new Date(y, m + 1, 0).getDate();
+    const maxD = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
     return Math.min(Math.max(1, targetDay), maxD);
   };
 
@@ -127,17 +124,19 @@ export function getCyclePeriodInfo(
 
   const paydayThisMonth = clampDay(year, month, paydayDay);
   if (day < paydayThisMonth) {
-    startDate = new Date(year, month - 1, clampDay(year, month - 1, paydayDay));
-    nextPaydayDate = new Date(year, month, paydayThisMonth);
+    startDate = new Date(Date.UTC(year, month - 1, clampDay(year, month - 1, paydayDay)));
+    nextPaydayDate = new Date(Date.UTC(year, month, paydayThisMonth));
   } else {
-    startDate = new Date(year, month, paydayThisMonth);
-    nextPaydayDate = new Date(year, month + 1, clampDay(year, month + 1, paydayDay));
+    startDate = new Date(Date.UTC(year, month, paydayThisMonth));
+    nextPaydayDate = new Date(Date.UTC(year, month + 1, clampDay(year, month + 1, paydayDay)));
   }
 
   const endDate = new Date(
-    nextPaydayDate.getFullYear(),
-    nextPaydayDate.getMonth(),
-    nextPaydayDate.getDate() - 1
+    Date.UTC(
+      nextPaydayDate.getUTCFullYear(),
+      nextPaydayDate.getUTCMonth(),
+      nextPaydayDate.getUTCDate() - 1
+    )
   );
 
   const cycleDays = Math.max(
@@ -146,15 +145,15 @@ export function getCyclePeriodInfo(
   );
   const remainingDays = Math.max(
     1,
-    Math.round((nextPaydayDate.getTime() - startToday.getTime()) / (1000 * 60 * 60 * 24))
+    Math.round((nextPaydayDate.getTime() - startTodayUtcMs) / (1000 * 60 * 60 * 24))
   );
 
   return {
     periodKey: paydayDay === 1
-      ? `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`
-      : `${toIsoDate(startDate)}_${toIsoDate(endDate)}`,
-    periodStart: toIsoDate(startDate),
-    periodEnd: toIsoDate(endDate),
+      ? `${startDate.getUTCFullYear()}-${String(startDate.getUTCMonth() + 1).padStart(2, "0")}`
+      : `${toUtcIsoDate(startDate)}_${toUtcIsoDate(endDate)}`,
+    periodStart: toUtcIsoDate(startDate),
+    periodEnd: toUtcIsoDate(endDate),
     cycleDays,
     remainingDays,
   };
@@ -539,7 +538,7 @@ export function getPreviousCyclePeriodInfo(
 ): CyclePeriodInfo {
   const current = getCyclePeriodInfo(today, cycle, paydayDay, paydayWeekday);
   const [y, m, d] = current.periodStart.split("-").map((n) => parseInt(n, 10));
-  const dayBeforeStart = new Date(y, (m || 1) - 1, (d || 1) - 1);
+  const dayBeforeStart = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) - 1));
   return getCyclePeriodInfo(dayBeforeStart, cycle, paydayDay, paydayWeekday);
 }
 

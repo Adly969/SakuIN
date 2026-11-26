@@ -6,6 +6,7 @@ import { accounts, transfers } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getJakartaDateString } from "@/lib/finance";
 
 const createAccountSchema = z.object({
   name: z.string().trim().min(1, "Nama rekening/dompet wajib diisi").max(100),
@@ -275,7 +276,7 @@ export async function transferBalanceAction(rawInput: z.infer<typeof transferSch
       toAccountId: input.toAccountId,
       amount: BigInt(input.amount),
       adminFee: BigInt(input.adminFee),
-      occurredOn: input.occurredOn || new Date().toISOString().split("T")[0],
+      occurredOn: input.occurredOn || getJakartaDateString(),
       note: input.note || null,
     });
 

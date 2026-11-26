@@ -2,6 +2,7 @@
  * SakuIN Native & Web Notification Engine
  * Sesuai PRD Minggu 6 & 7 (Android Local Notifications via AlarmManager)
  */
+import { getJakartaCalendarParts, getJakartaDateString } from "@/lib/finance";
 
 export async function isCapacitorNative(): Promise<boolean> {
   if (typeof window === "undefined") return false;
@@ -299,8 +300,7 @@ export async function notifyDailyLimitAlert(
   if (typeof window === "undefined") return { sent: false };
   if (snapshot.level === "ok") return { sent: false };
 
-  const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const todayKey = getJakartaDateString();
   const storageKey = `sakuin_limit_alert_${todayKey}`;
 
   if (!onNewExpense) {
@@ -373,10 +373,7 @@ export async function notifyCategoryLimitAlert(
 ): Promise<boolean> {
   if (typeof window === "undefined" || snapshot.level === "ok") return false;
 
-  const now = new Date();
-  const periodKey =
-    snapshot.periodKey ||
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const periodKey = snapshot.periodKey || getJakartaCalendarParts().monthKey;
   const catKey = (snapshot.categoryName || "")
     .toLowerCase()
     .trim()

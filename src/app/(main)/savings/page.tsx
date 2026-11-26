@@ -24,6 +24,7 @@ import {
   Banknote,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
+import { getJakartaDateString } from "@/lib/finance";
 import {
   getSavingsDataAction,
   createSavingsGoalAction,
@@ -101,7 +102,7 @@ export default function SavingsPage() {
 
   // Form State: Deposit / Withdraw
   const [actionAmount, setActionAmount] = useState<number>(0);
-  const [actionDate, setActionDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [actionDate, setActionDate] = useState(() => getJakartaDateString());
   const [actionNote, setActionNote] = useState("");
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
@@ -315,7 +316,7 @@ export default function SavingsPage() {
     const target = goal || goals[0] || null;
     setSelectedGoalForAction(target);
     setActionAmount(0);
-    setActionDate(new Date().toISOString().split("T")[0]);
+    setActionDate(getJakartaDateString());
     setActionNote("");
     ensureSelectedAccount();
     setIsDepositModalOpen(true);
@@ -326,7 +327,7 @@ export default function SavingsPage() {
     const target = goal || goals.find((g) => g.collected > 0) || goals[0] || null;
     setSelectedGoalForAction(target);
     setActionAmount(0);
-    setActionDate(new Date().toISOString().split("T")[0]);
+    setActionDate(getJakartaDateString());
     setActionNote("");
     ensureSelectedAccount();
     setIsWithdrawModalOpen(true);
@@ -806,12 +807,12 @@ export default function SavingsPage() {
       {/* 3. Modal Setor Tabungan (Deposit) (PRD S2, S5) */}
       <AnimatePresence>
         {isDepositModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
+              className="bg-card border border-border rounded-t-2xl sm:rounded-xl p-5 sm:p-6 pb-8 sm:pb-6 w-full max-w-md shadow-2xl space-y-4 max-h-[88dvh] overflow-y-auto scrollbar-none pb-safe"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <div>
@@ -955,12 +956,12 @@ export default function SavingsPage() {
       {/* 4. Modal Tarik Dana (Withdraw) (PRD S2, S5) */}
       <AnimatePresence>
         {isWithdrawModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
+              className="bg-card border border-border rounded-t-2xl sm:rounded-xl p-5 sm:p-6 pb-8 sm:pb-6 w-full max-w-md shadow-2xl space-y-4 max-h-[88dvh] overflow-y-auto scrollbar-none pb-safe"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <div>
@@ -1089,12 +1090,12 @@ export default function SavingsPage() {
       {/* 5. Modal Buat / Ubah Target (PRD S1, S7) */}
       <AnimatePresence>
         {isGoalModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
+              className="bg-card border border-border rounded-t-2xl sm:rounded-xl p-5 sm:p-6 pb-8 sm:pb-6 w-full max-w-md shadow-2xl space-y-4 max-h-[88dvh] overflow-y-auto scrollbar-none pb-safe"
             >
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <h3 className="text-base sm:text-lg font-black text-foreground">
@@ -1182,12 +1183,12 @@ export default function SavingsPage() {
       {/* 6. Modal Detail & Riwayat Mutasi Target (PRD S3, S7) */}
       <AnimatePresence>
         {detailGoal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border rounded-xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto scrollbar-none"
+              className="bg-card border border-border rounded-t-2xl sm:rounded-xl p-5 sm:p-6 pb-8 sm:pb-6 w-full max-w-md shadow-2xl space-y-4 max-h-[88dvh] overflow-y-auto scrollbar-none pb-safe"
             >
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <div className="flex items-center gap-2">

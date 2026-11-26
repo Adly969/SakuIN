@@ -31,6 +31,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
+import { getJakartaDateString } from "@/lib/finance";
 import {
   createTransactionAction,
   getTransactionsAction,
@@ -112,7 +113,8 @@ export default function RecordPage() {
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [categoryFreq, setCategoryFreq] = useState<Record<string, number>>({});
 
-  const [txDate, setTxDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [txDate, setTxDate] = useState(() => getJakartaDateString());
+  const activeTodayRef = React.useRef<string>(getJakartaDateString());
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -328,16 +330,37 @@ export default function RecordPage() {
 
     window.addEventListener("sakuin:sync-complete", refreshWorkspace);
     window.addEventListener("sakuin:data-invalidated", refreshWorkspace);
+
+    const handleDateWake = () => {
+      const latestToday = getJakartaDateString();
+      if (latestToday !== activeTodayRef.current) {
+        setTxDate((prev) => (prev === activeTodayRef.current ? latestToday : prev));
+        activeTodayRef.current = latestToday;
+        void refreshWorkspace();
+      }
+    };
+    const handleVisibilityWake = () => {
+      if (document.visibilityState === "visible") {
+        handleDateWake();
+      }
+    };
+    const clockInterval = setInterval(handleDateWake, 30000);
+    window.addEventListener("focus", handleDateWake);
+    document.addEventListener("visibilitychange", handleVisibilityWake);
+
     return () => {
+      clearInterval(clockInterval);
       window.removeEventListener("sakuin:sync-complete", refreshWorkspace);
       window.removeEventListener("sakuin:data-invalidated", refreshWorkspace);
+      window.removeEventListener("focus", handleDateWake);
+      document.removeEventListener("visibilitychange", handleVisibilityWake);
     };
   }, []);
 
   // Hitung pengeluaran yang masih mengantre di offline queue agar indikator pos akurat tanpa hitungan dobel
   useEffect(() => {
     const syncPendingQueue = () => {
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getJakartaDateString();
       const periodStart = potsWorkspace?.periodStart || "";
       const periodEnd = potsWorkspace?.periodEnd || "";
       setPendingOfflineByCat(
@@ -371,7 +394,7 @@ export default function RecordPage() {
       try {
         const res = await getTransactionsAction();
         if (res.success && res.data) {
-          const todayStr = new Date().toISOString().split("T")[0];
+          const todayStr = getJakartaDateString();
           const todayItems = res.data
             .filter((t: any) => t.date?.includes("Hari ini") || t.date === todayStr)
             .slice(0, 3);

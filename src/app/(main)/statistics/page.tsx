@@ -53,13 +53,14 @@ import {
   evaluatePotUsage,
   resolvePotCategoryKey,
 } from "@/lib/category-pots";
+import { getJakartaCalendarParts, getJakartaDateString } from "@/lib/finance";
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<"month" | "year">("month");
   const [type, setType] = useState<"expense" | "income" | "savings">("expense");
   const [trendType, setTrendType] = useState<"expense" | "income">("expense");
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>("");
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(() => getJakartaCalendarParts().year);
 
   const [statsData, setStatsData] = useState<StatisticsData | null>(null);
   const [catBudgets, setCatBudgets] = useState<CategoryBudgetItem[]>([]);
@@ -90,8 +91,7 @@ export default function StatisticsPage() {
       }
     } catch {}
 
-    const today = new Date();
-    const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const { year: curYear, monthKey: curMonthKey } = getJakartaCalendarParts();
     setSelectedMonthKey(curMonthKey);
 
     let hasCache = false;
@@ -107,16 +107,22 @@ export default function StatisticsPage() {
       }
     } catch {}
 
-    loadData("month", curMonthKey, today.getFullYear(), "expense", hasCache);
+    loadData("month", curMonthKey, curYear, "expense", hasCache);
 
     const handleRefreshStats = () => {
-      loadData("month", curMonthKey, today.getFullYear(), "expense", true);
+      const latest = getJakartaCalendarParts();
+      loadData("month", latest.monthKey, latest.year, "expense", true);
+    };
+    const handleVisibilityStats = () => {
+      if (document.visibilityState === "visible") handleRefreshStats();
     };
     window.addEventListener("sakuin:sync-complete", handleRefreshStats);
     window.addEventListener("sakuin:data-invalidated", handleRefreshStats);
+    document.addEventListener("visibilitychange", handleVisibilityStats);
     return () => {
       window.removeEventListener("sakuin:sync-complete", handleRefreshStats);
       window.removeEventListener("sakuin:data-invalidated", handleRefreshStats);
+      document.removeEventListener("visibilitychange", handleVisibilityStats);
     };
   }, []);
 
@@ -126,7 +132,7 @@ export default function StatisticsPage() {
         setPendingOfflineByCat({});
         return;
       }
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getJakartaDateString();
       setPendingOfflineByCat(
         aggregatePendingOfflineSpentByCategory(
           getOfflineQueue(),
@@ -260,9 +266,7 @@ export default function StatisticsPage() {
   };
 
   const handleResetToCurrent = () => {
-    const today = new Date();
-    const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-    const curYear = today.getFullYear();
+    const { year: curYear, monthKey: curMonthKey } = getJakartaCalendarParts();
     setSelectedMonthKey(curMonthKey);
     setSelectedYear(curYear);
     loadData(period, curMonthKey, curYear, type);
@@ -1210,8 +1214,7 @@ export default function StatisticsPage() {
               setShiftToast(
                 `Berhasil menggeser ${formatRupiah(res.shiftedAmount)} dari ${res.fromName} ke ${res.toName}.`
               );
-              const today = new Date();
-              const curKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+              const { monthKey: curKey } = getJakartaCalendarParts();
               loadData(period, selectedMonthKey || curKey, selectedYear, type, true);
               setTimeout(() => setShiftToast(null), 6000);
             }}

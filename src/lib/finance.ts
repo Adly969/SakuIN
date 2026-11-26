@@ -54,25 +54,85 @@ export const INDONESIAN_MONTHS_SHORT = [
   "Des",
 ];
 
+const SHORT_WEEKDAY_TO_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+export interface JakartaCalendarParts {
+  year: number;
+  monthIndex: number; // 0-11
+  monthNumber: number; // 1-12
+  day: number; // 1-31
+  weekday: number; // 0 (Minggu) - 6 (Sabtu)
+  dateKey: string; // YYYY-MM-DD
+  monthKey: string; // YYYY-MM
+}
+
 /**
- * Format tanggal ke bahasa Indonesia
+ * Mengekstrak tanggal kalender akurat di zona waktu Asia/Jakarta (WIB),
+ * aman dari selisih jam UTC pada server Vercel maupun perangkat pengguna.
  */
-export function formatIndonesianDate(date: Date = new Date()): IndonesianDateInfo {
-  const dayName = INDONESIAN_DAYS[date.getDay()];
-  const dayNumber = date.getDate();
-  const monthIndex = date.getMonth();
-  const monthName = INDONESIAN_MONTHS[monthIndex];
-  const monthShort = INDONESIAN_MONTHS_SHORT[monthIndex];
-  const year = date.getFullYear();
+export function getJakartaCalendarParts(date: Date = new Date()): JakartaCalendarParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).formatToParts(date);
+
+  const year = parseInt(parts.find((p) => p.type === "year")?.value || "", 10) || date.getFullYear();
+  const monthNumber =
+    parseInt(parts.find((p) => p.type === "month")?.value || "", 10) || date.getMonth() + 1;
+  const day = parseInt(parts.find((p) => p.type === "day")?.value || "", 10) || date.getDate();
+  const weekdayStr = parts.find((p) => p.type === "weekday")?.value || "";
+  const weekday =
+    weekdayStr in SHORT_WEEKDAY_TO_INDEX ? SHORT_WEEKDAY_TO_INDEX[weekdayStr] : date.getDay();
+
+  const monthKey = `${year}-${String(monthNumber).padStart(2, "0")}`;
+  const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
 
   return {
-    full: `${dayName}, ${dayNumber} ${monthName} ${year}`,
-    short: `${dayNumber} ${monthShort} ${year}`,
+    year,
+    monthIndex: monthNumber - 1,
+    monthNumber,
+    day,
+    weekday,
+    dateKey,
+    monthKey,
+  };
+}
+
+/**
+ * Mengembalikan tanggal aktif YYYY-MM-DD dalam zona waktu Asia/Jakarta (WIB).
+ */
+export function getJakartaDateString(date: Date = new Date()): string {
+  return getJakartaCalendarParts(date).dateKey;
+}
+
+/**
+ * Format tanggal ke bahasa Indonesia (menggunakan kalender WIB agar selalu realtime tepat tanggal).
+ */
+export function formatIndonesianDate(date: Date = new Date()): IndonesianDateInfo {
+  const { year, monthIndex, monthNumber, day, weekday } = getJakartaCalendarParts(date);
+  const dayName = INDONESIAN_DAYS[weekday];
+  const monthName = INDONESIAN_MONTHS[monthIndex];
+  const monthShort = INDONESIAN_MONTHS_SHORT[monthIndex];
+
+  return {
+    full: `${dayName}, ${day} ${monthName} ${year}`,
+    short: `${day} ${monthShort} ${year}`,
     dayName,
-    dayNumber,
+    dayNumber: day,
     monthName,
     monthShort,
-    monthNumber: monthIndex + 1,
+    monthNumber,
     year,
   };
 }
@@ -89,36 +149,37 @@ export function calculateRemainingDays(
   cycle: AllowanceCycle = "monthly",
   paydayWeekday: number = 1
 ): number {
+  const { year: currentYear, monthIndex: currentMonth, day: currentDay, weekday: currentWeekday } =
+    getJakartaCalendarParts(today);
+
   if (cycle === "weekly") {
-    const currentWeekday = today.getDay();
     const normalizedTarget = ((paydayWeekday % 7) + 7) % 7;
     const diff = (normalizedTarget - currentWeekday + 7) % 7;
     return diff === 0 ? 7 : diff;
   }
 
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
-  const currentDay = today.getDate();
-
   if (cycle === "flexible") {
-    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const lastDayOfMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
     return Math.max(1, lastDayOfMonth - currentDay + 1);
   }
 
-  let targetDate: Date;
+  const clampTargetDay = (y: number, mIdx: number, targetDay: number) => {
+    const maxD = new Date(Date.UTC(y, mIdx + 1, 0)).getUTCDate();
+    return Math.min(Math.max(1, targetDay), maxD);
+  };
 
-  if (currentDay < paydayDay) {
-    // Gajian di bulan ini
-    targetDate = new Date(currentYear, currentMonth, paydayDay);
+  let targetMs: number;
+  const paydayThisMonth = clampTargetDay(currentYear, currentMonth, paydayDay);
+
+  if (currentDay < paydayThisMonth) {
+    targetMs = Date.UTC(currentYear, currentMonth, paydayThisMonth);
   } else {
-    // Gajian di bulan depan
-    targetDate = new Date(currentYear, currentMonth + 1, paydayDay);
+    const nextPayday = clampTargetDay(currentYear, currentMonth + 1, paydayDay);
+    targetMs = Date.UTC(currentYear, currentMonth + 1, nextPayday);
   }
 
-  // Set jam ke 00:00:00 untuk perbandingan hari murni
-  const start = new Date(currentYear, currentMonth, currentDay);
-  const diffTime = targetDate.getTime() - start.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const startMs = Date.UTC(currentYear, currentMonth, currentDay);
+  const diffDays = Math.ceil((targetMs - startMs) / (1000 * 60 * 60 * 24));
 
   return Math.max(1, diffDays);
 }

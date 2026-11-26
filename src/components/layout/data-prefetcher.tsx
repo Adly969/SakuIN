@@ -7,6 +7,7 @@ import { getSavingsDataAction } from "@/app/actions/savings";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { getDebtsAction } from "@/app/actions/debts";
 import { getBudgetsWorkspaceAction } from "@/app/actions/category-pots";
+import { getJakartaCalendarParts } from "@/lib/finance";
 
 /**
  * DataPrefetcher: Komponen pintar di latar belakang (Background Prefetcher)
@@ -30,8 +31,7 @@ export function DataPrefetcher() {
     lastPrefetchRef.current = now;
 
     try {
-      const today = new Date();
-      const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+      const curMonthKey = getJakartaCalendarParts().monthKey;
 
       // Eksekusi semua fetch secara paralel dan graceful (allSettled)
       const results = await Promise.allSettled([

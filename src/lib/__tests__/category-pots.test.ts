@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateAdaptiveDailyLimit } from "../finance";
+import {
+  calculateAdaptiveDailyLimit,
+  calculateRemainingDays,
+  formatIndonesianDate,
+  getJakartaCalendarParts,
+  getJakartaDateString,
+} from "../finance";
 import {
   getCyclePeriodInfo,
   calculatePotPeriodAllocation,
@@ -388,4 +394,25 @@ test("10. Pergantian periode (Bulanan, Mingguan, Fleksibel), pratinjau jatah lal
     }),
     false
   );
+});
+
+test("11. Kalender WIB (Asia/Jakarta) akurat meski waktu UTC masih kemarin (00:15 WIB)", () => {
+  // 2026-11-26T17:15:22Z === 2026-11-27T00:15:22+07:00 (Jumat, 27 Nov 2026 WIB)
+  const midnightPlus15Wib = new Date("2026-11-26T17:15:22.000Z");
+
+  assert.equal(getJakartaDateString(midnightPlus15Wib), "2026-11-27");
+  const parts = getJakartaCalendarParts(midnightPlus15Wib);
+  assert.equal(parts.year, 2026);
+  assert.equal(parts.monthNumber, 11);
+  assert.equal(parts.day, 27);
+  assert.equal(parts.weekday, 5); // Jumat
+
+  const formatted = formatIndonesianDate(midnightPlus15Wib);
+  assert.equal(formatted.full, "Jumat, 27 November 2026");
+  assert.equal(formatted.short, "27 Nov 2026");
+
+  // Sisa hari & periode siklus tetap memakai tanggal 27 Nov WIB, bukan 26 Nov UTC
+  assert.equal(calculateRemainingDays(midnightPlus15Wib, 1, "flexible", 1), 4); // 27,28,29,30 Nov
+  const periodInfo = getCyclePeriodInfo(midnightPlus15Wib, "flexible", 1, 1);
+  assert.equal(periodInfo.remainingDays, 4);
 });

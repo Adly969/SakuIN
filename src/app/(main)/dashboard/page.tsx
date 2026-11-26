@@ -47,6 +47,8 @@ import {
 import { formatRupiah } from "@/lib/utils";
 import {
   calculateAdaptiveDailyLimit,
+  formatIndonesianDate,
+  getJakartaDateString,
   INDONESIAN_DAYS,
   type AllowanceCycle,
   type ReserveMode,
@@ -252,6 +254,10 @@ export default function DashboardPage() {
   const [dismissedExtraIncomeKey, setDismissedExtraIncomeKey] = useState<string | null>(null);
   const { isOnline, queueCount, isSyncing, manualSync } = useOfflineSync();
   const shouldReduceMotion = useReducedMotion();
+  const [liveNowDate, setLiveNowDate] = useState<Date>(() => new Date());
+  const liveDateInfo = formatIndonesianDate(liveNowDate);
+  const liveTodayKey = getJakartaDateString(liveNowDate);
+  const lastTodayKeyRef = React.useRef<string>(liveTodayKey);
 
   const loadData = async () => {
     try {
@@ -311,20 +317,48 @@ export default function DashboardPage() {
 
     loadData();
 
-    const handleFocus = () => {
+    const syncRealtimeDateAndData = () => {
+      const now = new Date();
+      setLiveNowDate(now);
+      const nextKey = getJakartaDateString(now);
+      if (nextKey !== lastTodayKeyRef.current) {
+        lastTodayKeyRef.current = nextKey;
+      }
       loadData();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncRealtimeDateAndData();
+      }
     };
 
     const handleSync = () => {
       loadData();
     };
 
-    window.addEventListener("focus", handleFocus);
+    // Periksa pergantian tanggal (tengah malam WIB) tiap 30 detik agar tanggal & hitung mundur tetap realtime
+    const clockInterval = setInterval(() => {
+      const now = new Date();
+      setLiveNowDate(now);
+      const nextKey = getJakartaDateString(now);
+      if (nextKey !== lastTodayKeyRef.current) {
+        lastTodayKeyRef.current = nextKey;
+        loadData();
+      }
+    }, 30000);
+
+    window.addEventListener("focus", syncRealtimeDateAndData);
+    window.addEventListener("pageshow", syncRealtimeDateAndData);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("sakuin:sync-complete", handleSync);
     window.addEventListener("sakuin:data-invalidated", handleSync);
     window.addEventListener("sakuin:transaction-added", handleSync);
     return () => {
-      window.removeEventListener("focus", handleFocus);
+      clearInterval(clockInterval);
+      window.removeEventListener("focus", syncRealtimeDateAndData);
+      window.removeEventListener("pageshow", syncRealtimeDateAndData);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("sakuin:sync-complete", handleSync);
       window.removeEventListener("sakuin:data-invalidated", handleSync);
       window.removeEventListener("sakuin:transaction-added", handleSync);
@@ -399,7 +433,6 @@ export default function DashboardPage() {
   const compositionData = dashboardData?.compositionData || [];
   const topExpenses = dashboardData?.topExpenses || [];
   const recentTransactions = dashboardData?.recentTransactions || [];
-  const dateInfo = dashboardData?.dateInfo;
 
   // Hitung Total Saldo Riil (Rekening Bank + E-Wallet + Dompet Fisik) secara langsung & sinkron
   const liveAccountsTotal =
@@ -696,10 +729,15 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[color:var(--accent-text)] text-xs font-extrabold tracking-wide truncate">
               <Calendar className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{dateInfo?.full || "Rabu, 18 November 2026"}</span>
+              <span className="truncate" suppressHydrationWarning>
+                {liveDateInfo.full}
+              </span>
             </div>
-            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-card border border-border text-muted-foreground shrink-0">
-              {dateInfo?.monthName || "November"}
+            <span
+              className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-card border border-border text-muted-foreground shrink-0"
+              suppressHydrationWarning
+            >
+              {liveDateInfo.monthName}
             </span>
           </div>
           <h1 className="text-lg sm:text-2xl font-black text-foreground tracking-tight leading-snug">
@@ -1449,7 +1487,9 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center justify-center text-center p-2">
                     <span className="text-2xl font-black text-muted-foreground/30">0%</span>
                     <p className="text-xs font-bold text-muted-foreground mt-1">Belum ada pengeluaran</p>
-                    <p className="text-xs text-muted-foreground/70">Bulan {dateInfo?.monthName || "ini"}</p>
+                    <p className="text-xs text-muted-foreground/70" suppressHydrationWarning>
+                      Bulan {liveDateInfo.monthName}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -1529,8 +1569,8 @@ export default function DashboardPage() {
             {/* Right Card: Monthly Composition Pie Chart */}
             <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
               <div className="text-center pb-1">
-                <h3 className="text-sm font-bold text-foreground">
-                  {dateInfo?.monthName || "November"}
+                <h3 className="text-sm font-bold text-foreground" suppressHydrationWarning>
+                  {liveDateInfo.monthName}
                 </h3>
               </div>
 
@@ -1641,8 +1681,8 @@ export default function DashboardPage() {
               </button>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground">
-                  {activeMonthData?.month || dateInfo?.monthShort || "Bulan Ini"}
+                <span className="text-xs font-bold text-muted-foreground" suppressHydrationWarning>
+                  {activeMonthData?.month || liveDateInfo.monthShort}
                 </span>
                 <div
                   className={`px-3 py-1.5 rounded-full font-black text-xs shadow-md ${activeMonthData?.isHighest && (activeMonthData.amount || 0) > 0

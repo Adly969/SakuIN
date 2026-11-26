@@ -480,8 +480,8 @@ export default function DebtsPage() {
 
       {/* 5. MODAL: Catat Utang Baru */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-md p-6 pb-8 sm:pb-6 shadow-2xl space-y-5 max-h-[88dvh] overflow-y-auto pb-safe animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-foreground">Catat Utang / Piutang Baru</h3>
               <button
@@ -633,8 +633,8 @@ export default function DebtsPage() {
 
       {/* 6. MODAL: Catat Pembayaran / Cicilan */}
       {showPayModal && selectedDebt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-sm p-6 pb-8 sm:pb-6 shadow-2xl space-y-5 max-h-[88dvh] overflow-y-auto pb-safe animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-foreground">
                 {selectedDebt.type === "receivable" ? "Terima Pembayaran" : "Bayar Utang"}

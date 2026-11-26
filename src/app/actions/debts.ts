@@ -197,7 +197,7 @@ export async function recordDebtPaymentAction(rawInput: z.infer<typeof paymentSc
       debtId: input.debtId,
       userId,
       amount: BigInt(input.amount),
-      occurredOn: input.occurredOn || new Date().toISOString().split("T")[0],
+      occurredOn: input.occurredOn || getJakartaDateKey(),
       note: input.note || null,
       accountId: input.accountId || null,
     });

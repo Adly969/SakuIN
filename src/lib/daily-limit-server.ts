@@ -14,6 +14,8 @@ import { eq, and, isNull } from "drizzle-orm";
 import {
   calculateRemainingDays,
   calculateAdaptiveDailyLimit,
+  getJakartaCalendarParts,
+  getJakartaDateString,
   type AllowanceCycle,
   type ReserveMode,
 } from "@/lib/finance";
@@ -34,39 +36,15 @@ export interface DailyLimitSnapshot {
 }
 
 export function getJakartaDateKey(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return getJakartaDateString(date);
 }
-
-const SHORT_WEEKDAY_MAP: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
 
 export function getJakartaDayAndWeekday(date: Date = new Date()): {
   day: number;
   weekday: number;
 } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Jakarta",
-    day: "numeric",
-    weekday: "short",
-  }).formatToParts(date);
-  const dayPart = parts.find((p) => p.type === "day")?.value || "1";
-  const weekdayPart = parts.find((p) => p.type === "weekday")?.value || "Mon";
-  return {
-    day: parseInt(dayPart, 10) || 1,
-    weekday: SHORT_WEEKDAY_MAP[weekdayPart] ?? 1,
-  };
+  const { day, weekday } = getJakartaCalendarParts(date);
+  return { day, weekday };
 }
 
 export interface CategoryLimitAlertPayload {
