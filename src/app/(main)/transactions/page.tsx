@@ -515,7 +515,7 @@ function TransactionsContent() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {/* Month Selector */}
           <div className="relative">
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
               Periode Bulan
             </label>
             <div className="relative">
@@ -536,7 +536,7 @@ function TransactionsContent() {
 
           {/* Category Filter */}
           <div className="relative">
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
               Kategori
             </label>
             <div className="relative">
@@ -621,7 +621,7 @@ function TransactionsContent() {
       {/* Ringkasan Filter Periode */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-xl p-3.5 shadow-sm">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
             Pengeluaran Periode Ini
           </span>
           <p className="text-base sm:text-lg font-black text-expense mt-0.5">
@@ -629,7 +629,7 @@ function TransactionsContent() {
           </p>
         </div>
         <div className="bg-card border border-border rounded-xl p-3.5 shadow-sm">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
             Pemasukan Periode Ini
           </span>
           <p className="text-base sm:text-lg font-black text-accent mt-0.5">
@@ -644,7 +644,7 @@ function TransactionsContent() {
           <span className="text-xs font-extrabold text-muted-foreground uppercase tracking-wider">
             Log Activity ({summary.count})
           </span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             Ketuk kartu untuk edit atau ikon sampah untuk hapus
           </span>
         </div>
@@ -700,21 +700,21 @@ function TransactionsContent() {
 
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {item.accountName && (
-                        <span className="text-[10px] font-bold text-foreground bg-muted px-1.5 py-0.5 rounded-md border border-border/70 shrink-0">
+                        <span className="text-xs font-bold text-foreground bg-muted px-1.5 py-0.5 rounded-md border border-border/70 shrink-0">
                           {item.accountName}
                         </span>
                       )}
-                      <span className="text-[11px] text-muted-foreground font-medium truncate">
+                      <span className="text-xs text-muted-foreground font-medium truncate">
                         {item.category}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/60">•</span>
-                      <span className="text-[11px] text-muted-foreground shrink-0">
+                      <span className="text-xs text-muted-foreground/60">•</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
                         {formatShortDate(item.date)}
                       </span>
                     </div>
 
                     {item.note && item.note !== item.title && (
-                      <p className="text-[11px] text-muted-foreground/80 italic mt-0.5 truncate">
+                      <p className="text-xs text-muted-foreground/80 italic mt-0.5 truncate">
                         &ldquo;{item.note}&rdquo;
                       </p>
                     )}
@@ -789,7 +789,7 @@ function TransactionsContent() {
                         Edit Log Activity
                       </h2>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                           editType === "expense"
                             ? "bg-expense/15 text-expense"
                             : "bg-accent/15 text-accent"
@@ -798,7 +798,7 @@ function TransactionsContent() {
                         {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {editingTx.title} • {formatShortDate(editingTx.date)}
                     </p>
                   </div>
@@ -863,14 +863,14 @@ function TransactionsContent() {
                 {/* Nominal Hero Card */}
                 <div className="bg-background rounded-2xl border border-border p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">
+                    <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider">
                       Nominal {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
                     </span>
                     {editAmount > 0 && (
                       <button
                         type="button"
                         onClick={() => setEditAmount(0)}
-                        className="text-[11px] font-bold text-muted-foreground hover:text-foreground px-2 py-0.5 rounded-md bg-muted/70 transition-colors"
+                        className="text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-0.5 rounded-md bg-muted/70 transition-colors"
                       >
                         Reset
                       </button>
@@ -903,7 +903,7 @@ function TransactionsContent() {
 
                   {/* Quick Helper Chips */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-semibold text-muted-foreground mr-0.5">
+                    <span className="text-xs font-semibold text-muted-foreground mr-0.5">
                       Tambah:
                     </span>
                     {QUICK_AMOUNTS.map((q) => (
@@ -911,7 +911,7 @@ function TransactionsContent() {
                         key={q.label}
                         type="button"
                         onClick={() => setEditAmount((prev) => Math.min(999999999, prev + q.value))}
-                        className="px-2.5 py-1 min-h-[32px] rounded-full text-[11px] font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
+                        className="px-2.5 py-1 min-h-[32px] rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
                       >
                         {q.label}
                       </button>
@@ -974,9 +974,9 @@ function TransactionsContent() {
                         exit={{ opacity: 0, height: 0 }}
                         className="space-y-1 pt-1"
                       >
-                        <label className="text-[11px] font-bold text-accent flex items-center justify-between">
+                        <label className="text-xs font-bold text-accent flex items-center justify-between">
                           <span>Keterangan Kategori Lain</span>
-                          <span className="text-[10px] text-expense font-semibold">Wajib diisi</span>
+                          <span className="text-xs text-expense font-semibold">Wajib diisi</span>
                         </label>
                         <input
                           type="text"
@@ -997,7 +997,7 @@ function TransactionsContent() {
                   <div className="space-y-2 pt-0.5">
                     <label className="text-xs font-bold text-foreground flex items-center justify-between">
                       <span>{editType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
-                      <span className="text-[10px] text-muted-foreground font-normal">
+                      <span className="text-xs text-muted-foreground font-normal">
                         Saldo otomatis disesuaikan
                       </span>
                     </label>
@@ -1043,17 +1043,17 @@ function TransactionsContent() {
                                 <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                               </div>
                               {isOriginal && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                                   Asal
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center justify-between w-full">
-                              <span className="text-[11px] font-semibold text-muted-foreground truncate">
+                              <span className="text-xs font-semibold text-muted-foreground truncate">
                                 {formatRupiah(effectiveBal)}
                               </span>
                               {isInsufficient && (
-                                <span className="text-[9px] font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
+                                <span className="text-xs font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
                                   Kurang
                                 </span>
                               )}
@@ -1064,7 +1064,7 @@ function TransactionsContent() {
                     </div>
 
                     {isEditInsufficient && selectedEditAccount && (
-                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold">
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-expense/10 border border-expense/30 text-expense text-xs font-semibold">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span>
                           Saldo <strong>{selectedEditAccount.name}</strong> ({formatRupiah(effectiveEditBalance)}) tidak cukup untuk nominal baru ({formatRupiah(editAmount)}).
@@ -1079,7 +1079,7 @@ function TransactionsContent() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-foreground flex items-center justify-between">
                       <span>Catatan</span>
-                      <span className="text-[10px] text-muted-foreground font-normal">Opsional</span>
+                      <span className="text-xs text-muted-foreground font-normal">Opsional</span>
                     </label>
                     <input
                       type="text"
@@ -1184,13 +1184,13 @@ function TransactionsContent() {
                     {formatRupiah(deleteConfirmTx.amount)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span>{deleteConfirmTx.category}</span>
                   <span>•</span>
                   <span>{formatShortDate(deleteConfirmTx.date)}</span>
                 </div>
                 {deleteConfirmTx.accountName && (
-                  <p className="text-[11px] font-semibold text-accent pt-1">
+                  <p className="text-xs font-semibold text-accent pt-1">
                     Saldo {deleteConfirmTx.accountName} akan otomatis disesuaikan kembali.
                   </p>
                 )}
@@ -1238,7 +1238,7 @@ function TransactionsContent() {
             <button
               type="button"
               onClick={handleUndo}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#333333] hover:bg-[#444444] text-accent text-xs font-black shrink-0 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1F1F1F] hover:bg-[#2E2E2E] text-[#D4FF5A] text-xs font-black shrink-0 transition-colors shadow-sm"
             >
               <Undo2 className="w-3.5 h-3.5" />
               <span>Urungkan</span>

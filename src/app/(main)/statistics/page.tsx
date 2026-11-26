@@ -319,7 +319,7 @@ export default function StatisticsPage() {
             <button
               type="button"
               onClick={handleResetToCurrent}
-              className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1 min-h-[36px]"
+              className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[36px]"
             >
               Kembali ke Bulan Sekarang
             </button>
@@ -410,7 +410,7 @@ export default function StatisticsPage() {
                 <p className="text-xs font-bold text-muted-foreground mt-2">
                   Belum ada data {type === "expense" ? "pengeluaran" : type === "income" ? "pemasukan" : "tabungan"}
                 </p>
-                <p className="text-[11px] text-muted-foreground/70 max-w-[200px]">
+                <p className="text-xs text-muted-foreground/70 max-w-[200px]">
                   {type === "expense"
                     ? "Catat pengeluaran harianmu untuk melihat sebaran porsi"
                     : type === "income"
@@ -467,10 +467,10 @@ export default function StatisticsPage() {
                   <span className="text-3xl font-black tracking-tight text-foreground">
                     {topCategory?.percentage || 0}%
                   </span>
-                  <span className="text-[11px] font-bold text-muted-foreground truncate max-w-[100px] text-center">
+                  <span className="text-xs font-bold text-muted-foreground truncate max-w-[100px] text-center">
                     {topCategory?.name || "-"}
                   </span>
-                  <span className="text-[9px] text-muted-foreground/70 uppercase tracking-wider font-semibold">
+                  <span className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-semibold">
                     Terbesar
                   </span>
                 </div>
@@ -497,7 +497,7 @@ export default function StatisticsPage() {
                     />
                     <div className="truncate">
                       <span className="text-foreground font-bold block truncate">{cat.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {cat.count} transaksi • {formatRupiah(cat.amount)}
                       </span>
                     </div>
@@ -518,7 +518,7 @@ export default function StatisticsPage() {
                   Tren 8 Bulan Terakhir
                 </h2>
                 {statsData?.highestExpenseMonth && trendType === "expense" && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-expense/15 text-expense flex items-center gap-1">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-expense/15 text-expense flex items-center gap-1">
                     <Flame className="w-3 h-3" />
                     <span>{statsData.highestExpenseMonth.month} Terboros</span>
                   </span>
@@ -580,12 +580,12 @@ export default function StatisticsPage() {
                     <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop
                         offset="5%"
-                        stopColor={trendType === "expense" ? "#FF7B7B" : "#D4FF5A"}
+                        stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
                         stopOpacity={0.35}
                       />
                       <stop
                         offset="95%"
-                        stopColor={trendType === "expense" ? "#FF7B7B" : "#D4FF5A"}
+                        stopColor={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
                         stopOpacity={0}
                       />
                     </linearGradient>
@@ -610,10 +610,10 @@ export default function StatisticsPage() {
                         const val = trendType === "expense" ? data.expense : data.income;
                         return (
                           <div className="bg-popover border border-border rounded-xl p-2.5 shadow-xl text-xs font-bold text-foreground">
-                            <p className="text-[11px] text-muted-foreground">{data.month} {data.year}</p>
+                            <p className="text-xs text-muted-foreground">{data.month} {data.year}</p>
                             <p className="text-sm font-black mt-0.5">{formatRupiah(val)}</p>
                             {trendType === "expense" && data.isHighestExpense && val > 0 && (
-                              <span className="text-[10px] font-bold text-expense flex items-center gap-1 mt-1">
+                              <span className="text-xs font-bold text-expense flex items-center gap-1 mt-1">
                                 <Flame className="w-3 h-3" /> Bulan Terboros
                               </span>
                             )}
@@ -626,7 +626,7 @@ export default function StatisticsPage() {
                   <Area
                     type="monotone"
                     dataKey={trendType}
-                    stroke={trendType === "expense" ? "#FF7B7B" : "#D4FF5A"}
+                    stroke={trendType === "expense" ? "#FF7B7B" : "var(--accent-text)"}
                     strokeWidth={3}
                     fillOpacity={1}
                     fill="url(#trendGradient)"
@@ -640,7 +640,7 @@ export default function StatisticsPage() {
                             cx={props.cx || 0}
                             cy={props.cy || 0}
                             r={5}
-                            fill={isHigh ? "#FF7B7B" : "#D4FF5A"}
+                            fill={isHigh ? "#FF7B7B" : "var(--accent-text)"}
                             stroke="#1E1E1E"
                             strokeWidth={2}
                           />
@@ -695,40 +695,40 @@ export default function StatisticsPage() {
             {/* 3 Metric Summary Boxes */}
             <div className="grid grid-cols-3 gap-2 pt-1 text-center">
               <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase">
+                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
                   <span className="w-2 h-2 rounded-full bg-expense shrink-0" />
                   Pengeluaran
                 </span>
                 <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
                   {comp.expensePct}%
                 </p>
-                <p className="text-[10px] text-muted-foreground font-semibold truncate">
+                <p className="text-xs text-muted-foreground font-semibold truncate">
                   {formatRupiah(comp.totalExpense)}
                 </p>
               </div>
 
               <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase">
+                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
                   <span className="w-2 h-2 rounded-full bg-[#FFB04A] shrink-0" />
                   Tabungan
                 </span>
                 <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
                   {comp.savingsPct}%
                 </p>
-                <p className="text-[10px] text-muted-foreground font-semibold truncate">
+                <p className="text-xs text-muted-foreground font-semibold truncate">
                   {formatRupiah(comp.totalSavings)}
                 </p>
               </div>
 
               <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
-                <span className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase">
+                <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase">
                   <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
                   Sisa Saldo
                 </span>
                 <p className="text-xs sm:text-sm font-extrabold text-foreground mt-1">
                   {comp.remainingPct}%
                 </p>
-                <p className="text-[10px] text-muted-foreground font-semibold truncate">
+                <p className="text-xs text-muted-foreground font-semibold truncate">
                   {formatRupiah(comp.remainingBalance)}
                 </p>
               </div>
@@ -752,7 +752,7 @@ export default function StatisticsPage() {
                 <div key={cat.name} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs font-semibold">
                     <span className="flex items-center gap-2 text-foreground font-bold">
-                      <span className="w-5 text-muted-foreground font-extrabold text-[11px]">
+                      <span className="w-5 text-muted-foreground font-extrabold text-xs">
                         #{idx + 1}
                       </span>
                       <Tag className="w-3.5 h-3.5" style={{ color: cat.color }} />
@@ -813,7 +813,7 @@ export default function StatisticsPage() {
                       <p className="text-foreground font-bold truncate text-xs sm:text-sm">
                         {tx.title}
                       </p>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         <span
                           className="px-1.5 py-0.2 rounded font-bold"
                           style={{ backgroundColor: `${tx.categoryColor}22`, color: tx.categoryColor }}
@@ -861,18 +861,18 @@ export default function StatisticsPage() {
                     className="flex items-center justify-between p-2.5 rounded-lg bg-background/50 border border-border/40 text-xs font-semibold"
                   >
                     <div className="flex items-center gap-2 truncate pr-2">
-                      <span className="w-4 text-center font-bold text-muted-foreground text-[11px]">
+                      <span className="w-4 text-center font-bold text-muted-foreground text-xs">
                         {idx + 1}.
                       </span>
                       <div>
                         <span className="text-foreground font-bold block truncate">{item.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{item.count}x transaksi</span>
+                        <span className="text-xs text-muted-foreground">{item.count}x transaksi</span>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
                       <span className="text-foreground font-black block">{formatRupiah(item.amount)}</span>
-                      <span className="text-[10px] text-muted-foreground">{item.percentage}% dari pos lain</span>
+                      <span className="text-xs text-muted-foreground">{item.percentage}% dari pos lain</span>
                     </div>
                   </div>
                 ))}
@@ -887,7 +887,7 @@ export default function StatisticsPage() {
                 <h2 className="text-sm font-extrabold text-foreground tracking-tight">
                   Kontrol Pos Boros (Batas Kategori)
                 </h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Pasang batas bulanan per pos agar pengeluaran seperti nongkrong/jajan terkendali
                 </p>
               </div>
@@ -932,7 +932,7 @@ export default function StatisticsPage() {
                             {item.categoryName}
                           </span>
                           <span
-                            className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                            className={`text-xs font-black px-1.5 py-0.5 rounded ${
                               isOver
                                 ? "bg-expense/15 text-expense"
                                 : isWarn
@@ -966,7 +966,7 @@ export default function StatisticsPage() {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold">
                         <span>
                           Terpakai: <strong className="text-foreground">{formatRupiah(item.spent)}</strong>
                         </span>
@@ -1019,12 +1019,12 @@ export default function StatisticsPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-bold text-foreground">{insight.title}</span>
                         {insight.badge && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
                             {insight.badge}
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                         {insight.description}
                       </p>
                     </div>
@@ -1045,7 +1045,7 @@ export default function StatisticsPage() {
                 <h3 className="text-base font-black text-foreground">
                   Atur Batas Pengeluaran Kategori
                 </h3>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Isi nominal 0 untuk menghapus batas pada kategori tersebut
                 </p>
               </div>

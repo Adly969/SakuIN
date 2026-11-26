@@ -100,6 +100,23 @@ export default function RecordPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [todayTransactions, setTodayTransactions] = useState<RecentTx[]>([]);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  // Jaga tombol Simpan sticky tetap terlihat di atas keyboard HP (Android WebView)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const updateKeyboardOffset = () => {
+      const diff = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(diff > 80 ? diff : 0);
+    };
+    vv.addEventListener("resize", updateKeyboardOffset);
+    vv.addEventListener("scroll", updateKeyboardOffset);
+    return () => {
+      vv.removeEventListener("resize", updateKeyboardOffset);
+      vv.removeEventListener("scroll", updateKeyboardOffset);
+    };
+  }, []);
 
   // Load Categories & Accounts from Cache & DB
   useEffect(() => {
@@ -445,7 +462,7 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-[480px] mx-auto pb-32 md:pb-12">
+    <div className="space-y-5 max-w-[480px] mx-auto pb-44 md:pb-12">
       {/* 1. Header Halaman */}
       <div>
         <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
@@ -524,7 +541,7 @@ export default function RecordPage() {
 
         {/* Input Nominal Langsung */}
         <div className="bg-background rounded-xl border border-border p-4 space-y-2">
-          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+          <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
             Nominal {recordType === "expense" ? "Pengeluaran" : "Pemasukan"}
           </label>
 
@@ -562,7 +579,7 @@ export default function RecordPage() {
 
           {/* Quick Helper Pills */}
           <div className="flex items-center gap-1.5 flex-wrap pt-1">
-            <span className="text-[10px] font-semibold text-muted-foreground mr-1">
+            <span className="text-xs font-semibold text-muted-foreground mr-1">
               Tambah cepat:
             </span>
             {QUICK_AMOUNTS.map((q) => (
@@ -570,7 +587,7 @@ export default function RecordPage() {
                 key={q.label}
                 type="button"
                 onClick={() => setAmount((prev) => Math.min(999999999, prev + q.value))}
-                className="px-3.5 py-1.5 min-h-[38px] rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all flex items-center justify-center"
+                className="px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all flex items-center justify-center"
               >
                 {q.label}
               </button>
@@ -599,7 +616,7 @@ export default function RecordPage() {
                   }}
                   className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-bold border transition-all text-left min-h-[44px] ${
                     isSelected
-                      ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent scale-[1.02]"
+                      ? "bg-accent/15 border-accent text-accent ring-1 ring-accent scale-[1.02]"
                       : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
                   }`}
                 >
@@ -619,7 +636,7 @@ export default function RecordPage() {
             }}
             className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 min-h-[44px] ${
               isCustomCategory
-                ? "bg-accent/15 border-accent text-accent-text ring-1 ring-accent"
+                ? "bg-accent/15 border-accent text-accent ring-1 ring-accent"
                 : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
             }`}
           >
@@ -636,9 +653,9 @@ export default function RecordPage() {
                 exit={{ opacity: 0, height: 0 }}
                 className="space-y-1 pt-1"
               >
-                <label className="text-[11px] font-bold text-accent-text flex items-center justify-between">
+                <label className="text-xs font-bold text-accent flex items-center justify-between">
                   <span>Nama Kategori Lain</span>
-                  <span className="text-[10px] text-expense font-semibold">Wajib diisi</span>
+                  <span className="text-xs text-expense font-semibold">Wajib diisi</span>
                 </label>
                 <input
                   type="text"
@@ -659,7 +676,7 @@ export default function RecordPage() {
           <div className="space-y-1.5 pt-1">
             <label className="text-xs font-bold text-foreground flex items-center justify-between">
               <span>{recordType === "expense" ? "Dibayar Pakai Rekening" : "Masuk ke Rekening"}</span>
-              <span className="text-[10px] text-muted-foreground">Saldo otomatis terupdate</span>
+              <span className="text-xs text-muted-foreground">Saldo otomatis terupdate</span>
             </label>
             <div
               className={`grid gap-2 ${
@@ -700,11 +717,11 @@ export default function RecordPage() {
                       <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                     </div>
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-[11px] font-semibold text-muted-foreground truncate pl-0.5">
+                      <span className="text-xs font-semibold text-muted-foreground truncate pl-0.5">
                         {formatRupiah(acc.balance)}
                       </span>
                       {isAccInsufficient && (
-                        <span className="text-[9px] font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
+                        <span className="text-xs font-bold text-expense bg-expense/15 px-1.5 py-0.5 rounded shrink-0">
                           Kurang
                         </span>
                       )}
@@ -730,7 +747,7 @@ export default function RecordPage() {
         <div className="space-y-1.5">
           <label className="text-xs font-bold text-foreground flex items-center justify-between">
             <span>Catatan</span>
-            <span className="text-[10px] text-muted-foreground">Opsional</span>
+            <span className="text-xs text-muted-foreground">Opsional</span>
           </label>
           <input
             type="text"
@@ -758,40 +775,47 @@ export default function RecordPage() {
           </div>
         </div>
 
-        {/* Tombol Simpan Transaksi */}
-        <button
-          type="submit"
-          disabled={
-            amount <= 0 ||
-            isSaving ||
-            (isCustomCategory && !customCategory.trim()) ||
-            isInsufficientBalance
-          }
-          className={`w-full py-3.5 rounded-pill text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md ${
-            isInsufficientBalance
-              ? "bg-expense/15 border border-expense/40 text-expense cursor-not-allowed"
-              : amount > 0 && (!isCustomCategory || customCategory.trim())
-              ? "bg-accent hover:bg-accent-hover text-[#1F1F1F] active:scale-[0.98] shadow-accent/20 cursor-pointer"
-              : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-          }`}
+        {/* Tombol Simpan Transaksi (Sticky di atas bottom bar HP & aman dari keyboard via visualViewport) */}
+        <div
+          style={keyboardOffset > 0 ? { bottom: `${keyboardOffset + 8}px` } : undefined}
+          className="fixed left-0 right-0 bottom-[92px] z-30 px-4 pointer-events-none md:static md:px-0 md:z-auto md:pointer-events-auto"
         >
-          {isSaving ? (
-            <span>Menyimpan transaksi...</span>
-          ) : isInsufficientBalance ? (
-            <>
-              <AlertCircle className="w-4 h-4" />
-              <span>Saldo {selectedAccount?.name} Tidak Mencukupi</span>
-            </>
-          ) : (
-            <>
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>
-                Simpan {recordType === "expense" ? "Pengeluaran" : "Pemasukan"}
-                {amount > 0 ? ` (${formatRupiah(amount)})` : ""}
-              </span>
-            </>
-          )}
-        </button>
+          <div className="max-w-[480px] mx-auto pointer-events-auto rounded-2xl bg-card/95 backdrop-blur-md border border-border p-2 shadow-xl md:bg-transparent md:backdrop-blur-none md:border-0 md:p-0 md:shadow-none">
+            <button
+              type="submit"
+              disabled={
+                amount <= 0 ||
+                isSaving ||
+                (isCustomCategory && !customCategory.trim()) ||
+                isInsufficientBalance
+              }
+              className={`w-full py-3.5 min-h-[48px] rounded-pill text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md ${
+                isInsufficientBalance
+                  ? "bg-expense/15 border border-expense/40 text-expense cursor-not-allowed"
+                  : amount > 0 && (!isCustomCategory || customCategory.trim())
+                  ? "bg-accent hover:bg-accent-hover text-[#1F1F1F] active:scale-[0.98] shadow-accent/20 cursor-pointer"
+                  : "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+              }`}
+            >
+              {isSaving ? (
+                <span>Menyimpan transaksi...</span>
+              ) : isInsufficientBalance ? (
+                <>
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Saldo {selectedAccount?.name} Tidak Mencukupi</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>
+                    Simpan {recordType === "expense" ? "Pengeluaran" : "Pemasukan"}
+                    {amount > 0 ? ` (${formatRupiah(amount)})` : ""}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </form>
 
       {/* 3 Transaksi Terakhir Hari Ini */}
@@ -804,7 +828,7 @@ export default function RecordPage() {
             <button
               type="button"
               onClick={() => router.push("/transactions")}
-              className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1"
+              className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
             >
               <span>Semua Riwayat</span>
               <ArrowRight className="w-3 h-3" />
@@ -831,7 +855,7 @@ export default function RecordPage() {
                   </div>
                   <div className="truncate">
                     <p className="font-bold text-foreground truncate">{tx.title}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{tx.category}</p>
+                    <p className="text-xs text-muted-foreground truncate">{tx.category}</p>
                   </div>
                 </div>
 

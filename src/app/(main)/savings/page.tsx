@@ -434,7 +434,7 @@ export default function SavingsPage() {
           <label className="text-xs font-bold text-foreground">
             {isDeposit ? "Ambil dari Rekening" : "Masukkan ke Rekening"}
           </label>
-          <span className="text-[10px] text-muted-foreground">Saldo otomatis terupdate</span>
+          <span className="text-xs text-muted-foreground">Saldo otomatis terupdate</span>
         </div>
 
         <div
@@ -471,14 +471,14 @@ export default function SavingsPage() {
                   <div className="w-5 h-5 rounded bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
                     <AccIcon className="w-3 h-3" />
                   </div>
-                  <span className="text-[11px] font-bold truncate text-foreground">{acc.name}</span>
+                  <span className="text-xs font-bold truncate text-foreground">{acc.name}</span>
                 </div>
                 <div className="flex items-center justify-between gap-1 w-full">
-                  <span className="text-[10px] font-semibold text-muted-foreground truncate">
+                  <span className="text-xs font-semibold text-muted-foreground truncate">
                     {formatRupiah(acc.balance)}
                   </span>
                   {isInsufficient && (
-                    <span className="text-[9px] font-bold text-expense bg-expense/15 px-1 py-0.5 rounded shrink-0">
+                    <span className="text-xs font-bold text-expense bg-expense/15 px-1 py-0.5 rounded shrink-0">
                       Kurang
                     </span>
                   )}
@@ -491,7 +491,7 @@ export default function SavingsPage() {
         <button
           type="button"
           onClick={() => setSelectedAccountId("")}
-          className={`w-full py-1.5 px-3 rounded-lg border text-[11px] font-semibold transition-all text-center ${
+          className={`w-full py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all text-center ${
             selectedAccountId === ""
               ? "border-accent bg-accent/10 text-foreground"
               : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
@@ -501,7 +501,7 @@ export default function SavingsPage() {
         </button>
 
         {isDeposit && isDepositInsufficient && selectedAccount && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-expense/10 border border-expense/30 text-expense text-[11px] font-semibold">
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-expense/10 border border-expense/30 text-expense text-xs font-semibold">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>
               Saldo <strong>{selectedAccount.name}</strong> ({formatRupiah(selectedAccount.balance)}) tidak cukup. Pilih rekening lain atau kurangi nominal.
@@ -574,7 +574,7 @@ export default function SavingsPage() {
               <span>{toastMessage}</span>
             </div>
             {toastQuote && (
-              <p className="text-[11px] text-muted-foreground italic pl-6">
+              <p className="text-xs text-muted-foreground italic pl-6">
                 &ldquo;{toastQuote}&rdquo;
               </p>
             )}
@@ -588,7 +588,7 @@ export default function SavingsPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <PiggyBank className="w-5 h-5 text-accent" />
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
                 Tabungan
               </span>
             </div>
@@ -601,7 +601,7 @@ export default function SavingsPage() {
             <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
               {isLoading ? "..." : formatRupiah(totalSaved)}
             </div>
-            <span className="text-[11px] font-semibold text-muted-foreground">
+            <span className="text-xs font-semibold text-muted-foreground">
               dari {goals.length} Target Impian
             </span>
           </div>
@@ -640,7 +640,7 @@ export default function SavingsPage() {
                 Target Default Sisa Hemat
               </span>
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Sisa jatah harian yang tidak terpakai ditawarkan masuk ke target ini.
             </p>
           </div>
@@ -666,7 +666,7 @@ export default function SavingsPage() {
           <span className="text-xs font-extrabold text-muted-foreground uppercase tracking-wider">
             Daftar Impian ({goals.length})
           </span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             Rata-rata progres: <strong className="text-accent">{avgProgress}%</strong>
           </span>
         </div>
@@ -713,16 +713,16 @@ export default function SavingsPage() {
                         {goal.name}
                       </h2>
                       {isCompleted ? (
-                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent/20 text-accent shrink-0">
+                        <span className="text-xs font-black px-2 py-0.5 rounded-full bg-accent/20 text-accent shrink-0">
                           Tercapai
                         </span>
                       ) : (
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
                           Aktif
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Tenggat: {goal.targetDate}
                       {goal.remainingDays > 0 && ` (${goal.remainingDays} hari lagi)`}
                     </p>
@@ -735,7 +735,7 @@ export default function SavingsPage() {
                     <button
                       type="button"
                       onClick={() => setDetailGoal(goal)}
-                      className="text-[11px] text-muted-foreground hover:text-accent flex items-center justify-end gap-0.5 mt-0.5"
+                      className="text-xs text-muted-foreground hover:text-accent flex items-center justify-end gap-0.5 mt-0.5"
                     >
                       <span>Detail</span>
                       <ChevronRight className="w-3 h-3" />
@@ -765,7 +765,7 @@ export default function SavingsPage() {
 
                 {/* Saran Setoran Otomatis (PRD S4) */}
                 {!isCompleted && goal.weeklySuggestion > 0 && (
-                  <div className="p-2.5 rounded-lg bg-background border border-border flex items-center gap-2 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-background border border-border flex items-center gap-2 text-xs">
                     <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
                     <span className="text-muted-foreground">
                       Saran: Sisihkan{" "}
@@ -818,7 +818,7 @@ export default function SavingsPage() {
                   <h2 className="text-base sm:text-lg font-black text-foreground">
                     Setor Dana Tabungan
                   </h2>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Menyisihkan uang dari sisa kiriman bulan ini
                   </p>
                 </div>
@@ -855,7 +855,7 @@ export default function SavingsPage() {
 
                 {/* Input Nominal Setoran */}
                 <div className="bg-background rounded-xl border border-border p-3.5 space-y-2">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
                     Nominal Setoran
                   </span>
                   <div className="relative flex items-center bg-card border border-border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent focus-within:border-accent">
@@ -888,7 +888,7 @@ export default function SavingsPage() {
 
                   {/* Quick Helper Chips */}
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] font-semibold text-muted-foreground mr-0.5">
+                    <span className="text-xs font-semibold text-muted-foreground mr-0.5">
                       Tambah:
                     </span>
                     {QUICK_AMOUNTS.map((q) => (
@@ -896,7 +896,7 @@ export default function SavingsPage() {
                         key={q.label}
                         type="button"
                         onClick={() => setActionAmount((prev) => Math.min(999999999, prev + q.value))}
-                        className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
+                        className="px-2 py-0.5 rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
                       >
                         {q.label}
                       </button>
@@ -967,7 +967,7 @@ export default function SavingsPage() {
                   <h2 className="text-base sm:text-lg font-black text-foreground">
                     Tarik Dana Tabungan
                   </h2>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Dana akan dikembalikan ke saldo aktif bulan ini
                   </p>
                 </div>
@@ -1005,13 +1005,13 @@ export default function SavingsPage() {
                 {/* Input Nominal Penarikan */}
                 <div className="bg-background rounded-xl border border-border p-3.5 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
                       Nominal Penarikan
                     </span>
                     <button
                       type="button"
                       onClick={() => setActionAmount(selectedGoalForAction?.collected || 0)}
-                      className="text-[10px] font-extrabold text-accent hover:underline"
+                      className="text-xs font-extrabold text-accent hover:underline"
                     >
                       Tarik Semua ({formatRupiah(selectedGoalForAction?.collected || 0)})
                     </button>
@@ -1127,7 +1127,7 @@ export default function SavingsPage() {
 
                 {/* Nominal Target */}
                 <div className="bg-background rounded-xl border border-border p-3.5 space-y-2">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
                     Target Nominal
                   </span>
                   <div className="relative flex items-center bg-card border border-border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-accent focus-within:border-accent">
@@ -1153,7 +1153,7 @@ export default function SavingsPage() {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>Tenggat Waktu</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <input
                     type="date"
@@ -1195,7 +1195,7 @@ export default function SavingsPage() {
                     {detailGoal.name}
                   </h3>
                   {detailGoal.status === "completed" && (
-                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent/20 text-accent">
+                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-accent/20 text-accent">
                       Tercapai
                     </span>
                   )}
@@ -1229,7 +1229,7 @@ export default function SavingsPage() {
                     style={{ width: `${detailGoal.percentage}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-muted-foreground pt-1">
+                <p className="text-xs text-muted-foreground pt-1">
                   Tenggat: <strong className="text-foreground">{detailGoal.targetDate}</strong>
                   {detailGoal.remainingDays > 0 && ` • ${detailGoal.remainingDays} hari tersisa`}
                 </p>
@@ -1242,7 +1242,7 @@ export default function SavingsPage() {
                     <Sparkles className="w-4 h-4" />
                     <span>Saran Alokasi Setoran</span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Sisihkan{" "}
                     <strong className="text-foreground">
                       {formatRupiah(detailGoal.weeklySuggestion)} per minggu
@@ -1258,7 +1258,7 @@ export default function SavingsPage() {
 
               {/* Riwayat Mutasi Target Ini */}
               <div className="space-y-2">
-                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block">
+                <span className="text-[11px] font-black text-muted-foreground uppercase tracking-wider block">
                   Riwayat Mutasi Tabungan
                 </span>
 
@@ -1291,12 +1291,12 @@ export default function SavingsPage() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="font-bold text-foreground">{entry.note}</p>
                               {entry.source === "carryover" && (
-                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+                                <span className="text-xs font-black px-1.5 py-0.5 rounded bg-accent/15 text-accent">
                                   Sisa Hemat
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {entry.date}
                               {entry.accountName ? ` • ${entry.accountName}` : ""}
                             </p>

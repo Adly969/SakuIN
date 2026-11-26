@@ -427,7 +427,7 @@ export default function ProfilePage() {
             <p className="text-xs text-muted-foreground truncate">
               {profile?.email || "..."}
             </p>
-            <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent">
+            <span className="inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent">
               Mahasiswa SakuIN
             </span>
           </div>
@@ -467,7 +467,7 @@ export default function ProfilePage() {
               <Wallet className="w-4 h-4 stroke-[2.2]" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+              <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
                 {profile?.allowanceCycle === "weekly"
                   ? "Bekal Mingguan"
                   : profile?.allowanceCycle === "flexible"
@@ -489,7 +489,7 @@ export default function ProfilePage() {
               <Calendar className="w-4 h-4 stroke-[2.2]" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+              <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
                 Jadwal Siklus
               </p>
               <p className="text-sm font-black text-foreground truncate">
@@ -505,7 +505,7 @@ export default function ProfilePage() {
 
         <div className="p-3.5 bg-background border border-border rounded-lg flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+            <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
               Gaya Menyisihkan Harian
             </p>
             <p className="text-xs font-black text-foreground mt-0.5">
@@ -521,7 +521,7 @@ export default function ProfilePage() {
           <button
             type="button"
             onClick={handleOpenEdit}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground shrink-0"
+            className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground shrink-0"
           >
             Atur
           </button>
@@ -544,7 +544,7 @@ export default function ProfilePage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
-                <p className="text-[10px] text-muted-foreground truncate">Kelola Bank & E-Wallet</p>
+                <p className="text-xs text-muted-foreground truncate">Kelola Bank & E-Wallet</p>
               </div>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-accent transition-colors shrink-0" />
@@ -560,7 +560,7 @@ export default function ProfilePage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
-                <p className="text-[10px] text-muted-foreground truncate">Catat Pinjaman Teman</p>
+                <p className="text-xs text-muted-foreground truncate">Catat Pinjaman Teman</p>
               </div>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-accent transition-colors shrink-0" />
@@ -579,11 +579,11 @@ export default function ProfilePage() {
           </div>
 
           {pinEnabled ? (
-            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-accent/20 text-accent">
+            <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-accent/20 text-accent">
               PIN Aktif
             </span>
           ) : (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground">
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground">
               Belum Aktif
             </span>
           )}
@@ -646,7 +646,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between py-1">
           <div>
             <p className="text-xs font-bold text-foreground">Mode Tampilan</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Gelap, Terang, atau Ikuti Sistem
             </p>
           </div>
@@ -656,7 +656,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between py-1 border-t border-border/60 pt-3">
           <div>
             <p className="text-xs font-bold text-foreground">Kartu Motivasi Harian</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Tampilkan pesan motivasi keuangan di beranda
             </p>
           </div>
@@ -678,7 +678,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between py-1 border-t border-border/60 pt-3">
           <div>
             <p className="text-xs font-bold text-foreground">Animasi Splash Screen</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Putar ulang animasi pembuka saat membuka aplikasi
             </p>
           </div>
@@ -706,7 +706,7 @@ export default function ProfilePage() {
               <h3 className="text-sm font-extrabold text-foreground">
                 Pengingat Catat Harian
               </h3>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Notifikasi otomatis agar tidak lupa mencatat pengeluaran
               </p>
             </div>
@@ -735,7 +735,7 @@ export default function ProfilePage() {
                   <Clock className="w-3.5 h-3.5 text-accent" />
                   <span>Jadwal Pengingat (Tiap 3 Jam)</span>
                 </div>
-                <span className="text-[10px] text-accent font-black bg-accent/15 px-2 py-0.5 rounded-full">
+                <span className="text-xs text-accent font-black bg-accent/15 px-2 py-0.5 rounded-full">
                   5 Kali Sehari
                 </span>
               </div>
@@ -751,7 +751,7 @@ export default function ProfilePage() {
                       <span className="block text-xs font-black text-foreground">
                         {slot.label}
                       </span>
-                      <span className="text-[10px] text-muted-foreground font-semibold">
+                      <span className="text-xs text-muted-foreground font-semibold">
                         {slot.period}
                       </span>
                     </div>
@@ -762,7 +762,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Banner Mode Tenang Jam Istirahat */}
-            <div className="p-3 rounded-lg bg-background/40 border border-border/50 text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2">
+            <div className="p-3 rounded-lg bg-background/40 border border-border/50 text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
               <span className="text-sm">🌙</span>
               <div>
                 <strong className="text-foreground font-semibold">Mode Hening Istirahat:</strong> Jam 00:00 (tengah malam), 03:00, dan 06:00 pagi otomatis tanpa notifikasi agar tidur dan waktu istirahatmu tidak terganggu.
@@ -792,7 +792,7 @@ export default function ProfilePage() {
               <h3 className="text-sm font-extrabold text-foreground">
                 Unduh Aplikasi SakuIN
               </h3>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Pasang APK Android resmi (~2.5 MB) atau gunakan PWA di iPhone
               </p>
             </div>
@@ -817,7 +817,7 @@ export default function ProfilePage() {
             <h3 className="text-sm font-extrabold text-foreground">
               Ekspor Data Keuangan (CSV)
             </h3>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Unduh rekap transaksi untuk Microsoft Excel atau Google Sheets
             </p>
           </div>
@@ -911,7 +911,7 @@ export default function ProfilePage() {
                     className="w-full text-center tracking-[0.5em] text-2xl font-black px-4 py-3 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                   {pinError && (
-                    <p className="text-[11px] font-bold text-expense text-center">
+                    <p className="text-xs font-bold text-expense text-center">
                       {pinError}
                     </p>
                   )}
@@ -1073,7 +1073,7 @@ export default function ProfilePage() {
                               key={d}
                               type="button"
                               onClick={() => setEditWeekday(d)}
-                              className={`py-2 min-h-[38px] rounded-lg text-[11px] font-bold border ${
+                              className={`py-2 min-h-[38px] rounded-lg text-xs font-bold border ${
                                 editWeekday === d
                                   ? "bg-accent text-[#1F1F1F] border-accent font-black"
                                   : "bg-background text-muted-foreground border-border"
@@ -1110,7 +1110,7 @@ export default function ProfilePage() {
                           else if (rm.id === "daily_fixed" && parseInt(editReserveValue || "0", 10) === 0) setEditReserveValue("10000");
                           else if (rm.id === "daily_cap" && parseInt(editReserveValue || "0", 10) === 0) setEditReserveValue("35000");
                         }}
-                        className={`p-2.5 min-h-[42px] rounded-xl text-[11px] font-bold border transition-all text-left ${
+                        className={`p-2.5 min-h-[42px] rounded-xl text-xs font-bold border transition-all text-left ${
                           editReserveMode === rm.id
                             ? "bg-accent/15 border-accent text-foreground ring-1 ring-accent"
                             : "bg-background border-border text-muted-foreground hover:text-foreground"
@@ -1162,7 +1162,7 @@ export default function ProfilePage() {
                             key={preset}
                             type="button"
                             onClick={() => setEditReserveValue(String(preset))}
-                            className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-[10px] font-bold text-foreground hover:border-accent"
+                            className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-xs font-bold text-foreground hover:border-accent"
                           >
                             {editReserveMode === "percent" ? `${preset}%` : formatRupiah(preset)}
                           </button>

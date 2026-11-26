@@ -577,25 +577,25 @@ export default function DashboardPage() {
           </div>
 
           <div className="text-right">
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
               Bulan {dateInfo?.monthName || "November"}
             </span>
           </div>
         </div>
 
-        {/* 1. Kartu Motivasi Harian (PRD 7.7, 8.7 & Bagian 17) */}
+        {/* 1. Kartu Motivasi Harian (Disembunyikan di HP sesuai PRD Tahap 1) */}
         {showMotivation && (
           <motion.div
             initial={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-xl p-3.5 shadow-sm flex items-start justify-between gap-3"
+            className="hidden md:flex bg-card border border-border rounded-xl p-3.5 shadow-sm items-start justify-between gap-3"
           >
             <div className="flex items-start gap-2.5">
               <div className="p-1.5 rounded-lg bg-accent/20 text-accent shrink-0 mt-0.5">
                 <Quote className="w-3.5 h-3.5 fill-accent" />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+                <p className="text-[11px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
                   <span>Motivasi SakuIN</span>
                   <Sparkles className="w-3 h-3 text-accent" />
                 </p>
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <BrandText height={20} />
                   <span
-                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
+                    className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
                       ? "bg-accent/20 text-accent"
                       : heroStatus.status === "warning"
                         ? "bg-[#FFB04A]/20 text-[#FFB04A]"
@@ -656,12 +656,12 @@ export default function DashboardPage() {
                   Sisa Batas Hari Ini
                 </p>
                 {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
-                  <span className="text-[10px] text-muted-foreground block">
+                  <span className="text-xs text-muted-foreground block">
                     Sisihkan {formatRupiah(heroReservedTotal)}
                     {heroLockedTotal > 0 ? " (dari saldo bebas)" : ""}
                   </span>
                 ) : (
-                  <Link href="/profile" className="text-[10px] text-muted-foreground/80 hover:text-accent block">
+                  <Link href="/profile" className="text-xs text-muted-foreground/80 hover:text-accent block">
                     Bagi rata (Atur sisihan →)
                   </Link>
                 )}
@@ -679,7 +679,7 @@ export default function DashboardPage() {
                 >
                   {dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayRemaining) : "Rp ..."}
                 </div>
-                <span className="text-[11px] font-semibold text-muted-foreground block">
+                <span className="text-xs font-semibold text-muted-foreground block">
                   {heroOverLimit > 0
                     ? `Over limit ${formatRupiah(heroOverLimit)}`
                     : `Jatah hari ini: ${dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayBudget) : "Rp ..."}`}
@@ -690,7 +690,7 @@ export default function DashboardPage() {
             {/* Pemakaian Batas Hari Ini (Progress Bar Utama) */}
             {dashboardData && (
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-muted-foreground">
                     Terpakai Hari Ini ({heroTodayUsagePercent}%)
                   </span>
@@ -714,7 +714,7 @@ export default function DashboardPage() {
                   heroTodayAlertLevel === "reached" ||
                   heroTodayAlertLevel === "exceeded") && (
                   <p
-                    className={`text-[10px] font-bold ${
+                    className={`text-xs font-bold ${
                       heroTodayAlertLevel === "warning" ? "text-[#FFB04A]" : "text-expense"
                     }`}
                   >
@@ -730,7 +730,7 @@ export default function DashboardPage() {
 
             {/* Rincian Dana Terkunci (Tagihan Wajib) jika aktif */}
             {heroLockedTotal > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-background/80 border border-border/80 text-[11px]">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-background/80 border border-border/80 text-xs">
                 <div className="flex items-center gap-1.5 text-foreground font-semibold">
                   <Lock className="w-3.5 h-3.5 text-[#FFB04A] shrink-0" />
                   <span>
@@ -743,7 +743,7 @@ export default function DashboardPage() {
                 </div>
                 <Link
                   href="/accounts#dana-terkunci"
-                  className="text-[10px] font-black text-accent hover:underline shrink-0"
+                  className="text-xs font-black text-accent hover:underline shrink-0"
                 >
                   Atur Tagihan →
                 </Link>
@@ -753,7 +753,7 @@ export default function DashboardPage() {
             {/* Card Footer: Total Saldo & Siklus Kiriman */}
             <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs gap-2">
               <div>
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
+                <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
                   {isUsingAccounts ? "Total Saldo" : "Sisa Uang Kiriman"}
                 </span>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -761,13 +761,13 @@ export default function DashboardPage() {
                     {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
                   </span>
                 </div>
-                <span className="text-[10px] text-muted-foreground block mt-0.5">
+                <span className="text-xs text-muted-foreground block mt-0.5">
                   {isUsingAccounts ? "Bank, E-Wallet & Tunai" : "Tersedia Bulan Ini"}
                 </span>
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
+                <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
                   {dashboardData?.allowanceCycle === "weekly"
                     ? "Siklus Mingguan"
                     : dashboardData?.allowanceCycle === "flexible"
@@ -786,7 +786,7 @@ export default function DashboardPage() {
 
             {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
             <div className="space-y-1.5 pt-2.5 border-t border-border/50">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+              <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
                 <span>
                   Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
                 </span>
@@ -806,7 +806,7 @@ export default function DashboardPage() {
                 />
               </div>
               {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
-                <p className="text-[10px] font-bold text-[#FFB04A] flex items-center gap-1">
+                <p className="text-xs font-bold text-[#FFB04A] flex items-center gap-1">
                   <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
                 </p>
               )}
@@ -832,7 +832,7 @@ export default function DashboardPage() {
                     <p className="text-xs font-black text-foreground">
                       Hari ini jadwal kirimanmu ({paydayPrompt.dateLabel})!
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       Sudah masuk? Konfirmasi 1 ketuk untuk langsung update saldo &amp; riwayat pemasukan.
                     </p>
                   </div>
@@ -901,7 +901,7 @@ export default function DashboardPage() {
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{carryoverSuccessToast.message}</span>
               </div>
-              <p className="text-[11px] text-muted-foreground italic pl-6">
+              <p className="text-xs text-muted-foreground italic pl-6">
                 &ldquo;{carryoverSuccessToast.quote}&rdquo;
               </p>
             </div>
@@ -918,7 +918,7 @@ export default function DashboardPage() {
                     <p className="text-xs font-black text-foreground">
                       Hemat {formatRupiah(carryoverOffer.amount)} kemarin ({carryoverOffer.dateLabel})!
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       Jatah harian {formatRupiah(carryoverOffer.yesterdayBudget)}, terpakai{" "}
                       {formatRupiah(carryoverOffer.yesterdayExpense)}. Mau amankan sisanya ke tabungan?
                     </p>
@@ -1014,7 +1014,7 @@ export default function DashboardPage() {
                   Rekening & Dompet
                 </h2>
                 {accountsList.length > 0 && (
-                  <span className="text-[11px] font-black text-accent bg-accent/15 px-2 py-0.5 rounded-full border border-accent/25 shrink-0">
+                  <span className="text-xs font-black text-accent bg-accent/15 px-2 py-0.5 rounded-full border border-accent/25 shrink-0">
                     Total {formatRupiah(liveAccountsTotal)}
                   </span>
                 )}
@@ -1068,12 +1068,12 @@ export default function DashboardPage() {
                             {acc.name}
                           </span>
                         </div>
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/40">
+                        <span className="text-[11px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/40">
                           {acc.type === "bank" ? "Bank" : acc.type === "ewallet" ? "E-Wallet" : "Tunai"}
                         </span>
                       </div>
                       <div className="mt-2.5">
-                        <p className="text-[10px] text-muted-foreground font-medium">Saldo</p>
+                        <p className="text-xs text-muted-foreground font-medium">Saldo</p>
                         <p className="text-xs sm:text-sm font-black text-foreground group-hover:text-accent transition-colors truncate">
                           {formatRupiah(acc.balance || 0)}
                         </p>
@@ -1085,32 +1085,22 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 2.5 Akses Cepat: Multi Rekening & Utang Piutang */}
-          <div className="grid grid-cols-2 gap-3">
-            <Link
-              href="/accounts"
-              className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
-            >
-              <div className="w-9 h-9 rounded-xl bg-muted border border-border/70 text-foreground flex items-center justify-center shrink-0 group-hover:border-accent/50 transition-all">
-                <Wallet className="w-4 h-4 stroke-[2]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-black text-foreground truncate">Multi Rekening</p>
-                <p className="text-[10px] text-muted-foreground truncate">Bank, E-Wallet, Tunai</p>
-              </div>
-            </Link>
-
+          {/* 2.5 Akses Cepat: Utang Piutang */}
+          <div>
             <Link
               href="/debts"
-              className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center gap-2.5 group"
+              className="bg-card hover:bg-muted/50 border border-border rounded-xl p-3.5 min-h-[44px] shadow-xs transition-all flex items-center justify-between gap-2.5 group"
             >
-              <div className="w-9 h-9 rounded-xl bg-muted border border-border/70 text-foreground flex items-center justify-center shrink-0 group-hover:border-accent/50 transition-all">
-                <HandCoins className="w-4 h-4 stroke-[2]" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-muted border border-border/70 text-foreground flex items-center justify-center shrink-0 group-hover:border-accent/50 transition-all">
+                  <HandCoins className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
+                  <p className="text-xs text-muted-foreground truncate">Catat & pantau utang piutang teman</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-black text-foreground truncate">Utang Piutang</p>
-                <p className="text-[10px] text-muted-foreground truncate">Catat Utang Teman</p>
-              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-accent shrink-0" />
             </Link>
           </div>
         </div>
@@ -1174,16 +1164,16 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 4. Bagian Grafik Donut & Komposisi */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* 4. Bagian Grafik Donut & Komposisi (1 kolom di HP, 2 kolom di >= sm) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Left Card: Donut Chart with Large Percentage in Center */}
             <section className="bg-card border border-border rounded-xl p-5 shadow-md flex flex-col justify-between">
               <div className="relative w-full h-36 flex items-center justify-center">
                 {donutData.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center p-2">
                     <span className="text-2xl font-black text-muted-foreground/30">0%</span>
-                    <p className="text-[11px] font-bold text-muted-foreground mt-1">Belum ada pengeluaran</p>
-                    <p className="text-[9px] text-muted-foreground/70">Bulan {dateInfo?.monthName || "ini"}</p>
+                    <p className="text-xs font-bold text-muted-foreground mt-1">Belum ada pengeluaran</p>
+                    <p className="text-xs text-muted-foreground/70">Bulan {dateInfo?.monthName || "ini"}</p>
                   </div>
                 ) : (
                   <>
@@ -1218,7 +1208,7 @@ export default function DashboardPage() {
                       <span className="text-2xl font-black tracking-tight text-foreground">
                         {(donutData[activeCategoryIndex] || donutData[0])?.value || 0}%
                       </span>
-                      <span className="text-[10px] font-semibold text-muted-foreground -mt-0.5 truncate max-w-[80px]">
+                      <span className="text-xs font-semibold text-muted-foreground -mt-0.5 truncate max-w-[80px]">
                         {(donutData[activeCategoryIndex] || donutData[0])?.name || "-"}
                       </span>
                     </div>
@@ -1229,7 +1219,7 @@ export default function DashboardPage() {
               {/* Donut Legend Items */}
               <div className="space-y-1 pt-3 border-t border-border/60">
                 {donutData.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-1">
+                  <p className="text-xs text-muted-foreground text-center py-1">
                     Kategori akan muncul setelah mencatat transaksi
                   </p>
                 ) : (
@@ -1240,7 +1230,7 @@ export default function DashboardPage() {
                         key={cat.name}
                         type="button"
                         onClick={() => setActiveCategoryIndex(idx)}
-                        className={`w-full flex items-center justify-between text-[11px] font-semibold px-2 py-1.5 rounded-md transition-all text-left ${isSelected
+                        className={`w-full flex items-center justify-between text-xs font-semibold px-2 py-1.5 rounded-md transition-all text-left ${isSelected
                           ? "bg-muted text-foreground"
                           : "hover:bg-muted/40 text-muted-foreground"
                           }`}
@@ -1292,14 +1282,14 @@ export default function DashboardPage() {
 
               <div className="space-y-1.5 pt-3 border-t border-border/60">
                 {compositionData.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-1">
+                  <p className="text-xs text-muted-foreground text-center py-1">
                     Data komposisi akan muncul setelah ada uang kiriman/transaksi
                   </p>
                 ) : (
                   compositionData.map((item: CategoryItem) => (
                     <div
                       key={item.name}
-                      className="flex items-center justify-between text-[11px] font-semibold"
+                      className="flex items-center justify-between text-xs font-semibold"
                     >
                       <div className="flex items-center gap-1.5">
                         <span
@@ -1326,7 +1316,7 @@ export default function DashboardPage() {
                     Pengeluaran Terbanyak Bulan Ini
                   </h2>
                 </div>
-                <span className="text-[10px] font-bold text-muted-foreground">
+                <span className="text-xs font-bold text-muted-foreground">
                   Top {topExpenses.length} Kategori
                 </span>
               </div>
@@ -1336,14 +1326,14 @@ export default function DashboardPage() {
                   <div key={exp.name} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-[10px] font-black text-muted-foreground">
+                        <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-xs font-black text-muted-foreground">
                           {idx + 1}
                         </span>
                         <span className="font-bold text-foreground">{exp.name}</span>
                       </div>
                       <div className="text-right">
                         <span className="font-black text-expense">{formatRupiah(exp.amount)}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1.5">({exp.percentage}%)</span>
+                        <span className="text-xs text-muted-foreground ml-1.5">({exp.percentage}%)</span>
                       </div>
                     </div>
                     <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/60">
@@ -1406,7 +1396,7 @@ export default function DashboardPage() {
                   )}
                 </span>
               </div>
-              <span className="text-[11px] font-bold text-accent bg-accent/15 px-2.5 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-accent bg-accent/15 px-2.5 py-0.5 rounded-full">
                 {highestMonth && highestMonth.amount > 0 ? "Terkontrol" : "Bersih"}
               </span>
             </div>
@@ -1439,7 +1429,7 @@ export default function DashboardPage() {
                             x={x}
                             y={Number(y) + 12}
                             textAnchor="middle"
-                            className={`text-[11px] cursor-pointer font-bold ${isSelected
+                            className={`text-xs cursor-pointer font-bold ${isSelected
                               ? "fill-accent font-black"
                               : isMax
                                 ? "fill-expense font-black"
@@ -1457,7 +1447,7 @@ export default function DashboardPage() {
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
                           return (
-                            <div className="bg-card border border-border rounded-xl px-2.5 py-1.5 shadow-xl text-[11px] font-bold text-foreground">
+                            <div className="bg-card border border-border rounded-xl px-2.5 py-1.5 shadow-xl text-xs font-bold text-foreground">
                               {data.month}: {formatRupiah(data.amount)}
                               {data.isHighest && " (Terboros)"}
                             </div>
@@ -1469,7 +1459,7 @@ export default function DashboardPage() {
                     <Line
                       type="monotone"
                       dataKey="amount"
-                      stroke="#D4FF5A"
+                      stroke="var(--accent-text)"
                       strokeWidth={3.5}
                       dot={({ cx, cy, payload }) => {
                         const isSelected = activeMonthData?.month === payload.month;
@@ -1480,7 +1470,7 @@ export default function DashboardPage() {
                             cx={cx}
                             cy={cy}
                             r={isSelected ? 6 : isMax ? 5 : 3.5}
-                            fill={isMax ? "#FF7B7B" : "#D4FF5A"}
+                            fill={isMax ? "#FF7B7B" : "var(--accent-text)"}
                             stroke="#1F1F1F"
                             strokeWidth={2}
                             className="cursor-pointer transition-all"
@@ -1488,7 +1478,7 @@ export default function DashboardPage() {
                           />
                         );
                       }}
-                      activeDot={{ r: 7, fill: "#D4FF5A", stroke: "#1F1F1F", strokeWidth: 2 }}
+                      activeDot={{ r: 7, fill: "var(--accent-text)", stroke: "#1F1F1F", strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1532,7 +1522,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-foreground truncate">{tx.title}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {tx.category} • {tx.date}
                           </p>
                         </div>

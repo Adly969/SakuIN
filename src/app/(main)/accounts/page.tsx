@@ -484,15 +484,15 @@ export default function AccountsPage() {
         {/* Rincian Per Kategori Rekening */}
         <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/60 text-xs">
           <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Bank</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">Bank</p>
             <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(bankTotal)}</p>
           </div>
           <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">E-Wallet</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">E-Wallet</p>
             <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(ewalletTotal)}</p>
           </div>
           <div className="bg-background/70 border border-border/60 rounded-xl p-2.5">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Dompet Fisik</p>
+            <p className="text-[11px] font-bold text-muted-foreground uppercase">Dompet Fisik</p>
             <p className="font-black text-foreground truncate mt-0.5">{formatRupiah(cashTotal)}</p>
           </div>
         </div>
@@ -535,21 +535,21 @@ export default function AccountsPage() {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-black text-foreground truncate">{acc.name}</h3>
-                    <p className="text-[11px] text-muted-foreground truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {acc.accountNumber || (acc.type === "cash" ? "Dompet Fisik" : "Tanpa No. Rekening")}
                     </p>
                   </div>
                 </div>
 
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg}`}
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full border ${badge.bg}`}
                 >
                   {badge.label}
                 </span>
               </div>
 
               <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                   Saldo Saat Ini
                 </p>
                 <p className="text-xl font-black text-foreground tracking-tight">
@@ -617,7 +617,7 @@ export default function AccountsPage() {
         {activeLockedFunds.length === 0 && paidLockedFunds.length === 0 ? (
           <div className="p-5 rounded-xl bg-background/70 border border-dashed border-border text-center space-y-2">
             <p className="text-xs font-bold text-foreground">Belum ada pos dana terkunci</p>
-            <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
               Contoh: masih memegang uang Kos Rp 800.000 di rekening? Kunci di sini supaya jatah harianmu dihitung dari sisa uang bebasnya saja.
             </p>
           </div>
@@ -635,17 +635,17 @@ export default function AccountsPage() {
                         <span className="text-xs sm:text-sm font-black text-foreground">
                           {fund.name}
                         </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A]">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A]">
                           Terkunci
                         </span>
                         {fund.dueDay && (
-                          <span className="text-[10px] font-semibold text-muted-foreground">
+                          <span className="text-xs font-semibold text-muted-foreground">
                             Jatuh tempo tgl {fund.dueDay}
                           </span>
                         )}
                       </div>
                       {fund.note && (
-                        <p className="text-[11px] text-muted-foreground truncate">{fund.note}</p>
+                        <p className="text-xs text-muted-foreground truncate">{fund.note}</p>
                       )}
                     </div>
 
@@ -689,7 +689,7 @@ export default function AccountsPage() {
 
             {paidLockedFunds.length > 0 && (
               <div className="pt-2 border-t border-border/60 space-y-2">
-                <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">
+                <p className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider">
                   Sudah Lunas Periode Ini ({paidLockedFunds.length})
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -703,7 +703,7 @@ export default function AccountsPage() {
                           <CheckCircle2 className="w-3.5 h-3.5 text-accent shrink-0" />
                           <span className="font-bold text-foreground truncate">{fund.name}</span>
                         </div>
-                        <p className="text-[10px] text-muted-foreground pl-5 truncate">
+                        <p className="text-xs text-muted-foreground pl-5 truncate">
                           {formatRupiah(fund.amount)}
                           {fund.paidAccountName ? ` • ${fund.paidAccountName}` : ""}
                         </p>
@@ -713,7 +713,7 @@ export default function AccountsPage() {
                           type="button"
                           onClick={() => handleReopenLockedFund(fund.id)}
                           title="Kunci lagi untuk bulan depan"
-                          className="px-2 py-1 rounded-md border border-border text-[10px] font-bold text-foreground hover:bg-muted flex items-center gap-1"
+                          className="px-2 py-1 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted flex items-center gap-1"
                         >
                           <RotateCcw className="w-3 h-3" />
                           <span>Aktifkan</span>
@@ -810,7 +810,7 @@ export default function AccountsPage() {
                       key={preset}
                       type="button"
                       onClick={() => setNewName(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
                         newName === preset
                           ? "bg-accent/20 border-accent text-foreground"
                           : "bg-muted/60 border-border text-muted-foreground hover:text-foreground"
@@ -827,7 +827,7 @@ export default function AccountsPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>Nomor Rekening / HP E-Wallet</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <input
                     type="text"
@@ -954,7 +954,7 @@ export default function AccountsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground flex items-center justify-between">
                   <span>Biaya Admin (Jika Ada)</span>
-                  <span className="text-[10px] text-muted-foreground">Misal top up / beda bank</span>
+                  <span className="text-xs text-muted-foreground">Misal top up / beda bank</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-2.5 text-xs font-black text-muted-foreground">
@@ -978,7 +978,7 @@ export default function AccountsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground flex items-center justify-between">
                   <span>Catatan / Keterangan</span>
-                  <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  <span className="text-xs text-muted-foreground">Opsional</span>
                 </label>
                 <input
                   type="text"
@@ -1095,7 +1095,7 @@ export default function AccountsPage() {
                     key={preset}
                     type="button"
                     onClick={() => setLockedName(preset)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
                       lockedName === preset
                         ? "border-accent bg-accent/15 text-foreground"
                         : "border-border bg-background text-muted-foreground hover:text-foreground"
@@ -1146,7 +1146,7 @@ export default function AccountsPage() {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>Tgl Jatuh Tempo</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <input
                     type="number"
@@ -1161,7 +1161,7 @@ export default function AccountsPage() {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>Catatan</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <input
                     type="text"

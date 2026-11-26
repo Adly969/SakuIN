@@ -246,7 +246,7 @@ export default function DebtsPage() {
           <h3 className="text-2xl font-black text-emerald-400 tracking-tight">
             {isLoading ? "Rp . . ." : formatRupiah(totalReceivable)}
           </h3>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Uang kamu yang sedang dipinjam teman dan belum lunas
           </p>
         </div>
@@ -264,7 +264,7 @@ export default function DebtsPage() {
           <h3 className="text-2xl font-black text-expense tracking-tight">
             {isLoading ? "Rp . . ." : formatRupiah(totalPayable)}
           </h3>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Total utang yang harus kamu kembalikan
           </p>
         </div>
@@ -335,7 +335,7 @@ export default function DebtsPage() {
                         <h4 className="text-sm font-black text-foreground truncate">
                           {item.personName}
                         </h4>
-                        <p className="text-[11px] font-semibold text-muted-foreground truncate">
+                        <p className="text-xs font-semibold text-muted-foreground truncate">
                           {isReceivable ? "Teman Ngutang" : "Saya Berutang"}
                           {item.accountName ? ` • ${item.accountName}` : ""}
                         </p>
@@ -343,7 +343,7 @@ export default function DebtsPage() {
                     </div>
 
                     <span
-                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                      className={`text-xs font-extrabold px-2 py-0.5 rounded-full border ${
                         isPaid
                           ? "bg-accent/20 text-accent border-accent/40"
                           : "bg-muted text-muted-foreground border-border"
@@ -356,7 +356,7 @@ export default function DebtsPage() {
                   {/* Nominal & Progress */}
                   <div className="space-y-1.5 pt-1">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                      <span className="text-[11px] font-bold text-muted-foreground uppercase">
                         {isPaid ? "Total Lunas" : "Sisa Belum Bayar"}
                       </span>
                       <span className="text-base font-black text-foreground">
@@ -374,7 +374,7 @@ export default function DebtsPage() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold">
                       <span>Total: {formatRupiah(item.amount)}</span>
                       <span>Terbayar: {formatRupiah(item.paidAmount)} ({progress}%)</span>
                     </div>
@@ -382,7 +382,7 @@ export default function DebtsPage() {
 
                   {/* Catatan & Jatuh Tempo */}
                   {(item.note || item.dueDate) && (
-                    <div className="text-[11px] text-muted-foreground space-y-1 pt-1">
+                    <div className="text-xs text-muted-foreground space-y-1 pt-1">
                       {item.note && (
                         <p className="bg-background p-2 rounded-lg border border-border/60">
                           {item.note}
@@ -421,17 +421,17 @@ export default function DebtsPage() {
                               <span>Jatuh tempo: {item.dueDate}</span>
                             </div>
                             {isOverdue && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
                                 Terlewat
                               </span>
                             )}
                             {isToday && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-expense/15 text-expense font-black">
                                 Hari Ini!
                               </span>
                             )}
                             {isTomorrow && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#FFB04A]/20 text-[#FFB04A] font-black">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-[#FFB04A]/20 text-[#FFB04A] font-black">
                                 Besok
                               </span>
                             )}
@@ -564,7 +564,7 @@ export default function DebtsPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>Sumber / Rekening Masuk</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <select
                     value={newAccountId}
@@ -585,7 +585,7 @@ export default function DebtsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground flex items-center justify-between">
                   <span>Tanggal Janji Bayar / Jatuh Tempo</span>
-                  <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  <span className="text-xs text-muted-foreground">Opsional</span>
                 </label>
                 <input
                   type="date"
@@ -599,7 +599,7 @@ export default function DebtsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground flex items-center justify-between">
                   <span>Catatan</span>
-                  <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  <span className="text-xs text-muted-foreground">Opsional</span>
                 </label>
                 <input
                   type="text"
@@ -662,7 +662,7 @@ export default function DebtsPage() {
                   <button
                     type="button"
                     onClick={() => setPayAmount(selectedDebt.remainingAmount.toString())}
-                    className="text-[11px] font-bold text-accent hover:underline"
+                    className="text-xs font-bold text-accent hover:underline"
                   >
                     Bayar Lunas Semua
                   </button>
@@ -690,7 +690,7 @@ export default function DebtsPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-foreground flex items-center justify-between">
                     <span>{selectedDebt.type === "receivable" ? "Masuk ke Rekening" : "Dibayar dari Rekening"}</span>
-                    <span className="text-[10px] text-muted-foreground">Opsional</span>
+                    <span className="text-xs text-muted-foreground">Opsional</span>
                   </label>
                   <select
                     value={payAccountId}
@@ -710,7 +710,7 @@ export default function DebtsPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground flex items-center justify-between">
                   <span>Catatan Cicilan</span>
-                  <span className="text-[10px] text-muted-foreground">Opsional</span>
+                  <span className="text-xs text-muted-foreground">Opsional</span>
                 </label>
                 <input
                   type="text"
