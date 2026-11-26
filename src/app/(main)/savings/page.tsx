@@ -6,7 +6,6 @@ import {
   Plus,
   ArrowDownLeft,
   ArrowUpRight,
-  PiggyBank,
   Target,
   X,
   Calendar,
@@ -14,10 +13,10 @@ import {
   CheckCircle2,
   Trash2,
   Edit3,
-  TrendingUp,
-  Coins,
+  Clock,
   Check,
   ChevronRight,
+  ChevronDown,
   AlertCircle,
   Landmark,
   Smartphone,
@@ -112,6 +111,7 @@ export default function SavingsPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [autoCarryoverGoalId, setAutoCarryoverGoalId] = useState<string>("");
   const [isSavingCarryoverPref, setIsSavingCarryoverPref] = useState(false);
+  const [isCarryoverExpanded, setIsCarryoverExpanded] = useState(false);
 
   // Toast Motivasi Tabungan (PRD M7)
   const [showToast, setShowToast] = useState(false);
@@ -584,13 +584,16 @@ export default function SavingsPage() {
         )
       : 0;
 
+  const selectedCarryoverLabel =
+    goals.find((g) => g.id === autoCarryoverGoalId)?.name || "Tanya setiap kali";
+
   return (
-    <div className="space-y-5 max-w-xl mx-auto pb-2">
+    <div className="space-y-4 max-w-xl mx-auto pb-[calc(72px+env(safe-area-inset-bottom,16px)+16px)] md:pb-8">
       {/* Header Halaman Tabungan */}
-      <div className="flex items-center justify-between px-1">
-        <div>
+      <div className="flex items-center justify-between gap-3 px-0.5">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-            Target Tabungan
+            Tabungan
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             Kelola celengan virtual dan capai impianmu
@@ -600,10 +603,11 @@ export default function SavingsPage() {
         <button
           type="button"
           onClick={openCreateGoalModal}
-          className="inline-flex items-center gap-1.5 bg-accent hover:brightness-110 text-[#1F1F1F] font-black text-xs px-4 py-2 rounded-full shadow-md transition-all hover:scale-105 active:scale-95"
+          aria-label="Buat target tabungan baru"
+          className="inline-flex items-center justify-center gap-1.5 bg-accent hover:brightness-105 text-[#1F1F1F] font-black text-xs px-3.5 min-h-[44px] rounded-full shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0"
         >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Target Baru</span>
+          <Plus className="w-4 h-4 stroke-[3] shrink-0" />
+          <span>Target</span>
         </button>
       </div>
 
@@ -611,12 +615,12 @@ export default function SavingsPage() {
       <AnimatePresence>
         {showToast && (
           <motion.div
-            initial={{ opacity: 0, y: -15 }}
+            initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="p-3.5 rounded-xl bg-card border border-accent/40 shadow-xl space-y-1"
+            exit={{ opacity: 0, y: -12 }}
+            className="p-3.5 rounded-2xl bg-card border border-[var(--accent-border)]/40 shadow-lg space-y-1"
           >
-            <div className="flex items-center gap-2 text-accent font-bold text-xs">
+            <div className="flex items-center gap-2 text-[color:var(--accent-text)] font-bold text-xs">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{toastMessage}</span>
             </div>
@@ -629,250 +633,299 @@ export default function SavingsPage() {
         )}
       </AnimatePresence>
 
-      {/* 1. Ringkasan Tabungan Card (PRD S3) */}
-      <section className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <PiggyBank className="w-5 h-5 text-accent" />
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
-                Tabungan
-              </span>
+      {isLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-label="Memuat data tabungan">
+          {/* Skeleton Kartu Ringkasan */}
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5 animate-pulse">
+            <div className="space-y-1.5">
+              <div className="h-3.5 w-24 rounded bg-muted" />
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="h-8 w-36 rounded-lg bg-muted" />
+                <div className="h-3.5 w-28 rounded bg-muted" />
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground font-medium">
-              Total Dana Terkumpul
-            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="h-11 rounded-full bg-muted" />
+              <div className="h-11 rounded-full bg-muted" />
+            </div>
           </div>
 
-          <div className="text-right">
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
-              {isLoading ? "..." : formatRupiah(totalSaved)}
+          {/* Skeleton Judul & 1 Kartu Target */}
+          <div className="space-y-3">
+            <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3 animate-pulse">
+              <div className="flex items-center justify-between gap-2">
+                <div className="h-5 w-40 rounded bg-muted" />
+                <div className="h-5 w-10 rounded bg-muted" />
+              </div>
+              <div className="h-3 w-full rounded-full bg-muted" />
+              <div className="h-3.5 w-44 rounded bg-muted" />
+              <div className="h-3.5 w-36 rounded bg-muted" />
             </div>
-            <span className="text-xs font-semibold text-muted-foreground">
-              dari {goals.length} Target Impian
-            </span>
           </div>
         </div>
-
-        {/* Action Buttons: Setor & Tarik Langsung */}
-        <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-border/60">
-          <button
-            type="button"
-            disabled={goals.length === 0}
-            onClick={() => openDepositModal()}
-            className="py-2.5 px-3 bg-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] text-xs font-black rounded-full transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
-          >
-            <ArrowDownLeft className="w-4 h-4 stroke-[3]" />
-            <span>+ Setor Tabungan</span>
-          </button>
-          <button
-            type="button"
-            disabled={goals.length === 0 || totalSaved <= 0}
-            onClick={() => openWithdrawModal()}
-            className="py-2.5 px-3 bg-background hover:bg-muted border border-border disabled:opacity-40 disabled:cursor-not-allowed text-foreground text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 active:scale-95"
-          >
-            <ArrowUpRight className="w-4 h-4 text-expense stroke-[2.5]" />
-            <span>- Tarik Dana</span>
-          </button>
-        </div>
-      </section>
-
-      {/* 1.5 Pengaturan Target Default Sisa Hemat (Carryover - PRD S9) */}
-      {goals.length > 0 && (
-        <section className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
-              <span className="text-xs font-extrabold text-foreground">
-                Target Default Sisa Hemat
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Sisa jatah harian yang tidak terpakai ditawarkan masuk ke target ini.
-            </p>
-          </div>
-          <select
-            value={autoCarryoverGoalId}
-            disabled={isSavingCarryoverPref}
-            onChange={(e) => handleChangeCarryoverGoal(e.target.value)}
-            className="sm:w-52 px-3 py-2 min-h-[44px] bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer disabled:opacity-60"
-          >
-            <option value="">Pilih otomatis / tanya tiap kali</option>
-            {goals.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </section>
-      )}
-
-      {/* 2. Daftar Target Impian (PRD S1, S3, S4, S6) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-extrabold text-muted-foreground uppercase tracking-wider">
-            Daftar Impian ({goals.length})
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Rata-rata progres: <strong className="text-accent">{avgProgress}%</strong>
-          </span>
-        </div>
-
-        {isLoading ? (
-          <div className="p-8 text-center bg-card rounded-xl border border-border">
-            <p className="text-xs text-muted-foreground animate-pulse">Memuat data tabungan...</p>
-          </div>
-        ) : goals.length === 0 ? (
-          <div className="p-8 text-center bg-card rounded-xl border border-border space-y-3">
-            <Target className="w-10 h-10 text-accent mx-auto opacity-70" />
+      ) : (
+        <>
+          {/* 1. Kartu Ringkasan Total Tabungan */}
+          <section className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">
             <div>
-              <p className="text-sm font-bold text-foreground">Belum ada target tabungan</p>
-              <p className="text-xs text-muted-foreground max-w-xs mx-auto mt-0.5">
-                Mulai buat target impianmu seperti Dana Darurat, Laptop Baru, atau Pulang Kampung.
+              <p className="text-xs font-semibold text-muted-foreground">
+                Total tabungan
               </p>
+              <div className="flex items-baseline justify-between gap-2 flex-wrap mt-0.5">
+                <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground tabular-nums">
+                  {formatRupiah(totalSaved)}
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">
+                  dari {goals.length} target impian
+                </span>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={openCreateGoalModal}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-accent text-[#1F1F1F] font-black text-xs rounded-full shadow-md hover:brightness-110 transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Buat Target Sekarang</span>
-            </button>
-          </div>
-        ) : (
-          goals.map((goal) => {
-            const isCompleted = goal.status === "completed" || goal.percentage >= 100;
 
-            return (
-              <div
-                key={goal.id}
-                className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-3.5 hover:border-accent/40 transition-colors"
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                disabled={goals.length === 0}
+                onClick={() => openDepositModal()}
+                aria-label="Setor tabungan"
+                className="min-h-[44px] px-4 py-2.5 bg-accent hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed text-[#1F1F1F] text-xs font-black rounded-full transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
               >
-                {/* Header Kartu Target */}
-                <div className="flex items-start justify-between gap-3">
-                  <div
-                    className="cursor-pointer space-y-0.5 flex-1 min-w-0"
-                    onClick={() => setDetailGoal(goal)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-extrabold text-foreground truncate hover:text-accent transition-colors">
-                        {goal.name}
-                      </h2>
-                      {isCompleted ? (
-                        <span className="text-xs font-black px-2 py-0.5 rounded-full bg-accent/20 text-accent shrink-0">
-                          Tercapai
-                        </span>
-                      ) : (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
-                          Aktif
-                        </span>
-                      )}
-                    </div>
-                    {(() => {
-                      const dl = calculateTargetDeadlineCountdown(goal.rawTargetDate);
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground">
-                          <span>Tenggat: {dl.hasDeadline ? dl.formattedDate : goal.targetDate}</span>
-                          {dl.hasDeadline && dl.shortLabel && (
-                            <span
-                              className={`px-1.5 py-0.5 rounded font-bold text-xs ${
-                                isCompleted
-                                  ? "bg-muted text-muted-foreground"
-                                  : dl.urgency === "overdue"
-                                  ? "bg-expense/15 text-[var(--expense-text)]"
-                                  : dl.urgency === "today" || dl.urgency === "soon"
-                                  ? "bg-amber-500/15 text-[var(--warning-text)]"
-                                  : "bg-accent/15 text-[var(--accent-text)]"
-                              }`}
-                            >
-                              {dl.shortLabel}
-                              {!isCompleted && dl.diffDays === 0
-                                ? " (Hari ini)"
-                                : !isCompleted && dl.diffDays !== null && dl.diffDays < 0
-                                ? " (Terlewat)"
-                                : ""}
+                <ArrowDownLeft className="w-4 h-4 stroke-[2.5] shrink-0" />
+                <span>Setor</span>
+              </button>
+              <button
+                type="button"
+                disabled={goals.length === 0 || totalSaved <= 0}
+                onClick={() => openWithdrawModal()}
+                aria-label="Tarik dana tabungan"
+                className="min-h-[44px] px-4 py-2.5 bg-background hover:bg-muted border border-border disabled:opacity-40 disabled:cursor-not-allowed text-foreground text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <ArrowUpRight className="w-4 h-4 text-foreground/80 stroke-[2.5] shrink-0" />
+                <span>Tarik</span>
+              </button>
+            </div>
+          </section>
+
+          {/* 2. Daftar Target Impian (langsung tampil setelah ringkasan) */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <h2 className="text-xs font-extrabold text-foreground uppercase tracking-wider">
+                Target impian ({goals.length})
+              </h2>
+              {goals.length >= 2 && (
+                <span className="text-xs text-muted-foreground">
+                  Rata-rata progres:{" "}
+                  <strong className="text-[color:var(--accent-text)] font-extrabold">
+                    {avgProgress}%
+                  </strong>
+                </span>
+              )}
+            </div>
+
+            {goals.length === 0 ? (
+              <div className="p-6 text-center bg-card rounded-2xl border border-border space-y-3 shadow-sm">
+                <div className="w-11 h-11 rounded-2xl bg-accent/15 text-[color:var(--accent-text)] flex items-center justify-center mx-auto">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-foreground">
+                    Belum ada target tabungan
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                    Mulai sisihkan untuk impianmu seperti dana darurat, laptop baru, atau liburan.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCreateGoalModal}
+                  className="inline-flex items-center justify-center gap-1.5 px-5 min-h-[44px] bg-accent text-[#1F1F1F] font-black text-xs rounded-full shadow-sm hover:brightness-105 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>Buat target pertama</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {goals.map((goal) => {
+                  const isCompleted = goal.status === "completed" || goal.percentage >= 100;
+                  const dl = calculateTargetDeadlineCountdown(goal.rawTargetDate);
+                  const barWidth =
+                    goal.percentage <= 0 ? 0 : Math.min(100, Math.max(goal.percentage, 8));
+
+                  return (
+                    <div
+                      key={goal.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setDetailGoal(goal)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setDetailGoal(goal);
+                        }
+                      }}
+                      aria-label={`Lihat detail target ${goal.name}`}
+                      className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-2.5 hover:border-[var(--accent-border)]/60 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.995]"
+                    >
+                      {/* Baris 1: Nama target (boleh 2 baris), chip status (ikon+teks), persen di kanan */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                          <h3 className="text-base font-extrabold text-foreground leading-snug line-clamp-2 break-words">
+                            {goal.name}
+                          </h3>
+                          {isCompleted ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-accent/20 text-[color:var(--accent-text)] border border-[var(--accent-border)]/30 shrink-0">
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>Tercapai</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-muted text-foreground border border-border shrink-0">
+                              <Target className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                              <span>Aktif</span>
                             </span>
                           )}
                         </div>
-                      );
-                    })()}
-                  </div>
 
-                  <div className="text-right shrink-0">
-                    <span className="text-sm font-black text-foreground">
-                      {goal.percentage}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setDetailGoal(goal)}
-                      className="text-xs text-muted-foreground hover:text-accent flex items-center justify-end gap-0.5 mt-0.5"
-                    >
-                      <span>Detail</span>
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
+                        <span className="text-sm font-black text-foreground tabular-nums shrink-0 pt-0.5">
+                          {goal.percentage}%
+                        </span>
+                      </div>
 
-                {/* Progress Bar & Nominal */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-accent font-black">
-                      {formatRupiah(goal.collected)}
-                    </span>
-                    <span className="text-muted-foreground">
-                      Target: {formatRupiah(goal.target)}
-                    </span>
-                  </div>
-                  <div className="w-full h-2.5 bg-background rounded-full overflow-hidden border border-border/50">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        isCompleted ? "bg-accent" : "bg-accent/80"
-                      }`}
-                      style={{ width: `${goal.percentage}%` }}
-                    />
-                  </div>
-                </div>
+                      {/* Bar Progres Tebal (10-12px) */}
+                      <div
+                        className="w-full h-3 bg-muted rounded-full overflow-hidden border border-border/80"
+                        role="progressbar"
+                        aria-valuenow={goal.percentage}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`Progres ${goal.name} ${goal.percentage} persen`}
+                      >
+                        <div
+                          className="h-full rounded-full transition-all duration-500 bg-[var(--accent-border)] dark:bg-accent"
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
 
-                {/* Saran Setoran Otomatis (PRD S4) */}
-                {!isCompleted && goal.weeklySuggestion > 0 && (
-                  <div className="p-2.5 rounded-lg bg-background border border-border flex items-center gap-2 text-xs">
-                    <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
-                    <span className="text-muted-foreground">
-                      Saran: Sisihkan{" "}
-                      <strong className="text-foreground">
-                        {formatRupiah(goal.weeklySuggestion)}/minggu
-                      </strong>{" "}
-                      agar selesai tepat waktu.
-                    </span>
-                  </div>
-                )}
+                      {/* Baris Angka: RpX dari RpY */}
+                      <p className="text-xs text-muted-foreground">
+                        <strong className="font-black text-foreground">
+                          {formatRupiah(goal.collected)}
+                        </strong>{" "}
+                        dari{" "}
+                        <span className="font-semibold text-foreground/90">
+                          {formatRupiah(goal.target)}
+                        </span>
+                      </p>
 
-                {/* Tombol Aksi Cepat: Setor & Tarik */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => openDepositModal(goal)}
-                    className="py-2 px-3 bg-accent/15 hover:bg-accent/25 text-foreground text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                  >
-                    <ArrowDownLeft className="w-3.5 h-3.5 text-accent stroke-[2.5]" />
-                    <span>Setor</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={goal.collected <= 0}
-                    onClick={() => openWithdrawModal(goal)}
-                    className="py-2 px-3 bg-background hover:bg-muted border border-border disabled:opacity-40 text-foreground text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                  >
-                    <ArrowUpRight className="w-3.5 h-3.5 text-expense stroke-[2.5]" />
-                    <span>Tarik</span>
-                  </button>
-                </div>
+                      {/* Baris Tenggat + Chevron */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground min-w-0">
+                          <span>{dl.hasDeadline ? dl.formattedDate : goal.targetDate}</span>
+                          {dl.hasDeadline && dl.shortLabel && (
+                            <>
+                              <span aria-hidden="true">-</span>
+                              <span
+                                className={`inline-flex items-center gap-1 font-bold ${
+                                  isCompleted
+                                    ? "text-muted-foreground"
+                                    : dl.urgency === "overdue"
+                                    ? "text-[color:var(--expense-text)]"
+                                    : dl.urgency === "today" || dl.urgency === "soon"
+                                    ? "text-[color:var(--warning-text)]"
+                                    : "text-foreground/80"
+                                }`}
+                              >
+                                {!isCompleted &&
+                                  (dl.urgency === "overdue" ? (
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                  ) : dl.urgency === "today" || dl.urgency === "soon" ? (
+                                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                                  ) : null)}
+                                <span>
+                                  {dl.shortLabel}
+                                  {!isCompleted && dl.diffDays === 0
+                                    ? " (Hari ini)"
+                                    : !isCompleted && dl.diffDays !== null && dl.diffDays < 0
+                                    ? " (Terlambat)"
+                                    : !isCompleted && dl.urgency === "soon"
+                                    ? " (Segera)"
+                                    : ""}
+                                </span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                      </div>
+
+                      {/* Saran Setoran Otomatis */}
+                      {!isCompleted && goal.weeklySuggestion > 0 && (
+                        <div className="p-2.5 rounded-xl bg-muted/60 border border-border/80 flex items-start gap-2 text-xs text-muted-foreground">
+                          <Sparkles className="w-3.5 h-3.5 text-[color:var(--accent-text)] shrink-0 mt-0.5" />
+                          <span>
+                            Sisihkan{" "}
+                            <strong className="text-foreground font-extrabold">
+                              {formatRupiah(goal.weeklySuggestion)}/minggu
+                            </strong>{" "}
+                            agar tepat waktu
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
-        )}
-      </div>
+            )}
+          </section>
+
+          {/* 3. Pengaturan Sisa Hemat (Dilipat di paling bawah) */}
+          {goals.length > 0 && (
+            <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsCarryoverExpanded((prev) => !prev)}
+                aria-expanded={isCarryoverExpanded}
+                className="w-full min-h-[44px] px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span className="text-xs font-bold text-foreground">
+                  Sisa jatah harian masuk ke mana?
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground shrink-0">
+                  <span className="max-w-[120px] truncate">{selectedCarryoverLabel}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 shrink-0 transition-transform duration-200 ${
+                      isCarryoverExpanded ? "rotate-180" : ""
+                    }`}
+                  />
+                </span>
+              </button>
+
+              {isCarryoverExpanded && (
+                <div className="px-4 pb-4 pt-1 border-t border-border/60 space-y-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Sisa jatah harian yang tidak terpakai ditawarkan masuk ke target ini.
+                  </p>
+                  <select
+                    value={autoCarryoverGoalId}
+                    disabled={isSavingCarryoverPref}
+                    aria-label="Pilih target untuk sisa jatah harian"
+                    onChange={(e) => handleChangeCarryoverGoal(e.target.value)}
+                    className="w-full px-3 py-2 min-h-[44px] bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="">Pilih otomatis / tanya setiap kali</option>
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </section>
+          )}
+        </>
+      )}
 
       {/* 3. Modal Setor Tabungan (Deposit) (PRD S2, S5) */}
       <AnimatePresence>
@@ -967,7 +1020,7 @@ export default function SavingsPage() {
                         key={q.label}
                         type="button"
                         onClick={() => setActionAmount((prev) => Math.min(999999999, prev + q.value))}
-                        className="px-2 py-0.5 rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-accent hover:text-accent active:scale-95 transition-all"
+                        className="px-2.5 py-1.5 min-h-[44px] rounded-full text-xs font-bold bg-card border border-border text-foreground hover:border-[var(--accent-border)] hover:text-[color:var(--accent-text)] active:scale-95 transition-all"
                       >
                         {q.label}
                       </button>
@@ -1284,7 +1337,7 @@ export default function SavingsPage() {
               <div className="bg-background rounded-xl border border-border p-4 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground font-semibold">Dana Terkumpul</span>
-                  <span className="font-black text-accent text-sm">
+                  <span className="font-black text-[color:var(--accent-text)] text-sm">
                     {formatRupiah(detailGoal.collected)}
                   </span>
                 </div>
@@ -1333,8 +1386,8 @@ export default function SavingsPage() {
 
               {/* Saran Setoran (PRD S4) */}
               {detailGoal.weeklySuggestion > 0 && detailGoal.status !== "completed" && (
-                <div className="p-3 rounded-lg bg-accent/10 border border-accent/30 space-y-1 text-xs">
-                  <div className="flex items-center gap-1.5 text-accent font-bold">
+                <div className="p-3 rounded-lg bg-accent/10 border border-[var(--accent-border)]/30 space-y-1 text-xs">
+                  <div className="flex items-center gap-1.5 text-[color:var(--accent-text)] font-bold">
                     <Sparkles className="w-4 h-4" />
                     <span>Saran Alokasi Setoran</span>
                   </div>
@@ -1401,7 +1454,7 @@ export default function SavingsPage() {
 
                         <span
                           className={`font-black ${
-                            entry.type === "deposit" ? "text-accent" : "text-expense"
+                            entry.type === "deposit" ? "text-[color:var(--accent-text)]" : "text-[color:var(--expense-text)]"
                           }`}
                         >
                           {entry.type === "deposit" ? "+" : "-"}
@@ -1449,17 +1502,17 @@ export default function SavingsPage() {
                       setDetailGoal(null);
                       openEditGoalModal(g);
                     }}
-                    className="py-2 bg-background hover:bg-muted border border-border text-foreground text-xs font-semibold rounded-full transition-all flex items-center justify-center gap-1"
+                    className="py-2 min-h-[44px] bg-background hover:bg-muted border border-border text-foreground text-xs font-semibold rounded-full transition-all flex items-center justify-center gap-1"
                   >
-                    <Edit3 className="w-3 h-3 text-muted-foreground" />
+                    <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
                     <span>Ubah Target</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteGoal(detailGoal)}
-                    className="py-2 border border-expense/30 hover:bg-expense/10 text-expense text-xs font-semibold rounded-full transition-all flex items-center justify-center gap-1"
+                    className="py-2 min-h-[44px] border border-expense/40 hover:bg-expense/10 text-[color:var(--expense-text)] text-xs font-semibold rounded-full transition-all flex items-center justify-center gap-1"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     <span>Hapus Target</span>
                   </button>
                 </div>

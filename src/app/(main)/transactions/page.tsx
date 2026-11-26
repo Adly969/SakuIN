@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   getTransactionsAction,
@@ -31,16 +30,16 @@ import {
   Briefcase,
   GraduationCap,
   Calendar,
+  ChevronDown,
   Check,
   Undo2,
   CheckCircle2,
   Trash2,
-  Filter,
+  SlidersHorizontal,
   Download,
   Banknote,
   Landmark,
   AlertCircle,
-  Pencil,
   Bike,
   Cookie,
   Wifi,
@@ -123,14 +122,14 @@ function formatShortDate(dateStr: string) {
 }
 
 function TransactionsContent() {
-  const searchParams = useSearchParams();
-
   // Filter States (selalu WIB Asia/Jakarta)
   const currentMonthStr = getJakartaCalendarParts().monthKey;
   const [filterMonth, setFilterMonth] = useState<string>(currentMonthStr);
   const [filterType, setFilterType] = useState<"all" | "expense" | "income">("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [draftCategory, setDraftCategory] = useState<string>("all");
 
   // Data States
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
@@ -300,6 +299,38 @@ function TransactionsContent() {
       if (t.type === "income") income += t.amount;
     }
     return { expense, income, count: transactionsList.length };
+  }, [transactionsList]);
+
+  // Pengelompokan transaksi berdasarkan tanggal (mempertahankan urutan dari server)
+  const groupedTransactions = useMemo(() => {
+    const todayKey = getJakartaDateString();
+    const { year, monthNumber, day } = getJakartaCalendarParts();
+    const yDate = new Date(Date.UTC(year, monthNumber - 1, day - 1));
+    const yesterdayKey = `${yDate.getUTCFullYear()}-${String(yDate.getUTCMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(yDate.getUTCDate()).padStart(2, "0")}`;
+
+    const groups: { dateKey: string; label: string; items: Transaction[] }[] = [];
+    const indexByDate = new Map<string, number>();
+
+    for (const tx of transactionsList) {
+      const rawKey = tx.date || todayKey;
+      const existingIdx = indexByDate.get(rawKey);
+      if (existingIdx !== undefined) {
+        groups[existingIdx].items.push(tx);
+      } else {
+        const label =
+          rawKey === todayKey || rawKey.includes("Hari ini")
+            ? "Hari ini"
+            : rawKey === yesterdayKey
+            ? "Kemarin"
+            : formatShortDate(rawKey);
+        indexByDate.set(rawKey, groups.length);
+        groups.push({ dateKey: rawKey, label, items: [tx] });
+      }
+    }
+    return groups;
   }, [transactionsList]);
 
   const getCategoriesForType = (t: "expense" | "income") => {
@@ -474,34 +505,34 @@ function TransactionsContent() {
   };
 
   const activeCategories = getCategoriesForType(editType);
+  const selectedMonthLabel =
+    monthOptions.find((m) => m.value === filterMonth)?.label || filterMonth;
+  const activeFilterCount = filterCategory !== "all" ? 1 : 0;
+  const hasAnyActiveFilter =
+    filterCategory !== "all" || filterType !== "all" || searchQuery.trim() !== "";
 
   return (
-    <div className="space-y-5 max-w-xl mx-auto pb-28 md:pb-12">
-      {/* Header */}
-      <div className="flex items-center justify-between px-1">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-            Riwayat Transaksi
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Kelola, filter, dan ubah catatan keuanganmu
-          </p>
-        </div>
+    <div className="space-y-3.5 max-w-xl mx-auto pb-[calc(72px+env(safe-area-inset-bottom,16px)+16px)] md:pb-8">
+      {/* 1. Header Riwayat */}
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+          Riwayat
+        </h1>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <a
             href={`/api/export/transactions?month=${filterMonth}&type=${filterType}`}
             download
-            className="inline-flex items-center gap-1.5 bg-card hover:bg-muted border border-border text-foreground font-bold text-xs px-3.5 py-2.5 min-h-[44px] rounded-full shadow-xs transition-all hover:border-accent/40"
-            title="Unduh berkas CSV"
+            aria-label="Unduh riwayat"
+            title="Unduh riwayat CSV"
+            className="inline-flex items-center justify-center w-11 h-11 min-w-[44px] min-h-[44px] bg-card hover:bg-muted border border-border text-foreground rounded-full shadow-xs transition-colors"
           >
-            <Download className="w-3.5 h-3.5 text-accent" />
-            <span className="hidden sm:inline">Ekspor CSV</span>
+            <Download className="w-4 h-4 text-[color:var(--accent-text)]" />
           </a>
 
           <Link
             href="/record"
-            className="inline-flex items-center gap-1.5 bg-accent hover:brightness-110 text-[#1F1F1F] font-black text-xs px-4 py-2.5 min-h-[44px] rounded-full shadow-md transition-all hover:scale-105 active:scale-95"
+            className="hidden md:inline-flex items-center gap-1.5 bg-accent hover:brightness-105 text-[#1F1F1F] font-black text-xs px-4 min-h-[44px] rounded-full shadow-sm transition-all whitespace-nowrap"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Catat Baru</span>
@@ -509,85 +540,103 @@ function TransactionsContent() {
         </div>
       </div>
 
-      {/* Filter & Search Bar Card */}
-      <div className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-3.5">
-        {/* Month Selector & Category Dropdown */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {/* Month Selector */}
-          <div className="relative">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
-              Periode Bulan
-            </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <select
-                value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="w-full min-h-[44px] pl-9 pr-8 py-2 bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent appearance-none cursor-pointer"
+      {/* 2. Pemilih Periode Ringkas (1 baris, nama periode di tengah, 44px) */}
+      <div className="relative bg-card border border-border rounded-xl min-h-[44px] px-3.5 flex items-center justify-between gap-2 shadow-xs focus-within:ring-2 focus-within:ring-accent">
+        <Calendar className="w-4 h-4 text-muted-foreground shrink-0 pointer-events-none" />
+        <span className="text-xs font-extrabold text-foreground text-center truncate pointer-events-none flex-1">
+          {selectedMonthLabel}
+        </span>
+        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 pointer-events-none" />
+        <select
+          value={filterMonth}
+          onChange={(e) => setFilterMonth(e.target.value)}
+          aria-label="Pilih periode"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        >
+          {monthOptions.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 3. Pencarian, Tombol Filter, Segmented Jenis, & Chip Aktif */}
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari transaksi..."
+              aria-label="Cari transaksi"
+              className="w-full min-h-[44px] pl-9 pr-10 py-2 rounded-xl bg-card border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Hapus pencarian"
+                className="absolute right-0.5 top-1/2 -translate-y-1/2 w-10 h-10 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded-lg"
               >
-                {monthOptions.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          {/* Category Filter */}
-          <div className="relative">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
-              Kategori
-            </label>
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full min-h-[44px] pl-9 pr-8 py-2 bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent appearance-none cursor-pointer"
-              >
-                <option value="all">Semua Kategori</option>
-                {categoriesList.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+          {/* Mobile: Tombol Filter buka bottom sheet */}
+          <button
+            type="button"
+            onClick={() => {
+              setDraftCategory(filterCategory);
+              setIsFilterSheetOpen(true);
+            }}
+            aria-label="Buka filter kategori"
+            className={`md:hidden inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[44px] rounded-xl border text-xs font-bold transition-colors shrink-0 whitespace-nowrap ${
+              activeFilterCount > 0
+                ? "bg-accent/15 border-[var(--accent-border)] text-[color:var(--accent-text)]"
+                : "bg-card border-border text-foreground hover:bg-muted"
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span>{activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}</span>
+          </button>
 
-        {/* Live Search Input */}
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari transaksi, toko, warteg, atau catatan..."
-            className="w-full min-h-[44px] pl-10 pr-11 py-2 rounded-lg bg-background border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              aria-label="Hapus pencarian"
-              className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-muted-foreground hover:text-foreground text-xs rounded-lg"
+          {/* Desktop/Tablet (>= 768px): Select kategori sebaris */}
+          <div className="hidden md:block shrink-0 w-44">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              aria-label="Filter kategori"
+              className="w-full min-h-[44px] px-3 py-2 bg-card border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer"
             >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+              <option value="all">Semua Kategori</option>
+              {categoriesList.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Type Filter Pills */}
-        <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+        {/* Segmented Control: Semua | Keluar | Masuk (1 baris di 360px) */}
+        <div
+          role="group"
+          aria-label="Filter jenis transaksi"
+          className="grid grid-cols-3 p-1 bg-card border border-border rounded-xl gap-1"
+        >
           <button
             type="button"
             onClick={() => setFilterType("all")}
-            className={`px-4 py-2 min-h-[44px] rounded-full text-xs font-bold transition-all flex items-center justify-center ${
+            aria-pressed={filterType === "all"}
+            aria-label="Semua jenis transaksi"
+            className={`min-h-[44px] px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center whitespace-nowrap ${
               filterType === "all"
-                ? "bg-foreground text-background shadow-sm"
-                : "bg-background text-muted-foreground hover:text-foreground border border-border"
+                ? "bg-foreground text-background shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Semua
@@ -595,84 +644,140 @@ function TransactionsContent() {
           <button
             type="button"
             onClick={() => setFilterType("expense")}
-            className={`px-4 py-2 min-h-[44px] rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            aria-pressed={filterType === "expense"}
+            aria-label="Filter pengeluaran"
+            className={`min-h-[44px] px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
               filterType === "expense"
-                ? "bg-expense text-white shadow-sm"
-                : "bg-background text-muted-foreground hover:text-foreground border border-border"
+                ? "bg-expense text-white shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Pengeluaran</span>
+            <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+            <span>Keluar</span>
           </button>
           <button
             type="button"
             onClick={() => setFilterType("income")}
-            className={`px-4 py-2 min-h-[44px] rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            aria-pressed={filterType === "income"}
+            aria-label="Filter pemasukan"
+            className={`min-h-[44px] px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
               filterType === "income"
-                ? "bg-accent text-[#1F1F1F] shadow-sm"
-                : "bg-background text-muted-foreground hover:text-foreground border border-border"
+                ? "bg-accent text-[#1F1F1F] shadow-xs font-black"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <ArrowDownLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Pemasukan</span>
+            <ArrowDownLeft className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+            <span>Masuk</span>
           </button>
         </div>
+
+        {/* Chip Filter Aktif (hanya muncul jika kategori/cari aktif) */}
+        {(filterCategory !== "all" || searchQuery.trim() !== "") && (
+          <div className="flex items-center justify-between gap-2 flex-wrap px-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {filterCategory !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory("all")}
+                  aria-label={`Hapus filter kategori ${filterCategory}`}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-full bg-card border border-border text-xs font-semibold text-foreground hover:border-[var(--accent-border)]"
+                >
+                  <span>Kategori: {filterCategory}</span>
+                  <X className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
+              {searchQuery.trim() !== "" && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Hapus kata kunci pencarian"
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-full bg-card border border-border text-xs font-semibold text-foreground hover:border-[var(--accent-border)]"
+                >
+                  <span className="max-w-[160px] truncate">Cari: {searchQuery.trim()}</span>
+                  <X className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setFilterCategory("all");
+                setFilterType("all");
+                setSearchQuery("");
+              }}
+              className="text-xs font-bold text-[color:var(--accent-text)] hover:underline px-2 min-h-[36px]"
+            >
+              Reset
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Ringkasan Filter Periode */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl p-3.5 shadow-sm">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Pengeluaran Periode Ini
+      {/* 4. Strip Ringkasan Periode (1 baris ringkas, teks +/- & ikon + warna kontras) */}
+      <div className="bg-card border border-border rounded-xl px-3.5 py-2.5 shadow-xs flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-semibold text-muted-foreground">Keluar</span>
+          <span className="inline-flex items-center gap-0.5 text-sm font-black text-[color:var(--expense-text)] tabular-nums">
+            <ArrowUpRight className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>-{formatRupiah(summary.expense)}</span>
           </span>
-          <p className="text-base sm:text-lg font-black text-expense mt-0.5">
-            {formatRupiah(summary.expense)}
-          </p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-3.5 shadow-sm">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Pemasukan Periode Ini
+
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-semibold text-muted-foreground">Masuk</span>
+          <span className="inline-flex items-center gap-0.5 text-sm font-black text-[color:var(--accent-text)] tabular-nums">
+            <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>+{formatRupiah(summary.income)}</span>
           </span>
-          <p className="text-base sm:text-lg font-black text-accent mt-0.5">
-            {formatRupiah(summary.income)}
-          </p>
         </div>
       </div>
 
-      {/* Transactions Log Activity List */}
+      {/* 5. Daftar Transaksi */}
       <section className="space-y-2.5">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-extrabold text-muted-foreground uppercase tracking-wider">
-            Log Activity ({summary.count})
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Ketuk kartu untuk edit atau ikon sampah untuk hapus
-          </span>
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <h2 className="text-xs font-extrabold text-foreground uppercase tracking-wider">
+            Transaksi ({summary.count})
+          </h2>
+          <span className="text-xs text-muted-foreground">Ketuk untuk edit</span>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center bg-card rounded-2xl border border-border">
-            <p className="text-xs text-muted-foreground animate-pulse">Memuat riwayat transaksi...</p>
+          <div
+            className="bg-card border border-border rounded-2xl divide-y divide-border/70 animate-pulse"
+            aria-busy="true"
+            aria-label="Memuat daftar transaksi"
+          >
+            {[0, 1, 2, 3].map((idx) => (
+              <div key={idx} className="px-3.5 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-muted shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-3.5 w-32 rounded bg-muted" />
+                    <div className="h-3 w-24 rounded bg-muted" />
+                  </div>
+                </div>
+                <div className="h-4 w-20 rounded bg-muted shrink-0" />
+              </div>
+            ))}
           </div>
         ) : transactionsList.length === 0 ? (
-          <div className="p-8 text-center bg-card rounded-2xl border border-border space-y-3">
-            <div className="w-11 h-11 rounded-2xl bg-accent/15 text-accent flex items-center justify-center mx-auto">
+          <div className="p-6 text-center bg-card rounded-2xl border border-border space-y-3">
+            <div className="w-11 h-11 rounded-2xl bg-accent/15 text-[color:var(--accent-text)] flex items-center justify-center mx-auto">
               <Wallet className="w-5 h-5" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-bold text-foreground">
-                {searchQuery || filterCategory !== "all" || filterType !== "all"
-                  ? "Tidak ada transaksi yang cocok"
-                  : "Belum ada catatan transaksi"}
+                Belum ada transaksi di sini
               </p>
               <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                {searchQuery || filterCategory !== "all" || filterType !== "all"
-                  ? "Coba ubah filter bulan, kategori, atau kata kunci pencarianmu."
-                  : "Mulai catat pengeluaran atau pemasukan pertamamu supaya riwayat langsung tersusun rapi."}
+                {hasAnyActiveFilter
+                  ? "Coba ubah periode, kategori, atau kata kunci pencarianmu."
+                  : "Catat pengeluaran atau pemasukan pertamamu supaya riwayat langsung tersusun rapi."}
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
-              {(searchQuery || filterCategory !== "all" || filterType !== "all") && (
+              {hasAnyActiveFilter && (
                 <button
                   type="button"
                   onClick={() => {
@@ -680,107 +785,217 @@ function TransactionsContent() {
                     setFilterCategory("all");
                     setFilterType("all");
                   }}
-                  className="inline-flex items-center justify-center px-4 py-2.5 min-h-[44px] rounded-full border border-border bg-background text-xs font-bold text-foreground hover:bg-muted transition-colors"
+                  className="inline-flex items-center justify-center px-4 min-h-[44px] rounded-full border border-border bg-background text-xs font-bold text-foreground hover:bg-muted transition-colors"
                 >
-                  Reset Filter
+                  Reset filter
                 </button>
               )}
               <Link
                 href="/record"
-                className="inline-flex items-center justify-center gap-1.5 bg-accent hover:brightness-110 text-[#1F1F1F] font-black text-xs px-5 py-2.5 min-h-[44px] rounded-full shadow-sm transition-all"
+                className="inline-flex items-center justify-center gap-1.5 bg-accent hover:brightness-105 text-[#1F1F1F] font-black text-xs px-5 min-h-[44px] rounded-full shadow-sm transition-all"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Catat Transaksi Pertama</span>
+                <span>Catat transaksi</span>
               </Link>
             </div>
           </div>
         ) : (
-          transactionsList.map((item) => {
-            const Icon = getCategoryIcon(item.category);
-            return (
-              <div
-                key={item.id}
-                className="bg-card border border-border rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2 hover:border-accent/40 transition-all shadow-xs group"
-              >
-                {/* Main Tap Area -> Edit Modal */}
-                <button
-                  type="button"
-                  onClick={() => openEditModal(item)}
-                  className="flex-1 min-w-0 flex items-center gap-3 text-left focus:outline-none"
-                >
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
-                      item.type === "expense"
-                        ? "bg-expense/10 border-expense/20 text-expense"
-                        : "bg-accent/15 border-accent/25 text-accent"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 stroke-[2]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-bold text-foreground truncate group-hover:text-accent transition-colors">
-                        {item.title}
-                      </h3>
-                      <span
-                        className={`text-sm font-black shrink-0 ${
-                          item.type === "expense" ? "text-expense" : "text-accent"
-                        }`}
+          <div className="space-y-3">
+            {groupedTransactions.map((group) => (
+              <div key={group.dateKey} className="space-y-1.5">
+                {/* Header Tanggal */}
+                <div className="px-0.5 pt-0.5">
+                  <span className="text-xs font-extrabold text-muted-foreground">
+                    {group.label}
+                  </span>
+                </div>
+
+                {/* Baris Transaksi Kompak */}
+                <div className="bg-card border border-border rounded-2xl divide-y divide-border/70">
+                  {group.items.map((item) => {
+                    const Icon = getCategoryIcon(item.category);
+                    const sublineText = item.accountName
+                      ? `${item.category} - ${item.accountName}`
+                      : item.category;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="min-h-[56px] pl-3 pr-1 py-2 flex items-center gap-1.5"
                       >
-                        {item.type === "expense" ? "-" : "+"}
-                        {formatRupiah(item.amount)}
-                      </span>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(item)}
+                          className="flex-1 min-w-0 min-h-[44px] flex items-center gap-3 text-left rounded-xl px-1 py-0.5 hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                              item.type === "expense"
+                                ? "bg-expense/10 border-expense/25 text-[color:var(--expense-text)]"
+                                : "bg-accent/15 border-[var(--accent-border)]/30 text-[color:var(--accent-text)]"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 stroke-[2.2]" />
+                          </div>
 
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      {item.accountName && (
-                        <span className="text-xs font-bold text-foreground bg-muted px-1.5 py-0.5 rounded-md border border-border/70 shrink-0">
-                          {item.accountName}
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground font-medium truncate">
-                        {item.category}
-                      </span>
-                      <span className="text-xs text-muted-foreground/60">•</span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatShortDate(item.date)}
-                      </span>
-                    </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-sm font-bold text-foreground truncate">
+                                {item.title}
+                              </span>
+                              <span
+                                className={`text-sm font-black shrink-0 tabular-nums ${
+                                  item.type === "expense"
+                                    ? "text-[color:var(--expense-text)]"
+                                    : "text-[color:var(--accent-text)]"
+                                }`}
+                              >
+                                {item.type === "expense" ? "-" : "+"}
+                                {formatRupiah(item.amount)}
+                              </span>
+                            </div>
 
-                    {item.note && item.note !== item.title && (
-                      <p className="text-xs text-muted-foreground/80 italic mt-0.5 truncate">
-                        &ldquo;{item.note}&rdquo;
-                      </p>
-                    )}
-                  </div>
-                </button>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug break-words">
+                              {sublineText}
+                              {item.note && item.note !== item.title ? ` · ${item.note}` : ""}
+                            </p>
+                          </div>
+                        </button>
 
-                {/* Quick Action Buttons: Edit & Delete */}
-                <div className="flex items-center gap-1 shrink-0 pl-1 border-l border-border/60">
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(item)}
-                    title="Edit log transaksi"
-                    aria-label={`Edit ${item.title}`}
-                    className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-muted-foreground hover:text-accent hover:bg-accent/15 transition-colors active:scale-95"
-                  >
-                    <Pencil className="w-4 h-4 stroke-[2]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteDirect(item)}
-                    title="Hapus transaksi"
-                    aria-label={`Hapus ${item.title}`}
-                    className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-expense/80 bg-expense/5 hover:bg-expense hover:text-white transition-colors active:scale-95"
-                  >
-                    <Trash2 className="w-4 h-4 stroke-[2]" />
-                  </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDirect(item)}
+                          aria-label="Hapus transaksi"
+                          title="Hapus transaksi"
+                          className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-[color:var(--expense-text)] hover:bg-expense/15 transition-colors active:scale-95 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4 stroke-[2]" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })
+            ))}
+          </div>
         )}
       </section>
+
+      {/* Bottom Sheet Filter Kategori (Mobile < 768px) */}
+      <AnimatePresence>
+        {isFilterSheetOpen && (
+          <div
+            className="fixed inset-0 z-[100] md:hidden flex items-end justify-center bg-black/70 backdrop-blur-xs"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsFilterSheetOpen(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: "spring", damping: 28, stiffness: 340 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filter kategori"
+              className="bg-card border-t border-border rounded-t-3xl w-full max-w-lg shadow-2xl max-h-[82dvh] flex flex-col overflow-hidden"
+            >
+              <div className="pt-2.5 pb-1 flex justify-center shrink-0">
+                <div className="w-10 h-1 rounded-full bg-border" />
+              </div>
+
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+                <h2 className="text-base font-black text-foreground">Filter Kategori</h2>
+                <button
+                  type="button"
+                  onClick={() => setIsFilterSheetOpen(false)}
+                  aria-label="Tutup filter"
+                  className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Pilih kategori untuk menyaring riwayat transaksi pada periode ini.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-foreground block" htmlFor="mobile-category-select">
+                    Kategori
+                  </label>
+                  <select
+                    id="mobile-category-select"
+                    value={draftCategory}
+                    onChange={(e) => setDraftCategory(e.target.value)}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="all">Semua Kategori</option>
+                    {categoriesList.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setDraftCategory("all")}
+                    className={`px-3.5 min-h-[44px] rounded-full text-xs font-bold border transition-colors ${
+                      draftCategory === "all"
+                        ? "bg-accent text-[#1F1F1F] border-[var(--accent-border)] font-black"
+                        : "bg-background text-foreground border-border"
+                    }`}
+                  >
+                    Semua Kategori
+                  </button>
+                  {categoriesList.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setDraftCategory(cat)}
+                      className={`px-3.5 min-h-[44px] rounded-full text-xs font-bold border transition-colors ${
+                        draftCategory === cat
+                          ? "bg-accent text-[#1F1F1F] border-[var(--accent-border)] font-black"
+                          : "bg-background text-foreground border-border"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="shrink-0 border-t border-border bg-card px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftCategory("all");
+                    setFilterCategory("all");
+                    setIsFilterSheetOpen(false);
+                  }}
+                  className="px-4 min-h-[44px] rounded-full border border-border bg-background text-foreground text-xs font-bold hover:bg-muted transition-colors"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterCategory(draftCategory);
+                    setIsFilterSheetOpen(false);
+                  }}
+                  className="flex-1 min-h-[44px] rounded-full bg-accent hover:brightness-105 text-[#1F1F1F] text-xs font-black shadow-sm transition-all"
+                >
+                  Terapkan
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Redesigned Edit Log Activity Sheet / Modal (PRD T4) */}
       <AnimatePresence>
@@ -820,13 +1035,13 @@ function TransactionsContent() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm sm:text-base font-black text-foreground truncate">
-                        Edit Log Activity
+                        Ubah Transaksi
                       </h2>
                       <span
                         className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                           editType === "expense"
-                            ? "bg-expense/15 text-expense"
-                            : "bg-accent/15 text-accent"
+                            ? "bg-expense/15 text-[color:var(--expense-text)]"
+                            : "bg-accent/15 text-[color:var(--accent-text)]"
                         }`}
                       >
                         {editType === "expense" ? "Pengeluaran" : "Pemasukan"}
