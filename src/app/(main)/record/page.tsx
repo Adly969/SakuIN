@@ -913,7 +913,7 @@ export default function RecordPage() {
             className={`max-w-[480px] mx-auto px-4 pt-2.5 md:p-0 ${
               keyboardOffset > 0
                 ? "pb-3"
-                : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+96px)] md:pb-0"
+                : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+104px)] md:pb-0"
             }`}
           >
             <button

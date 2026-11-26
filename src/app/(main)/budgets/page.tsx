@@ -679,16 +679,11 @@ export default function BudgetsPage() {
                   return (
                     <div
                       key={pot.categoryId}
-                      className="flex items-center justify-between gap-2 px-2.5 py-2 min-h-[44px] rounded-xl bg-background/70 border border-border text-xs font-bold text-muted-foreground"
+                      className="flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] rounded-xl bg-background/70 border border-border text-xs font-bold text-muted-foreground"
                       title="Selalu aktif sebagai penampung Sisa Bebas"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `${pot.color}20`, color: pot.color }}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                        </span>
+                        <Icon className="w-4 h-4 text-muted-foreground shrink-0 stroke-[2]" />
                         <span className="truncate">{pot.name}</span>
                       </div>
                       <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
@@ -701,19 +696,18 @@ export default function BudgetsPage() {
                     key={pot.categoryId}
                     type="button"
                     onClick={() => handleTogglePot(pot.categoryId)}
-                    className={`flex items-center justify-between gap-2 px-2.5 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all text-left ${
+                    className={`flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all text-left ${
                       pot.isSelected
                         ? "bg-accent/12 border-accent text-foreground"
                         : "bg-background border-border text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${pot.color}22`, color: pot.color }}
-                      >
-                        <Icon className="w-3.5 h-3.5 stroke-[2.2]" />
-                      </span>
+                      <Icon
+                        className={`w-4 h-4 shrink-0 stroke-[2] ${
+                          pot.isSelected ? "text-accent" : "text-muted-foreground"
+                        }`}
+                      />
                       <span className="truncate">{pot.name}</span>
                     </div>
                     {pot.isSelected ? (
@@ -881,10 +875,13 @@ export default function BudgetsPage() {
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${pot.color}20`, color: pot.color }}
+                        className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 transition-colors ${
+                          isExpanded
+                            ? "bg-accent/15 border-accent/40 text-accent"
+                            : "bg-background border-border text-foreground"
+                        }`}
                       >
-                        <Icon className="w-4 h-4 stroke-[2.2]" />
+                        <Icon className="w-4 h-4 stroke-[2]" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1145,7 +1142,7 @@ export default function BudgetsPage() {
           className={`max-w-xl mx-auto px-4 pt-2.5 md:p-0 ${
             keyboardOffset > 0
               ? "pb-3"
-              : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+96px)] md:pb-0"
+              : "pb-[calc(max(env(safe-area-inset-bottom,0px),16px)+104px)] md:pb-0"
           }`}
         >
           <button
