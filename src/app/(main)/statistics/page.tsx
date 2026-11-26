@@ -990,7 +990,7 @@ export default function StatisticsPage() {
               return (
                 <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-background/70 border border-border/70 text-xs">
                   <div>
-                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                    <span className="text-xs font-semibold text-muted-foreground block">
                       Total Jatah Pos
                     </span>
                     <span className="font-black text-foreground">
@@ -998,7 +998,7 @@ export default function StatisticsPage() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                    <span className="text-xs font-semibold text-muted-foreground block">
                       Tanpa Jatah
                     </span>
                     <span className="font-black text-foreground">
@@ -1006,7 +1006,7 @@ export default function StatisticsPage() {
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                    <span className="text-xs font-semibold text-muted-foreground block">
                       Sisa Bebas
                     </span>
                     <span
@@ -1070,7 +1070,7 @@ export default function StatisticsPage() {
                           <span className="font-bold text-foreground truncate">
                             {item.categoryName}
                           </span>
-                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                             {cadenceLabel}
                           </span>
                           {item.isLockedFromDaily && (
@@ -1112,19 +1112,19 @@ export default function StatisticsPage() {
 
                       <div className="grid grid-cols-3 gap-2 text-xs font-semibold pt-0.5">
                         <div>
-                          <span className="text-[11px] text-muted-foreground block">Jatah</span>
+                          <span className="text-xs text-muted-foreground block">Jatah</span>
                           <span className="font-bold text-foreground">
                             {formatRupiah(liveUsage.allocatedAmount)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[11px] text-muted-foreground block">Terpakai</span>
+                          <span className="text-xs text-muted-foreground block">Terpakai</span>
                           <span className="font-bold text-foreground">
                             {formatRupiah(liveUsage.spent)}
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[11px] text-muted-foreground block">
+                          <span className="text-xs text-muted-foreground block">
                             {liveUsage.overAmount > 0 ? "Over" : "Sisa"}
                           </span>
                           <span
@@ -1151,7 +1151,7 @@ export default function StatisticsPage() {
                               setShiftTargetCategoryId(item.categoryId);
                               setShiftModalOpen(true);
                             }}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-full text-xs font-bold border transition-all ${
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold border transition-all ${
                               isOver
                                 ? "bg-accent text-[#1F1F1F] border-accent font-black hover:brightness-105"
                                 : "bg-card border-border text-foreground hover:border-accent"
@@ -1172,7 +1172,7 @@ export default function StatisticsPage() {
 
             {recentTransfers.length > 0 && (
               <div className="pt-2 border-t border-border/60 space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Riwayat Geser Jatah Periode Ini
                 </p>
                 <div className="space-y-1.5">

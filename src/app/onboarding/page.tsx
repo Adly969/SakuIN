@@ -9,11 +9,8 @@ import {
   Utensils,
   Coffee,
   Bike,
-  Cookie,
   Wifi,
-  ShoppingBag,
   Shirt,
-  Zap,
   GraduationCap,
   Flame,
   Info,
@@ -45,15 +42,12 @@ interface CategoryChoice {
 
 const STUDENT_CATEGORIES: CategoryChoice[] = [
   { id: "Makan", name: "Makan", desc: "Warteg, kantin, makan sehari-hari", icon: Utensils, defaultChecked: true },
-  { id: "Nongkrong", name: "Nongkrong", desc: "Kafe, nugas bareng, kopi", icon: Coffee, defaultChecked: true },
-  { id: "Bensin & Transport", name: "Bensin & Transport", desc: "Bensin motor, ojol, angkot, parkir", icon: Bike, defaultChecked: true },
-  { id: "Jajan & Cemilan", name: "Jajan & Cemilan", desc: "Gorengan, boba, jajan sore", icon: Cookie, defaultChecked: true },
-  { id: "Kuota & Internet", name: "Kuota & Internet", desc: "Paket data bulanan, wifi kos", icon: Wifi, defaultChecked: true },
-  { id: "Kebutuhan Kos", name: "Kebutuhan Kos", desc: "Sabun, odol, deterjen, galon", icon: ShoppingBag, defaultChecked: true },
-  { id: "Laundry", name: "Laundry", desc: "Cuci setrika kiloan", icon: Shirt, defaultChecked: true },
-  { id: "Listrik & Token", name: "Listrik & Token", desc: "Token listrik kamar kos", icon: Zap, defaultChecked: false },
-  { id: "Kuliah & Fotokopi", name: "Kuliah & Fotokopi", desc: "Print tugas, ATK, fotokopi buku", icon: GraduationCap, defaultChecked: true },
-  { id: "Rokok / Vape", name: "Rokok / Vape", desc: "Khusus yang merokok atau vaping", icon: Flame, defaultChecked: false },
+  { id: "Transport / Bensin", name: "Transport / Bensin", desc: "Bensin motor, ojol, angkot, parkir", icon: Bike, defaultChecked: true },
+  { id: "Kuota & Internet", name: "Kuota & Internet", desc: "Paket data bulanan", icon: Wifi, defaultChecked: true },
+  { id: "Jajan & Nongkrong", name: "Jajan & Nongkrong", desc: "Kopi, kafe, cemilan, nugas bareng", icon: Coffee, defaultChecked: true },
+  { id: "Kuliah", name: "Kuliah", desc: "Print tugas, ATK, fotokopi buku", icon: GraduationCap, defaultChecked: true },
+  { id: "Laundry", name: "Laundry", desc: "Cuci setrika kiloan", icon: Shirt, defaultChecked: false },
+  { id: "Rokok", name: "Rokok", desc: "Khusus yang merokok atau vaping", icon: Flame, defaultChecked: false },
 ];
 
 type ReservePresetKey = "none" | "daily_5k" | "daily_10k" | "percent_15" | "custom";
@@ -660,9 +654,9 @@ export default function OnboardingPage() {
 
             {/* Note Info */}
             <div className="p-3 bg-muted/50 border border-border rounded-xl flex items-start gap-2.5 text-xs text-muted-foreground">
-              <Info className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+              <Info className="w-4 h-4 text-[color:var(--accent-text)] shrink-0 mt-0.5" />
               <span>
-                Pengeluaran yang jarang (seperti servis motor, baju, dll.) tetap bisa kamu ketik bebas lewat kategori <strong>Kebutuhan Lain</strong>.
+                Kamu tidak perlu membagi jatah pos sekarang—langsung lihat <strong>Sisa Batas Hari Ini</strong> dulu, dan pengeluaran tak terduga otomatis masuk <strong>Lainnya</strong>. Tagihan wajib (Kos/WiFi/Listrik) bisa dikunci lewat Dana Terkunci.
               </span>
             </div>
 

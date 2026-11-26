@@ -7,6 +7,7 @@ import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
+import { calculateTargetDeadlineCountdown } from "@/lib/finance";
 
 const createGoalSchema = z.object({
   name: z.string().trim().min(1, "Nama target wajib diisi").max(100),
@@ -172,9 +173,6 @@ export async function getSavingsDataAction() {
       });
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     let totalSaved = 0;
     const formattedGoals = goals.map((g) => {
       const collected = Math.max(0, goalMap[g.id] || 0);
@@ -185,22 +183,16 @@ export async function getSavingsDataAction() {
       const isCompleted = collected >= target;
       const status = isCompleted ? "completed" : "active";
 
-      // Saran Setoran (PRD S4)
+      // Saran Setoran & Tenggat H- (PRD S4, kalender WIB)
       let weeklySuggestion = 0;
       let monthlySuggestion = 0;
-      let remainingDays = 0;
+      const deadline = calculateTargetDeadlineCountdown(g.targetDate);
+      const remainingDays = deadline.diffDays ?? 0;
 
-      if (g.targetDate && !isCompleted) {
-        const tDate = new Date(g.targetDate);
-        tDate.setHours(0, 0, 0, 0);
-        const diffTime = tDate.getTime() - today.getTime();
-        remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        if (remainingDays > 0) {
-          const remainingAmount = target - collected;
-          weeklySuggestion = Math.max(1000, Math.ceil(remainingAmount / Math.max(1, remainingDays / 7)));
-          monthlySuggestion = Math.max(1000, Math.ceil(remainingAmount / Math.max(1, remainingDays / 30)));
-        }
+      if (deadline.hasDeadline && !isCompleted && remainingDays > 0) {
+        const remainingAmount = target - collected;
+        weeklySuggestion = Math.max(1000, Math.ceil(remainingAmount / Math.max(1, remainingDays / 7)));
+        monthlySuggestion = Math.max(1000, Math.ceil(remainingAmount / Math.max(1, remainingDays / 30)));
       }
 
       return {
@@ -211,7 +203,7 @@ export async function getSavingsDataAction() {
         percentage: target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0,
         color: g.color || "#D4FF5A",
         icon: g.icon || "target",
-        targetDate: g.targetDate || "Fleksibel",
+        targetDate: deadline.hasDeadline ? deadline.formattedDate : g.targetDate || "Fleksibel",
         rawTargetDate: g.targetDate || null,
         remainingDays,
         weeklySuggestion,

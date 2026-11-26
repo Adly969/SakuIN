@@ -137,6 +137,92 @@ export function formatIndonesianDate(date: Date = new Date()): IndonesianDateInf
   };
 }
 
+export interface TargetDeadlineCountdown {
+  hasDeadline: boolean;
+  diffDays: number | null;
+  shortLabel: string | null;
+  displayText: string | null;
+  formattedDate: string;
+  urgency: "none" | "safe" | "soon" | "today" | "overdue";
+}
+
+/**
+ * Menghitung selisih hari H- / Hari-H / H+ terhadap tenggat waktu tabungan
+ * menggunakan kalender Asia/Jakarta (WIB) agar bebas selisih zona waktu.
+ */
+export function calculateTargetDeadlineCountdown(
+  rawTargetDate: string | null | undefined,
+  today: Date = new Date()
+): TargetDeadlineCountdown {
+  if (!rawTargetDate || typeof rawTargetDate !== "string") {
+    return {
+      hasDeadline: false,
+      diffDays: null,
+      shortLabel: null,
+      displayText: null,
+      formattedDate: "Fleksibel",
+      urgency: "none",
+    };
+  }
+
+  const match = rawTargetDate.trim().slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return {
+      hasDeadline: false,
+      diffDays: null,
+      shortLabel: null,
+      displayText: null,
+      formattedDate: rawTargetDate,
+      urgency: "none",
+    };
+  }
+
+  const tYear = Number(match[1]);
+  const tMonth = Number(match[2]);
+  const tDay = Number(match[3]);
+  const monthShort = INDONESIAN_MONTHS_SHORT[tMonth - 1] || String(tMonth);
+  const formattedDate = `${tDay} ${monthShort} ${tYear}`;
+
+  const { year, monthNumber, day } = getJakartaCalendarParts(today);
+  const targetUtcMs = Date.UTC(tYear, tMonth - 1, tDay);
+  const todayUtcMs = Date.UTC(year, monthNumber - 1, day);
+  const diffDays = Math.round((targetUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));
+
+  if (diffDays > 0) {
+    const shortLabel = `H-${diffDays}`;
+    return {
+      hasDeadline: true,
+      diffDays,
+      shortLabel,
+      displayText: `${shortLabel} (${diffDays} hari lagi)`,
+      formattedDate,
+      urgency: diffDays <= 7 ? "soon" : "safe",
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      hasDeadline: true,
+      diffDays: 0,
+      shortLabel: "H-0",
+      displayText: "Hari ini (H-0)",
+      formattedDate,
+      urgency: "today",
+    };
+  }
+
+  const overdueDays = Math.abs(diffDays);
+  const shortLabel = `H+${overdueDays}`;
+  return {
+    hasDeadline: true,
+    diffDays,
+    shortLabel,
+    displayText: `Terlewat ${overdueDays} hari (${shortLabel})`,
+    formattedDate,
+    urgency: "overdue",
+  };
+}
+
 export type AllowanceCycle = "monthly" | "weekly" | "flexible";
 export type ReserveMode = "none" | "daily_fixed" | "percent" | "daily_cap";
 

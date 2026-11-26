@@ -27,6 +27,7 @@ import {
   evaluatePeriodEndResetAndCarryover,
   getCyclePeriodInfo,
   getPreviousCyclePeriodInfo,
+  calculateHabitBudgetSuggestions,
   type PotCadence,
 } from "@/lib/category-pots";
 import { getJakartaDateKey, getJakartaDayAndWeekday } from "@/lib/daily-limit-server";
@@ -65,7 +66,7 @@ export async function getDashboardDataAction() {
 
     // 4. Ambil Transaksi Riil Pengguna dari Database
     type TransactionItem = typeof transactions.$inferSelect & {
-      category?: { name: string } | null;
+      category?: { id: string; name: string; defaultCadence?: string } | null;
     };
     let userTransactions: TransactionItem[] = [];
     if (userId) {
@@ -528,6 +529,24 @@ export async function getDashboardDataAction() {
       }
     }
 
+    // 6B. Saran Otomatis Sekitar Hari ke-7 berdasarkan median harian (jika user belum punya pos jatah)
+    const habitSuggestion =
+      userId && !hasSavedPots
+        ? calculateHabitBudgetSuggestions({
+            todayKey,
+            remainingDays: currentPeriodInfo.remainingDays,
+            hasExistingPots: false,
+            transactions: userTransactions.map((tx) => ({
+              categoryId: tx.categoryId,
+              categoryName: tx.category?.name || "Lainnya",
+              cadence: (tx.category?.defaultCadence as PotCadence | undefined) || undefined,
+              amount: Number(tx.amount || 0),
+              occurredOn: tx.occurredOn || todayKey,
+              type: tx.type,
+            })),
+          })
+        : null;
+
     let eligible = allMotivations.filter((m) => !recentIds.includes(m.id));
     if (eligible.length === 0) {
       eligible = allMotivations;
@@ -704,6 +723,7 @@ export async function getDashboardDataAction() {
         carryoverOffer,
         paydayPrompt,
         midCycleExtraIncomeOffer,
+        habitSuggestion,
         remainingDays,
         remainingBalance,
         remainingBudget,

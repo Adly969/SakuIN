@@ -567,3 +567,31 @@ export async function notifyContextualMotivation(params: {
     return false;
   }
 }
+
+/**
+ * Notifikasi ringan (maksimal 1x) untuk tawaran patokan jatah otomatis hari ke-7
+ * berdasarkan median kebiasaan pengeluaran pengguna.
+ */
+export async function notifyHabitBudgetSuggestion(suggestion: {
+  topHighlights: Array<{ categoryName: string; recentTotal: number }>;
+}): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (!suggestion?.topHighlights || suggestion.topHighlights.length < 2) return false;
+
+  try {
+    if (localStorage.getItem("sakuin_habit_suggestion_dismissed") === "1") return false;
+    if (localStorage.getItem("sakuin_habit_suggestion_notified") === "1") return false;
+
+    const first = suggestion.topHighlights[0];
+    const second = suggestion.topHighlights[1];
+    const title = "Pasang patokan dari kebiasaan 7 harimu?";
+    const body = `Selama 7 hari terakhir, paling banyak di ${first.categoryName} (${formatRp(first.recentTotal)}) dan ${second.categoryName} (${formatRp(second.recentTotal)}). Ketuk untuk lihat sarannya.`;
+
+    localStorage.setItem("sakuin_habit_suggestion_notified", "1");
+    return await sendInstantNotification(title, body, "/budgets?suggest=habit", {
+      tag: "sakuin-habit-suggestion",
+    });
+  } catch {
+    return false;
+  }
+}

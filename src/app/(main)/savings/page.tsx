@@ -24,7 +24,7 @@ import {
   Banknote,
 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
-import { getJakartaDateString } from "@/lib/finance";
+import { getJakartaDateString, calculateTargetDeadlineCountdown } from "@/lib/finance";
 import {
   getSavingsDataAction,
   createSavingsGoalAction,
@@ -723,10 +723,34 @@ export default function SavingsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Tenggat: {goal.targetDate}
-                      {goal.remainingDays > 0 && ` (${goal.remainingDays} hari lagi)`}
-                    </p>
+                    {(() => {
+                      const dl = calculateTargetDeadlineCountdown(goal.rawTargetDate);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground">
+                          <span>Tenggat: {dl.hasDeadline ? dl.formattedDate : goal.targetDate}</span>
+                          {dl.hasDeadline && dl.shortLabel && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded font-bold text-xs ${
+                                isCompleted
+                                  ? "bg-muted text-muted-foreground"
+                                  : dl.urgency === "overdue"
+                                  ? "bg-expense/15 text-[var(--expense-text)]"
+                                  : dl.urgency === "today" || dl.urgency === "soon"
+                                  ? "bg-amber-500/15 text-[var(--warning-text)]"
+                                  : "bg-accent/15 text-[var(--accent-text)]"
+                              }`}
+                            >
+                              {dl.shortLabel}
+                              {!isCompleted && dl.diffDays === 0
+                                ? " (Hari ini)"
+                                : !isCompleted && dl.diffDays !== null && dl.diffDays < 0
+                                ? " (Terlewat)"
+                                : ""}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="text-right shrink-0">
@@ -1230,10 +1254,35 @@ export default function SavingsPage() {
                     style={{ width: `${detailGoal.percentage}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground pt-1">
-                  Tenggat: <strong className="text-foreground">{detailGoal.targetDate}</strong>
-                  {detailGoal.remainingDays > 0 && ` • ${detailGoal.remainingDays} hari tersisa`}
-                </p>
+                {(() => {
+                  const dl = calculateTargetDeadlineCountdown(detailGoal.rawTargetDate);
+                  const detailCompleted = detailGoal.status === "completed" || detailGoal.percentage >= 100;
+                  return (
+                    <p className="text-xs text-muted-foreground pt-1 flex items-center gap-1.5 flex-wrap">
+                      <span>
+                        Tenggat:{" "}
+                        <strong className="text-foreground">
+                          {dl.hasDeadline ? dl.formattedDate : detailGoal.targetDate}
+                        </strong>
+                      </span>
+                      {dl.hasDeadline && dl.displayText && (
+                        <span
+                          className={`font-bold ${
+                            detailCompleted
+                              ? "text-muted-foreground"
+                              : dl.urgency === "overdue"
+                              ? "text-[var(--expense-text)]"
+                              : dl.urgency === "today" || dl.urgency === "soon"
+                              ? "text-[var(--warning-text)]"
+                              : "text-[var(--accent-text)]"
+                          }`}
+                        >
+                          • {detailCompleted ? dl.shortLabel : dl.displayText}
+                        </span>
+                      )}
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Saran Setoran (PRD S4) */}

@@ -29,6 +29,8 @@ import {
   calculatePotPeriodAllocation,
   calculatePotShift,
   shouldSuggestArchivePot,
+  calculateHabitBudgetSuggestions,
+  type HabitSuggestionSummary,
   type PotCadence,
 } from "@/lib/category-pots";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
@@ -113,6 +115,7 @@ export interface BudgetsWorkspaceData {
   pots: BudgetPotWorkspaceItem[];
   archivedPots: ArchivedPotSummary[];
   recentTransfers: PotTransferLogItem[];
+  habitSuggestion: HabitSuggestionSummary | null;
 }
 
 export async function getBudgetsWorkspaceAction(): Promise<{
@@ -417,6 +420,28 @@ export async function getBudgetsWorkspaceAction(): Promise<{
       };
     });
 
+    const hasExistingAllocatedPots = pots.some(
+      (p) => !p.isOther && p.isSelected && p.allocatedAmount > 0
+    );
+    const habitSuggestion = !hasExistingAllocatedPots
+      ? calculateHabitBudgetSuggestions({
+          todayKey,
+          remainingDays: periodInfo.remainingDays,
+          hasExistingPots: false,
+          transactions: userTransactions.map((tx) => {
+            const c = catById.get(tx.categoryId);
+            return {
+              categoryId: tx.categoryId,
+              categoryName: c?.name || "Lainnya",
+              cadence: (c?.defaultCadence as PotCadence | undefined) || undefined,
+              amount: Number(tx.amount || 0),
+              occurredOn: tx.occurredOn || todayKey,
+              type: tx.type,
+            };
+          }),
+        })
+      : null;
+
     return {
       success: true,
       data: {
@@ -445,6 +470,7 @@ export async function getBudgetsWorkspaceAction(): Promise<{
         pots,
         archivedPots,
         recentTransfers,
+        habitSuggestion,
       },
     };
   } catch (error) {

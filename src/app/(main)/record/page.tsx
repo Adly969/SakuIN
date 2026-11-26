@@ -953,7 +953,7 @@ export default function RecordPage() {
                       </div>
                       {showRemainingLabel && (
                         <span
-                          className={`block text-[10px] leading-none font-bold truncate ${
+                          className={`block text-xs leading-tight font-bold truncate ${
                             potUsage.status === "exceeded" || potUsage.status === "reached"
                               ? "text-[color:var(--expense-text)]"
                               : potUsage.status === "warning"

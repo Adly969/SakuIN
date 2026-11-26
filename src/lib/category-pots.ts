@@ -681,3 +681,226 @@ export function shouldSuggestArchivePot(params: {
   if (!params.existedInPrevPeriod) return false;
   return params.prevPeriodSpent <= 0 && params.currentPeriodSpent <= 0;
 }
+
+/* ------------------------------------------------------------------ */
+/*  SPRINT 6: SARAN OTOMATIS HARI KE-7 BERDASARKAN MEDIAN HARIAN      */
+/* ------------------------------------------------------------------ */
+
+export interface HabitTransactionInput {
+  categoryId: string;
+  categoryName: string;
+  cadence?: PotCadence;
+  amount: number;
+  occurredOn: string; // YYYY-MM-DD
+  type: string;
+}
+
+export interface HabitSuggestedPot {
+  categoryId: string;
+  categoryName: string;
+  cadence: PotCadence;
+  medianDailyExpense: number;
+  recent7DaysTotal: number;
+  suggestedUnitAmount: number;
+  projectedRemainingAmount: number;
+  activeDays: number;
+}
+
+export interface HabitSuggestionSummary {
+  windowStart: string;
+  windowEnd: string;
+  distinctActiveDays: number;
+  totalQualifiedTransactions: number;
+  topHighlights: Array<{
+    categoryId: string;
+    categoryName: string;
+    recentTotal: number;
+  }>;
+  suggestions: HabitSuggestedPot[];
+}
+
+const EXCLUDED_HABIT_CATEGORIES = new Set([
+  "lainnya",
+  "kebutuhan lain",
+  "kos",
+  "wifi",
+  "listrik",
+  "listrik & token",
+  "kebutuhan kos",
+]);
+
+function computeMedian(sortedAsc: number[]): number {
+  if (sortedAsc.length === 0) return 0;
+  const mid = Math.floor(sortedAsc.length / 2);
+  if (sortedAsc.length % 2 === 1) return sortedAsc[mid];
+  return (sortedAsc[mid - 1] + sortedAsc[mid]) / 2;
+}
+
+function addUtcDaysToIso(isoDate: string, deltaDays: number): string {
+  const [y, m, d] = isoDate.split("-").map((n) => parseInt(n, 10));
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + deltaDays));
+  return toUtcIsoDate(dt);
+}
+
+/**
+ * Menghitung saran pembagian jatah otomatis sekitar hari ke-7 berdasarkan kebiasaan nyata:
+ * - Syarat muncul: belum ada pos jatah aktif, serta terdapat transaksi pengeluaran pada > 3 hari berbeda dalam 7 hari terakhir.
+ * - Menggunakan MEDIAN pengeluaran harian per pos dan mengabaikan transaksi pencilan (belanja sekali-jalan).
+ * - Memproyeksikan ke sisa panjang siklus (`remainingDays`) sesuai sifat pos (Harian/Mingguan/Bulanan).
+ */
+export function calculateHabitBudgetSuggestions(params: {
+  transactions: HabitTransactionInput[];
+  todayKey: string;
+  remainingDays: number;
+  hasExistingPots: boolean;
+}): HabitSuggestionSummary | null {
+  if (params.hasExistingPots) return null;
+
+  const windowEnd = params.todayKey.slice(0, 10);
+  const windowStart = addUtcDaysToIso(windowEnd, -6); // 7 hari kalender termasuk hari ini
+  const safeRemainingDays = Math.max(1, Math.round(params.remainingDays || 1));
+
+  const windowExpenses = params.transactions.filter((tx) => {
+    if (tx.type !== "expense") return false;
+    const amt = Math.round(Number(tx.amount || 0));
+    if (amt <= 0 || !tx.occurredOn) return false;
+    const d = tx.occurredOn.slice(0, 10);
+    if (d < windowStart || d > windowEnd) return false;
+    const lowerName = (tx.categoryName || "").toLowerCase().trim();
+    return !EXCLUDED_HABIT_CATEGORIES.has(lowerName);
+  });
+
+  if (windowExpenses.length < 4) return null;
+
+  const activeDaySet = new Set(windowExpenses.map((tx) => tx.occurredOn.slice(0, 10)));
+  // Syarat eksplisit: lebih dari 3 hari berbeda (>= 4 hari berbeda)
+  if (activeDaySet.size <= 3) return null;
+
+  // Kelompokkan per kategori lalu saring transaksi pencilan (one-off spike)
+  const byCategory = new Map<
+    string,
+    {
+      categoryId: string;
+      categoryName: string;
+      cadence: PotCadence;
+      items: HabitTransactionInput[];
+    }
+  >();
+
+  for (const tx of windowExpenses) {
+    const existing = byCategory.get(tx.categoryId);
+    const defaultCadence: PotCadence =
+      tx.cadence ||
+      (resolvePotCategoryKey(tx.categoryName) === "makan" ||
+      resolvePotCategoryKey(tx.categoryName) === "jajan & nongkrong" ||
+      resolvePotCategoryKey(tx.categoryName) === "rokok"
+        ? "daily"
+        : resolvePotCategoryKey(tx.categoryName) === "transport / bensin"
+        ? "weekly"
+        : "monthly");
+    if (existing) {
+      existing.items.push(tx);
+    } else {
+      byCategory.set(tx.categoryId, {
+        categoryId: tx.categoryId,
+        categoryName: tx.categoryName,
+        cadence: defaultCadence,
+        items: [tx],
+      });
+    }
+  }
+
+  const suggestions: HabitSuggestedPot[] = [];
+
+  for (const group of Array.from(byCategory.values())) {
+    const sortedAmts = group.items.map((t) => Math.round(t.amount)).sort((a, b) => a - b);
+    const txMedian = computeMedian(sortedAmts);
+
+    // Abaikan transaksi pencilan: jika ada >= 3 transaksi dalam pos ini, drop lonjakan ekstrem sekali-jalan
+    const filteredItems =
+      group.items.length >= 3
+        ? group.items.filter((t) => {
+            const amt = Math.round(t.amount);
+            return !(amt > txMedian * 2.8 && amt - txMedian >= 100000);
+          })
+        : group.items;
+
+    const cleanItems = filteredItems.length > 0 ? filteredItems : group.items;
+    const dailyMap: Record<string, number> = {};
+    for (const item of cleanItems) {
+      const d = item.occurredOn.slice(0, 10);
+      dailyMap[d] = (dailyMap[d] || 0) + Math.round(item.amount);
+    }
+
+    const dailyTotals = Object.values(dailyMap).sort((a, b) => a - b);
+    const activeDays = dailyTotals.length;
+
+    // Belanja tunggal hanya di 1 hari dianggap sekali-jalan, bukan kebiasaan harian/mingguan yang dijadikan patokan
+    if (activeDays < 2 && cleanItems.length < 2) {
+      continue;
+    }
+
+    const medianDaily = Math.round(computeMedian(dailyTotals));
+    const recent7DaysTotal = dailyTotals.reduce((s, v) => s + v, 0);
+    if (medianDaily <= 0 || recent7DaysTotal <= 0) continue;
+
+    let suggestedUnitAmount = 0;
+    let projectedRemainingAmount = 0;
+
+    if (group.cadence === "daily") {
+      // Bulatkan ke ribuan terdekat supaya angka patokan harian nyaman dibaca & diedit
+      suggestedUnitAmount = Math.max(1000, Math.round(medianDaily / 1000) * 1000);
+      projectedRemainingAmount = calculatePotPeriodAllocation(
+        suggestedUnitAmount,
+        "daily",
+        safeRemainingDays
+      );
+    } else if (group.cadence === "weekly") {
+      // Proyeksi mingguan dari kebiasaan harian (median harian × hari aktif dalam 7 hari terakhir)
+      const weeklyHabit = Math.round((medianDaily * activeDays) / 1000) * 1000;
+      suggestedUnitAmount = Math.max(1000, weeklyHabit);
+      projectedRemainingAmount = calculatePotPeriodAllocation(
+        suggestedUnitAmount,
+        "weekly",
+        safeRemainingDays
+      );
+    } else {
+      // Bulanan: proyeksikan laju median terhadap sisa hari siklus (dibulatkan ribuan terdekat)
+      const ratePerDay = (medianDaily * activeDays) / 7;
+      projectedRemainingAmount = Math.max(
+        5000,
+        Math.round((ratePerDay * safeRemainingDays) / 1000) * 1000
+      );
+      suggestedUnitAmount = projectedRemainingAmount;
+    }
+
+    suggestions.push({
+      categoryId: group.categoryId,
+      categoryName: group.categoryName,
+      cadence: group.cadence,
+      medianDailyExpense: medianDaily,
+      recent7DaysTotal,
+      suggestedUnitAmount,
+      projectedRemainingAmount,
+      activeDays,
+    });
+  }
+
+  if (suggestions.length < 2) return null;
+
+  suggestions.sort((a, b) => b.recent7DaysTotal - a.recent7DaysTotal);
+  const topSuggestions = suggestions.slice(0, 5);
+
+  return {
+    windowStart,
+    windowEnd,
+    distinctActiveDays: activeDaySet.size,
+    totalQualifiedTransactions: windowExpenses.length,
+    topHighlights: topSuggestions.slice(0, 2).map((s) => ({
+      categoryId: s.categoryId,
+      categoryName: s.categoryName,
+      recentTotal: s.recent7DaysTotal,
+    })),
+    suggestions: topSuggestions,
+  };
+}

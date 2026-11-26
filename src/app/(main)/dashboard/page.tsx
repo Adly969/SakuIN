@@ -58,6 +58,8 @@ import { getAccountsAction } from "@/app/actions/accounts";
 import { claimCarryoverSavingsAction } from "@/app/actions/savings";
 import { createTransactionAction } from "@/app/actions/transactions";
 import { reusePreviousPeriodPotsAction } from "@/app/actions/category-pots";
+import type { HabitSuggestionSummary } from "@/lib/category-pots";
+import { notifyHabitBudgetSuggestion } from "@/lib/native-notifications";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
 
@@ -162,6 +164,7 @@ interface DashboardData {
     amount: number;
     freeRemaining: number;
   } | null;
+  habitSuggestion?: HabitSuggestionSummary | null;
   paydayPrompt?: {
     dateKey: string;
     dateLabel: string;
@@ -252,6 +255,7 @@ export default function DashboardPage() {
   const [paydaySuccessMsg, setPaydaySuccessMsg] = useState<string | null>(null);
   const [paydayCanReusePrev, setPaydayCanReusePrev] = useState<boolean>(false);
   const [dismissedExtraIncomeKey, setDismissedExtraIncomeKey] = useState<string | null>(null);
+  const [dismissedHabitSuggestion, setDismissedHabitSuggestion] = useState<boolean>(false);
   const { isOnline, queueCount, isSyncing, manualSync } = useOfflineSync();
   const shouldReduceMotion = useReducedMotion();
   const [liveNowDate, setLiveNowDate] = useState<Date>(() => new Date());
@@ -528,6 +532,49 @@ export default function DashboardPage() {
   const carryoverOffer = dashboardData?.carryoverOffer || null;
   const paydayPrompt = dashboardData?.paydayPrompt || null;
   const midCycleExtraIncomeOffer = dashboardData?.midCycleExtraIncomeOffer || null;
+  const habitSuggestion = dashboardData?.habitSuggestion || null;
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("sakuin_habit_suggestion_dismissed") === "1") {
+        setDismissedHabitSuggestion(true);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!habitSuggestion || dismissedHabitSuggestion) return;
+    void notifyHabitBudgetSuggestion(habitSuggestion);
+  }, [habitSuggestion, dismissedHabitSuggestion]);
+
+  // Kartu kontekstual muncul satu per satu (tidak menumpuk di bawah Hero Card)
+  const showPaydayCard = Boolean(paydayPrompt && dismissedPaydayKey !== paydayPrompt.dateKey);
+  const showCarryoverCard =
+    !showPaydayCard &&
+    Boolean(carryoverOffer && dismissedCarryoverKey !== carryoverOffer.carryoverKey);
+  const showExtraIncomeCard =
+    !showPaydayCard &&
+    !showCarryoverCard &&
+    Boolean(
+      midCycleExtraIncomeOffer &&
+        dismissedExtraIncomeKey !== midCycleExtraIncomeOffer.key
+    );
+  const showHabitSuggestionCard =
+    !showPaydayCard &&
+    !showCarryoverCard &&
+    !showExtraIncomeCard &&
+    !dismissedHabitSuggestion &&
+    Boolean(habitSuggestion && habitSuggestion.topHighlights.length >= 2);
+  const showDayOneChecklist =
+    !showPaydayCard &&
+    !showCarryoverCard &&
+    !showExtraIncomeCard &&
+    !showHabitSuggestionCard &&
+    Boolean(
+      dashboardData &&
+        recentTransactions.length === 0 &&
+        (dashboardData.totalExpense ?? 0) === 0
+    );
 
   useEffect(() => {
     if (!midCycleExtraIncomeOffer) return;
@@ -952,7 +999,7 @@ export default function DashboardPage() {
           </section>
 
           {/* 2.02 Checklist Pengguna Baru (Hari ke-1): otomatis hilang setelah ada transaksi */}
-          {dashboardData && recentTransactions.length === 0 && (dashboardData.totalExpense ?? 0) === 0 && (
+          {showDayOneChecklist && (
             <section className="bg-card border border-accent/35 rounded-xl p-4 shadow-sm space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -961,7 +1008,7 @@ export default function DashboardPage() {
                     Mulai Hari Pertamamu
                   </h2>
                 </div>
-                <span className="text-[11px] font-bold text-muted-foreground">
+                <span className="text-xs font-bold text-muted-foreground">
                   3 langkah cepat
                 </span>
               </div>
@@ -1032,6 +1079,21 @@ export default function DashboardPage() {
                   </div>
                   <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </Link>
+
+                <Link
+                  href="/budgets"
+                  className="flex items-center justify-between gap-3 p-2.5 min-h-[44px] rounded-xl bg-background/70 border border-dashed border-border hover:border-accent/50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-foreground truncate">
+                      Atur jatah kategori (opsional)
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Bisa dilewati dulu—kami akan tawarkan saran otomatis setelah 7 hari mencatat
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </Link>
               </div>
             </section>
           )}
@@ -1067,7 +1129,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {paydayPrompt && dismissedPaydayKey !== paydayPrompt.dateKey && (
+          {showPaydayCard && paydayPrompt && (
             <section className="bg-card border border-accent/40 rounded-xl p-4 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0">
@@ -1186,9 +1248,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {!(paydayPrompt && dismissedPaydayKey !== paydayPrompt.dateKey) &&
-            carryoverOffer &&
-            dismissedCarryoverKey !== carryoverOffer.carryoverKey && (
+          {showCarryoverCard && carryoverOffer && (
             <section className="bg-card border border-accent/35 rounded-xl p-4 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0">
@@ -1288,8 +1348,7 @@ export default function DashboardPage() {
           )}
 
           {/* 2.15 Penawaran Lembut Dana Tambahan Tengah Siklus -> Sisa Bebas */}
-          {midCycleExtraIncomeOffer &&
-            dismissedExtraIncomeKey !== midCycleExtraIncomeOffer.key && (
+          {showExtraIncomeCard && midCycleExtraIncomeOffer && (
               <div className="p-3.5 rounded-xl bg-card border border-accent/35 shadow-sm flex items-center justify-between gap-3 flex-wrap text-xs">
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="font-black text-foreground">
@@ -1311,13 +1370,13 @@ export default function DashboardPage() {
                         );
                       } catch {}
                     }}
-                    className="px-3 py-1.5 min-h-[36px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                    className="px-3 py-1.5 min-h-[44px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
                   >
                     Biarkan bebas
                   </button>
                   <Link
                     href="/budgets"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105"
                   >
                     <span>Bagi jatah</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -1325,6 +1384,78 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
+
+          {/* 2.18 Saran Otomatis Hari ke-7 dari Median Kebiasaan Nyata */}
+          {showHabitSuggestionCard && habitSuggestion && (
+            <section className="bg-card border border-accent/40 rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 text-[color:var(--accent-text)] flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs font-black text-foreground">
+                      Pasang patokan dari kebiasaanmu?
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Selama 7 hari terakhir, pengeluaranmu paling banyak di{" "}
+                      <strong className="text-foreground">
+                        {habitSuggestion.topHighlights[0].categoryName} (
+                        {formatRupiah(habitSuggestion.topHighlights[0].recentTotal)})
+                      </strong>{" "}
+                      dan{" "}
+                      <strong className="text-foreground">
+                        {habitSuggestion.topHighlights[1].categoryName} (
+                        {formatRupiah(habitSuggestion.topHighlights[1].recentTotal)})
+                      </strong>
+                      . Mau pasang patokan dari kebiasaanmu?
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Tutup saran kebiasaan 7 hari"
+                  onClick={() => {
+                    setDismissedHabitSuggestion(true);
+                    try {
+                      localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+                    } catch {}
+                  }}
+                  className="w-10 h-10 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/budgets?suggest=habit"
+                  onClick={() => {
+                    setDismissedHabitSuggestion(true);
+                    try {
+                      localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+                    } catch {}
+                  }}
+                  className="flex-1 py-2.5 px-3 min-h-[44px] rounded-full bg-accent hover:brightness-110 text-[#1F1F1F] text-xs font-black transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>Pasang dari Kebiasaanmu</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDismissedHabitSuggestion(true);
+                    try {
+                      localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+                    } catch {}
+                  }}
+                  className="px-3.5 py-2.5 min-h-[44px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                >
+                  Nanti saja
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* 2.2 Kartu Rekening (Tanpa teks terpotong & tanpa badge total ganda) */}
           <div className="space-y-2.5">

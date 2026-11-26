@@ -340,7 +340,7 @@ export function ShiftPotModal({
                         {formatRupiah(shiftPreview.nextToAllocated)}
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-muted-foreground pt-1 border-t border-border/60">
+                    <p className="text-xs font-semibold text-muted-foreground pt-1 border-t border-border/60">
                       Total gabungan tetap {formatRupiah(shiftPreview.totalAfter)} (dana utama tidak berubah).
                     </p>
                   </>

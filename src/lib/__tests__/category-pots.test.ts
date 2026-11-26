@@ -26,6 +26,7 @@ import {
   buildPreviousPeriodDrafts,
   evaluatePeriodEndResetAndCarryover,
   shouldSuggestArchivePot,
+  calculateHabitBudgetSuggestions,
 } from "../category-pots";
 
 test("1. Jatah per sifat (Harian, Mingguan, Bulanan)", () => {
@@ -415,4 +416,133 @@ test("11. Kalender WIB (Asia/Jakarta) akurat meski waktu UTC masih kemarin (00:1
   assert.equal(calculateRemainingDays(midnightPlus15Wib, 1, "flexible", 1), 4); // 27,28,29,30 Nov
   const periodInfo = getCyclePeriodInfo(midnightPlus15Wib, "flexible", 1, 1);
   assert.equal(periodInfo.remainingDays, 4);
+});
+
+test("12. Saran otomatis hari ke-7: syarat >3 hari, hitung median harian, abaikan pencilan & sekali-jalan", () => {
+  const todayKey = "2026-11-27";
+
+  // 1. Belum cukup hari (cuma 3 hari berbeda) -> TIDAK boleh muncul
+  const tooFewDays = calculateHabitBudgetSuggestions({
+    todayKey,
+    remainingDays: 20,
+    hasExistingPots: false,
+    transactions: [
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 25000, occurredOn: "2026-11-25", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 25000, occurredOn: "2026-11-26", type: "expense" },
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 20000, occurredOn: "2026-11-27", type: "expense" },
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 20000, occurredOn: "2026-11-27", type: "expense" },
+    ],
+  });
+  assert.equal(tooFewDays, null);
+
+  // 2. Sudah punya jatah pos -> TIDAK boleh muncul
+  const alreadyHasPots = calculateHabitBudgetSuggestions({
+    todayKey,
+    remainingDays: 20,
+    hasExistingPots: true,
+    transactions: [
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 25000, occurredOn: "2026-11-21", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 25000, occurredOn: "2026-11-23", type: "expense" },
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 20000, occurredOn: "2026-11-25", type: "expense" },
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 20000, occurredOn: "2026-11-27", type: "expense" },
+    ],
+  });
+  assert.equal(alreadyHasPots, null);
+
+  // 3. Data cukup (5 hari berbeda), ada transaksi pencilan Rp 450.000 di Makan & belanja 1x Kuliah Rp 500.000
+  const validHabit = calculateHabitBudgetSuggestions({
+    todayKey,
+    remainingDays: 20,
+    hasExistingPots: false,
+    transactions: [
+      // Makan normal: 20rb, 22rb, 25rb, 28rb (+ pencilan traktir 450rb) -> pencilan diabaikan! Median = (22+25)/2 = 23.5rb -> 24rb/hari
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 20000, occurredOn: "2026-11-21", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 22000, occurredOn: "2026-11-22", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 25000, occurredOn: "2026-11-24", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 28000, occurredOn: "2026-11-26", type: "expense" },
+      { categoryId: "m", categoryName: "Makan", cadence: "daily", amount: 450000, occurredOn: "2026-11-26", type: "expense" },
+      // Transport / Bensin: 15rb & 25rb di 2 hari berbeda -> median = 20rb, weekly = 40rb -> proyeksi 20 hari = 114rb
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 15000, occurredOn: "2026-11-23", type: "expense" },
+      { categoryId: "t", categoryName: "Transport / Bensin", cadence: "weekly", amount: 25000, occurredOn: "2026-11-27", type: "expense" },
+      // Kuliah: cuma 1 transaksi sekali-jalan Rp 500.000 -> harus diabaikan!
+      { categoryId: "k", categoryName: "Kuliah", cadence: "monthly", amount: 500000, occurredOn: "2026-11-25", type: "expense" },
+    ],
+  });
+
+  assert.ok(validHabit);
+  assert.equal(validHabit.distinctActiveDays, 7);
+  assert.equal(validHabit.suggestions.some((s) => s.categoryName === "Kuliah"), false);
+  assert.equal(validHabit.topHighlights[0].categoryName, "Makan");
+  assert.equal(validHabit.topHighlights[1].categoryName, "Transport / Bensin");
+  // Makan: 24.000 * 20 hari = 480.000 (pencilan 450rb tidak menggelembungkan median!)
+  const makanSug = validHabit.suggestions.find((s) => s.categoryName === "Makan")!;
+  assert.equal(makanSug.suggestedUnitAmount, 24000);
+  assert.equal(makanSug.projectedRemainingAmount, 480000);
+});
+
+test("13. QA End-to-End Siklus Hidup (Hari-1 -> Hari-7 -> Kunci 3 Pos -> 80/100/>100% -> Geser -> Ganti Periode -> Offline)", () => {
+  // Fase 1: Pengguna baru tanpa jatah (saldo 1.500.000, sisa 25 hari)
+  const day1 = calculateDailyLimitWithLockedPots({
+    totalBalance: 1500000,
+    remainingDays: 25,
+    lockedPots: [],
+  });
+  const legacyDay1 = calculateAdaptiveDailyLimit(1500000, 25, "none", 0, 0);
+  assert.equal(day1.dailyLimit, legacyDay1.dailyLimit); // identik Rp 60.000/hari
+
+  // Fase 2: Atur 3 pos, kunci 1 pos (Kuota Rp 100.000 terkunci)
+  const lockedDay = calculateDailyLimitWithLockedPots({
+    totalBalance: 1500000,
+    remainingDays: 25,
+    lockedPots: [
+      { allocatedAmount: 600000, periodSpent: 0, isLockedFromDaily: false }, // Makan
+      { allocatedAmount: 150000, periodSpent: 0, isLockedFromDaily: false }, // Transport
+      { allocatedAmount: 100000, periodSpent: 0, isLockedFromDaily: true },  // Kuota (dikunci)
+    ],
+  });
+  // (1.500.000 - 100.000) / 25 = 56.000/hari
+  assert.equal(lockedDay.dailyLimit, 56000);
+
+  // Fase 3: Catat transaksi Makan hingga 80% -> 100% -> >100%
+  assert.equal(evaluatePotUsage(600000, 480000).status, "warning");  // 80%
+  assert.equal(evaluatePotUsage(600000, 600000).status, "reached");  // 100%
+  assert.equal(evaluatePotUsage(600000, 640000).status, "exceeded"); // >100% (over 40rb)
+
+  // Fase 4: Geser jatah Rp 40.000 dari Transport (sisa 100rb) ke Makan -> total dana tetap 750rb
+  const shifted = calculatePotShift({
+    fromAllocated: 150000,
+    fromSpent: 50000,
+    toAllocated: 600000,
+    requestedAmount: 40000,
+  });
+  assert.equal(shifted.valid, true);
+  assert.equal(shifted.nextFromAllocated, 110000);
+  assert.equal(shifted.nextToAllocated, 640000);
+  assert.equal(shifted.totalBefore, shifted.totalAfter);
+
+  // Fase 5: Offline queue sebelum & sesudah sinkronisasi tidak dobel
+  const offlinePending = aggregatePendingOfflineSpentByCategory(
+    [{ type: "expense", amount: 15000, categoryName: "Nongkrong", occurredOn: "2026-11-27" }],
+    "2026-11-01",
+    "2026-11-30",
+    "2026-11-27"
+  );
+  assert.equal(offlinePending["jajan & nongkrong"], 15000);
+  assert.equal(evaluatePotUsage(200000, 50000 + offlinePending["jajan & nongkrong"]).remaining, 135000);
+  // Setelah sinkron: serverSpent = 65rb, antrean = 0 -> sisa tetap 135rb
+  assert.equal(evaluatePotUsage(200000, 65000).remaining, 135000);
+
+  // Fase 6: Ganti periode & Carryover (Makan pas 0, Transport sisa 40rb, Jajan defisit 20rb -> defisit tidak dibawa)
+  const rollover = evaluatePeriodEndResetAndCarryover({
+    newCycleDays: 31, // misal Desember 31 hari
+    pots: [
+      { potId: "1", name: "Makan", cadence: "daily", unitAmount: 24000, prevAllocatedAmount: 640000, prevSpent: 640000 },
+      { potId: "2", name: "Transport", cadence: "monthly", unitAmount: 150000, prevAllocatedAmount: 110000, prevSpent: 70000 },
+      { potId: "3", name: "Jajan", cadence: "monthly", unitAmount: 100000, prevAllocatedAmount: 100000, prevSpent: 120000 },
+    ],
+  });
+  assert.equal(rollover.totalPositiveSurplus, 40000); // hanya sisa positif Transport
+  assert.equal(rollover.deficitPotsCount, 1);
+  assert.equal(rollover.perPot[2].carriedDeficitAmount, 0);
+  assert.equal(rollover.perPot[0].resetAllocatedAmount, 24000 * 31); // patokan semula 31 hari
 });

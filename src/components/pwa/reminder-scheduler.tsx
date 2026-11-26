@@ -16,6 +16,7 @@ import {
   notifyDebtDueAlerts,
   notifyPaydayReminder,
   notifyContextualMotivation,
+  notifyHabitBudgetSuggestion,
   REMINDER_SCHEDULE_SLOTS,
   type DailyLimitAlertPayload,
 } from "@/lib/native-notifications";
@@ -59,6 +60,10 @@ export function ReminderScheduler() {
 
           if (dash.data.paydayPrompt) {
             await notifyPaydayReminder(dash.data.paydayPrompt);
+          }
+
+          if (dash.data.habitSuggestion) {
+            await notifyHabitBudgetSuggestion(dash.data.habitSuggestion);
           }
 
           if (dash.data.safeStreakDays && dash.data.safeStreakDays >= 3) {
@@ -319,7 +324,7 @@ export function ReminderScheduler() {
             className="w-full text-left focus:outline-none"
           >
             {inAppAlert.group && (
-              <span className="inline-block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
+              <span className="inline-block text-xs font-black uppercase tracking-wider text-muted-foreground mb-0.5">
                 {inAppAlert.group}
               </span>
             )}
@@ -335,7 +340,7 @@ export function ReminderScheduler() {
                 setInAppAlert(null);
                 router.push(target);
               }}
-              className="inline-flex items-center px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all"
+              className="inline-flex items-center px-3.5 py-2 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all"
             >
               {inAppAlert.actionLabel}
             </button>

@@ -121,6 +121,7 @@ export default function BudgetsPage() {
   const [dismissedArchiveIds, setDismissedArchiveIds] = useState<string[]>([]);
   const [archivingCategoryId, setArchivingCategoryId] = useState<string | null>(null);
   const [showArchivedList, setShowArchivedList] = useState(false);
+  const [habitPrefillNotice, setHabitPrefillNotice] = useState<string | null>(null);
 
   // Keyboard safe sticky button
   const [keyboardOffset, setKeyboardOffset] = useState(0);
@@ -180,10 +181,43 @@ export default function BudgetsPage() {
       const res = await getBudgetsWorkspaceAction();
       if (res.success && res.data) {
         setWorkspace(res.data);
-        setPots(res.data.pots);
-        const firstEditable = res.data.pots.find((p) => p.isSelected && !p.isOther);
-        if (firstEditable) {
-          setExpandedCatId(firstEditable.categoryId);
+
+        let initialPots = res.data.pots;
+        let firstExpandId = res.data.pots.find((p) => p.isSelected && !p.isOther)?.categoryId;
+
+        const isHabitSuggestMode =
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("suggest") === "habit";
+
+        if (isHabitSuggestMode && res.data.habitSuggestion && res.data.habitSuggestion.suggestions.length > 0) {
+          const sugMap = new Map(
+            res.data.habitSuggestion.suggestions.map((s) => [s.categoryId, s])
+          );
+          initialPots = res.data.pots.map((p) => {
+            const sug = sugMap.get(p.categoryId);
+            if (!sug) {
+              return p.isOther ? p : { ...p, isSelected: false, allocatedAmount: 0, unitAmount: 0 };
+            }
+            return {
+              ...p,
+              isSelected: true,
+              cadence: sug.cadence,
+              unitAmount: sug.suggestedUnitAmount,
+              allocatedAmount: sug.projectedRemainingAmount,
+            };
+          });
+          firstExpandId = res.data.habitSuggestion.suggestions[0]?.categoryId || firstExpandId;
+          setHabitPrefillNotice(
+            "Patokan di bawah diisi dari median pengeluaran 7 hari terakhirmu (transaksi sekali-jalan diabaikan). Geser atau ubah sesukamu sebelum menyimpan."
+          );
+          try {
+            localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+          } catch {}
+        }
+
+        setPots(initialPots);
+        if (firstExpandId) {
+          setExpandedCatId(firstExpandId);
         }
       } else {
         setLoadError(res.error || "Gagal memuat pembagian pos kategori");
@@ -259,6 +293,9 @@ export default function BudgetsPage() {
     try {
       const res = await archiveCategoryPotAction({ categoryId, archive });
       if (res.success) {
+        try {
+          localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+        } catch {}
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
         setSaveToast(
           archive
@@ -523,6 +560,9 @@ export default function BudgetsPage() {
       });
 
       if (res.success) {
+        try {
+          localStorage.setItem("sakuin_habit_suggestion_dismissed", "1");
+        } catch {}
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
         const filledCount = activeNonOtherPots.filter((p) => p.allocatedAmount > 0).length;
         setSaveToast(
@@ -618,7 +658,7 @@ export default function BudgetsPage() {
         <section className="bg-card border border-border rounded-xl p-3 shadow-md space-y-2">
           <div className="grid grid-cols-3 gap-2">
             <div className="min-w-0">
-              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
                 <Wallet className="w-3 h-3 text-muted-foreground shrink-0" />
                 <span className="truncate">Tersedia</span>
               </span>
@@ -628,22 +668,22 @@ export default function BudgetsPage() {
             </div>
 
             <div className="min-w-0">
-              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
-                <PieChart className="w-3 h-3 text-accent shrink-0" />
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 truncate">
+                <PieChart className="w-3 h-3 text-[color:var(--accent-text)] shrink-0" />
                 <span className="truncate">Dibagi</span>
               </span>
-              <span className="text-xs sm:text-sm font-black text-accent block truncate mt-0.5">
+              <span className="text-xs sm:text-sm font-black text-[color:var(--accent-text)] block truncate mt-0.5">
                 {formatRupiah(summary.totalAllocated)}
               </span>
             </div>
 
             <div className="min-w-0 text-right">
-              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block truncate">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block truncate">
                 {summary.isOverAllocated ? "Kelebihan" : "Sisa Bebas"}
               </span>
               <span
                 className={`text-xs sm:text-sm font-black block truncate mt-0.5 ${
-                  summary.isOverAllocated ? "text-expense" : "text-foreground"
+                  summary.isOverAllocated ? "text-[color:var(--expense-text)]" : "text-foreground"
                 }`}
               >
                 {summary.isOverAllocated
@@ -674,12 +714,12 @@ export default function BudgetsPage() {
             </div>
 
             {summary.isOverAllocated ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-expense/15 text-expense">
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-expense/15 text-[color:var(--expense-text)]">
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 <span>Tetap bisa disimpan</span>
               </span>
             ) : lockedPotsCount > 0 ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A]">
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#FFB04A]/15 text-[color:var(--warning-text)]">
                 <Lock className="w-3 h-3 shrink-0" />
                 <span>{lockedPotsCount} dikunci</span>
               </span>
@@ -702,7 +742,7 @@ export default function BudgetsPage() {
               <span>{saveToast}</span>
             </div>
             <div className="flex items-center gap-3 pl-6 text-xs font-extrabold">
-              <Link href="/dashboard" className="text-accent hover:underline flex items-center gap-1">
+              <Link href="/dashboard" className="text-[color:var(--accent-text)] hover:underline flex items-center gap-1">
                 <span>Lihat Beranda</span>
                 <ArrowRight className="w-3 h-3" />
               </Link>
@@ -718,6 +758,13 @@ export default function BudgetsPage() {
         <div className="p-3 rounded-xl bg-expense/15 border border-expense/40 text-xs font-bold text-expense flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{saveError}</span>
+        </div>
+      )}
+
+      {habitPrefillNotice && (
+        <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 text-xs font-bold text-foreground flex items-start gap-2.5">
+          <Calculator className="w-4 h-4 text-[color:var(--accent-text)] shrink-0 mt-0.5" />
+          <span>{habitPrefillNotice}</span>
         </div>
       )}
 
@@ -753,7 +800,7 @@ export default function BudgetsPage() {
                     <button
                       type="button"
                       onClick={() => handleDismissArchiveSuggestion(cand.categoryId)}
-                      className="px-2.5 py-1.5 min-h-[36px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                      className="px-3 py-2 min-h-[44px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
                     >
                       Biarkan
                     </button>
@@ -761,7 +808,7 @@ export default function BudgetsPage() {
                       type="button"
                       disabled={archivingCategoryId === cand.categoryId}
                       onClick={() => void handleArchivePot(cand.categoryId, true)}
-                      className="px-3 py-1.5 min-h-[36px] rounded-full bg-[#FFB04A]/20 text-[color:var(--warning-text)] font-black hover:bg-[#FFB04A]/30 disabled:opacity-50"
+                      className="px-3.5 py-2 min-h-[44px] rounded-full bg-[#FFB04A]/20 text-[color:var(--warning-text)] font-black hover:bg-[#FFB04A]/30 disabled:opacity-50"
                     >
                       {archivingCategoryId === cand.categoryId ? "Mengarsip..." : "Arsipkan"}
                     </button>
@@ -781,7 +828,7 @@ export default function BudgetsPage() {
               <h2 className="text-xs font-black uppercase tracking-wider text-foreground">
                 Isi Cepat dari Periode Lalu
               </h2>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Lihat pratinjau dulu sebelum menekan Simpan Semua Pos.
               </p>
             </div>
@@ -836,7 +883,7 @@ export default function BudgetsPage() {
                   >
                     <div className="min-w-0">
                       <p className="font-bold text-foreground truncate">{d.name}</p>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {presetMode === "copy_previous"
                           ? `Jatah lalu: ${formatRupiah(d.prevAllocated)}`
                           : `Terpakai lalu: ${formatRupiah(d.prevSpent)}`}
@@ -862,14 +909,14 @@ export default function BudgetsPage() {
                     setPresetMode(null);
                     setPreviewDrafts([]);
                   }}
-                  className="px-3.5 py-2 min-h-[40px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
+                  className="px-3.5 py-2 min-h-[44px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleApplyPresetDrafts}
-                  className="flex-1 py-2 px-4 min-h-[40px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105"
+                  className="flex-1 py-2 px-4 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105"
                 >
                   Terapkan ke Daftar
                 </button>
@@ -1150,18 +1197,18 @@ export default function BudgetsPage() {
                           <span className="text-xs font-extrabold text-foreground truncate">
                             {pot.name}
                           </span>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-background border border-border text-muted-foreground shrink-0">
                             <CadenceIcon className="w-3 h-3" />
                             <span>{CADENCE_META[pot.cadence].label}</span>
                           </span>
                           {pot.isLockedFromDaily && (
-                            <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[#FFB04A] shrink-0">
+                            <span className="inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full bg-[#FFB04A]/15 text-[color:var(--warning-text)] shrink-0">
                               <Lock className="w-3 h-3" />
                               <span>Terkunci</span>
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
                           {pot.periodSpent > 0
                             ? `Terpakai siklus ini ${formatRupiah(pot.periodSpent)}`
                             : formulaText || "Ketuk untuk isi jatah & kalkulator"}
@@ -1199,7 +1246,7 @@ export default function BudgetsPage() {
                             <button
                               type="button"
                               onClick={() => handleDirectPeriodAmountChange(pot.categoryId, "")}
-                              className="text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-1 min-h-[32px]"
+                              className="text-xs font-bold text-muted-foreground hover:text-foreground px-3 py-2 min-h-[44px]"
                             >
                               Kosongkan
                             </button>
@@ -1237,7 +1284,7 @@ export default function BudgetsPage() {
 
                       {/* Kalkulator Bantu Sesuai Sifat Pos */}
                       <div className="space-y-1.5">
-                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
                           {pot.cadence === "daily"
                             ? "Patokan Harian (× hari siklus)"
                             : pot.cadence === "weekly"
@@ -1311,7 +1358,7 @@ export default function BudgetsPage() {
                               type="button"
                               disabled={summary.safeFreeRemaining <= 0}
                               onClick={() => handleFillWithFreeRemaining(pot.categoryId)}
-                              className="px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold bg-accent/15 border border-accent/40 text-accent hover:bg-accent/25 disabled:opacity-45 disabled:cursor-not-allowed transition-all"
+                              className="px-3.5 py-2 min-h-[44px] rounded-full text-xs font-bold bg-accent/15 border border-accent/40 text-[color:var(--accent-text)] hover:bg-accent/25 disabled:opacity-45 disabled:cursor-not-allowed transition-all"
                             >
                               Isi dengan sisa dana bebas
                             </button>
@@ -1365,7 +1412,7 @@ export default function BudgetsPage() {
                               setShiftTargetCategoryId(pot.categoryId);
                               setShiftModalOpen(true);
                             }}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-full bg-card border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-full bg-card border border-border hover:border-accent text-xs font-bold text-foreground transition-colors"
                           >
                             <ArrowRightLeft className="w-3.5 h-3.5 text-[color:var(--accent-text)]" />
                             <span>Geser jatah ke / dari pos lain</span>
@@ -1392,7 +1439,7 @@ export default function BudgetsPage() {
                   {lainnyaPot.name}{" "}
                   <span className="text-muted-foreground font-semibold">• Sisa Bebas</span>
                 </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
                   Menampung transaksi tanpa jatah ({formatRupiah(lainnyaPot.periodSpent)} terpakai)
                 </p>
               </div>
@@ -1448,7 +1495,7 @@ export default function BudgetsPage() {
             </button>
             {showArchivedList && (
               <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-border/60">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Pos terarsip disembunyikan dari layar Catat dan daftar jatah, riwayat transaksinya tetap ada.
                 </p>
                 {workspace.archivedPots.map((arch) => (
@@ -1461,7 +1508,7 @@ export default function BudgetsPage() {
                       type="button"
                       disabled={archivingCategoryId === arch.categoryId}
                       onClick={() => void handleArchivePot(arch.categoryId, false)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent/15 text-[color:var(--accent-text)] font-bold hover:bg-accent/25 shrink-0 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-full bg-accent/15 text-[color:var(--accent-text)] font-bold hover:bg-accent/25 shrink-0 disabled:opacity-50"
                     >
                       <ArchiveRestore className="w-3.5 h-3.5" />
                       <span>
