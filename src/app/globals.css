@@ -98,11 +98,11 @@ body {
 
 /* Dock bawah aman di atas MobileBottomBar + lingkaran aktif + safe-area iOS/Android */
 .mobile-dock-spacer {
-  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 114px);
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 124px);
 }
 
 .mobile-page-dock-pb {
-  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 196px);
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 204px);
 }
 
 @media (min-width: 768px) {

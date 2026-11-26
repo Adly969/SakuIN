@@ -1,9 +1,9 @@
 /**
  * SakuIN Service Worker (PWA Shell & Offline Cache)
- * Version: sakuin-pwa-v6 (Fresh Network-First strategy to eliminate stale page flashes)
+ * Version: sakuin-pwa-v7 (Fresh Network-First strategy to eliminate stale page flashes)
  */
 
-const CACHE_NAME = "sakuin-pwa-v6";
+const CACHE_NAME = "sakuin-pwa-v7";
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
