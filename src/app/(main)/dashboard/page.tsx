@@ -368,6 +368,39 @@ export default function DashboardPage() {
   const heroReservedTotal = dashboardData ? heroAdaptive.reservedTotal : 0;
   const heroLockedTotal = dashboardData ? heroAdaptive.lockedTotal : 0;
   const heroFreeBalance = dashboardData ? heroAdaptive.freeBalance : heroMainBalance;
+
+  const liveTodayExpense = dashboardData?.todayExpense ?? 0;
+  const liveTodayAdaptive = calculateAdaptiveDailyLimit(
+    heroMainBalance + liveTodayExpense,
+    dashboardData?.remainingDays ?? 1,
+    dashboardData?.reserveMode ?? "none",
+    dashboardData?.reserveValue ?? 0,
+    dashboardData?.rawLockedTotal ?? dashboardData?.lockedTotal ?? 0
+  );
+  const heroTodayBudget = dashboardData
+    ? accountsList.length > 0
+      ? liveTodayAdaptive.dailyLimit
+      : (dashboardData.todayBudget ?? heroDailyLimit)
+    : 0;
+  const heroTodayRemaining = Math.max(0, heroTodayBudget - liveTodayExpense);
+  const heroOverLimit = Math.max(0, liveTodayExpense - heroTodayBudget);
+  const heroTodayUsagePercent =
+    heroTodayBudget > 0
+      ? Math.round((liveTodayExpense / heroTodayBudget) * 100)
+      : liveTodayExpense > 0
+      ? 100
+      : 0;
+  let heroTodayAlertLevel: "ok" | "warning" | "reached" | "exceeded" = "ok";
+  if (heroTodayBudget <= 0) {
+    heroTodayAlertLevel = liveTodayExpense > 0 ? "exceeded" : "ok";
+  } else if (liveTodayExpense > heroTodayBudget) {
+    heroTodayAlertLevel = "exceeded";
+  } else if (liveTodayExpense === heroTodayBudget || heroTodayUsagePercent >= 100) {
+    heroTodayAlertLevel = "reached";
+  } else if (heroTodayUsagePercent >= 80) {
+    heroTodayAlertLevel = "warning";
+  }
+
   const heroStatus =
     heroDailyLimit >= 65000
       ? { status: "safe" as const, label: "Aman" }
@@ -601,31 +634,99 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (lg:col-span-6 space-y-5) */}
         <div className="lg:col-span-6 space-y-5">
-          {/* 2. Kartu Saldo SakuIN & Batas Harian (PRD B1-B4, G1) */}
+          {/* 2. Kartu Fokus Batas Hari Ini & Total Saldo (PRD B1-B4, G1) */}
           <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 sm:p-6 shadow-md space-y-4">
-            {/* Card Header & Sisa Uang Kiriman */}
-            <div className="flex items-start justify-between">
+            {/* Card Header: Fokus Utama ke Sisa Batas Hari Ini */}
+            <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <BrandText height={20} />
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/15 text-accent uppercase tracking-widest">
-                    Debit
+                  <span
+                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
+                      ? "bg-accent/20 text-accent"
+                      : heroStatus.status === "warning"
+                        ? "bg-[#FFB04A]/20 text-[#FFB04A]"
+                        : "bg-expense/20 text-expense"
+                      }`}
+                  >
+                    {heroStatus.label}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {isUsingAccounts ? "Total Saldo Semua Dompet" : "Sisa Uang Kiriman"}
+                <p className="text-xs text-muted-foreground font-semibold">
+                  Sisa Batas Hari Ini
                 </p>
+                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
+                  <span className="text-[10px] text-muted-foreground block">
+                    Sisihkan {formatRupiah(heroReservedTotal)}
+                    {heroLockedTotal > 0 ? " (dari saldo bebas)" : ""}
+                  </span>
+                ) : (
+                  <Link href="/profile" className="text-[10px] text-muted-foreground/80 hover:text-accent block">
+                    Bagi rata (Atur sisihan →)
+                  </Link>
+                )}
               </div>
 
               <div className="text-right">
-                <div className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
-                  {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
+                <div
+                  className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                    heroTodayAlertLevel === "exceeded" || heroTodayAlertLevel === "reached"
+                      ? "text-expense"
+                      : heroTodayAlertLevel === "warning"
+                      ? "text-[#FFB04A]"
+                      : "text-accent"
+                  }`}
+                >
+                  {dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayRemaining) : "Rp ..."}
                 </div>
-                <span className="text-[11px] font-semibold text-muted-foreground">
-                  {isUsingAccounts ? "Bank, E-Wallet & Tunai" : "Tersedia Bulan Ini"}
+                <span className="text-[11px] font-semibold text-muted-foreground block">
+                  {heroOverLimit > 0
+                    ? `Over limit ${formatRupiah(heroOverLimit)}`
+                    : `Jatah hari ini: ${dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayBudget) : "Rp ..."}`}
                 </span>
               </div>
             </div>
+
+            {/* Pemakaian Batas Hari Ini (Progress Bar Utama) */}
+            {dashboardData && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-muted-foreground">
+                    Terpakai Hari Ini ({heroTodayUsagePercent}%)
+                  </span>
+                  <span className="font-bold text-foreground">
+                    {formatRupiah(liveTodayExpense)} / {formatRupiah(heroTodayBudget)}
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border/70">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      heroTodayAlertLevel === "exceeded" || heroTodayAlertLevel === "reached"
+                        ? "bg-expense"
+                        : heroTodayAlertLevel === "warning"
+                        ? "bg-[#FFB04A]"
+                        : "bg-accent"
+                    }`}
+                    style={{ width: `${Math.min(100, heroTodayUsagePercent)}%` }}
+                  />
+                </div>
+                {(heroTodayAlertLevel === "warning" ||
+                  heroTodayAlertLevel === "reached" ||
+                  heroTodayAlertLevel === "exceeded") && (
+                  <p
+                    className={`text-[10px] font-bold ${
+                      heroTodayAlertLevel === "warning" ? "text-[#FFB04A]" : "text-expense"
+                    }`}
+                  >
+                    {heroTodayAlertLevel === "warning"
+                      ? `⚠️ Hampir mencapai batas harian! Sisa jatah hari ini tinggal ${formatRupiah(heroTodayRemaining)}.`
+                      : heroTodayAlertLevel === "reached"
+                      ? "🛑 Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
+                      : `🚨 Melewati batas harian sebesar ${formatRupiah(heroOverLimit)}!`}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Rincian Dana Terkunci (Tagihan Wajib) jika aktif */}
             {heroLockedTotal > 0 && (
@@ -649,69 +750,20 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
-                <span>
-                  Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
-                </span>
-                <span>
-                  {formatRupiah(dashboardData?.totalExpense || 0)} / {formatRupiah(dashboardData?.allowance || 0)}
-                </span>
-              </div>
-              <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${(dashboardData?.budgetUsedPercent || 0) >= 100
-                    ? "bg-expense"
-                    : (dashboardData?.budgetUsedPercent || 0) >= 80
-                      ? "bg-[#FFB04A]"
-                      : "bg-accent"
-                    }`}
-                  style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
-                />
-              </div>
-              {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
-                <p className="text-[10px] font-bold text-[#FFB04A] flex items-center gap-1">
-                  <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
-                </p>
-              )}
-            </div>
-
-            {/* Card Footer: Batas Per Hari & Siklus Kiriman */}
+            {/* Card Footer: Total Saldo & Siklus Kiriman */}
             <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs gap-2">
               <div>
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider block">
-                  Batas per Hari
+                  {isUsingAccounts ? "Total Saldo" : "Sisa Uang Kiriman"}
                 </span>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-extrabold text-accent text-sm sm:text-base">
-                    {dashboardData || accountsList.length > 0 ? formatRupiah(heroDailyLimit) : "Rp ..."}
-                  </span>
-                  <span
-                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${heroStatus.status === "safe"
-                      ? "bg-accent/20 text-accent"
-                      : heroStatus.status === "warning"
-                        ? "bg-[#FFB04A]/20 text-[#FFB04A]"
-                        : "bg-expense/20 text-expense"
-                      }`}
-                  >
-                    {heroStatus.label}
+                  <span className="font-extrabold text-foreground text-sm sm:text-base">
+                    {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
                   </span>
                 </div>
-                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 ? (
-                  <span className="text-[10px] text-muted-foreground block mt-0.5">
-                    Sisihkan {formatRupiah(heroReservedTotal)}
-                    {heroLockedTotal > 0 ? " (dari saldo bebas)" : ""}
-                  </span>
-                ) : heroLockedTotal > 0 ? (
-                  <Link href="/accounts#dana-terkunci" className="text-[10px] text-muted-foreground/80 hover:text-accent block mt-0.5">
-                    Dihitung dari saldo bebas pakai →
-                  </Link>
-                ) : (
-                  <Link href="/profile" className="text-[10px] text-muted-foreground/80 hover:text-accent block mt-0.5">
-                    Bagi rata (Atur sisihan →)
-                  </Link>
-                )}
+                <span className="text-[10px] text-muted-foreground block mt-0.5">
+                  {isUsingAccounts ? "Bank, E-Wallet & Tunai" : "Tersedia Bulan Ini"}
+                </span>
               </div>
 
               <div className="text-right">
@@ -732,54 +784,33 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Pemakaian Batas Hari Ini & Sisa Jatah Hari Ini */}
-            {dashboardData && (dashboardData.todayBudget ?? 0) > 0 && (
-              <div className="pt-2.5 border-t border-border/50 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-muted-foreground">
-                    Terpakai Hari Ini ({dashboardData.todayUsagePercent ?? 0}%)
-                  </span>
-                  <span
-                    className={`font-black ${
-                      dashboardData.todayAlertLevel === "exceeded" || dashboardData.todayAlertLevel === "reached"
-                        ? "text-expense"
-                        : dashboardData.todayAlertLevel === "warning"
-                        ? "text-[#FFB04A]"
-                        : "text-accent"
-                    }`}
-                  >
-                    Sisa Hari Ini: {formatRupiah(dashboardData.todayRemaining ?? 0)}
-                  </span>
-                </div>
-                <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border/70">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      dashboardData.todayAlertLevel === "exceeded" || dashboardData.todayAlertLevel === "reached"
-                        ? "bg-expense"
-                        : dashboardData.todayAlertLevel === "warning"
-                        ? "bg-[#FFB04A]"
-                        : "bg-accent"
-                    }`}
-                    style={{ width: `${Math.min(100, dashboardData.todayUsagePercent ?? 0)}%` }}
-                  />
-                </div>
-                {(dashboardData.todayAlertLevel === "warning" ||
-                  dashboardData.todayAlertLevel === "reached" ||
-                  dashboardData.todayAlertLevel === "exceeded") && (
-                  <p
-                    className={`text-[10px] font-bold ${
-                      dashboardData.todayAlertLevel === "warning" ? "text-[#FFB04A]" : "text-expense"
-                    }`}
-                  >
-                    {dashboardData.todayAlertLevel === "warning"
-                      ? `⚠️ Hampir mencapai batas harian! Sisa jatah hari ini tinggal ${formatRupiah(dashboardData.todayRemaining ?? 0)}.`
-                      : dashboardData.todayAlertLevel === "reached"
-                      ? "🛑 Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
-                      : `🚨 Melewati batas harian sebesar ${formatRupiah(dashboardData.overLimitAmount ?? 0)}!`}
-                  </p>
-                )}
+            {/* Progress Bar Pemakaian Anggaran Bulanan (PRD B1, B3) */}
+            <div className="space-y-1.5 pt-2.5 border-t border-border/50">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                <span>
+                  Pemakaian Anggaran ({dashboardData?.budgetUsedPercent || 0}%)
+                </span>
+                <span>
+                  {formatRupiah(dashboardData?.totalExpense || 0)} / {formatRupiah(dashboardData?.allowance || 0)}
+                </span>
               </div>
-            )}
+              <div className="h-1.5 w-full bg-background rounded-full overflow-hidden border border-border">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${(dashboardData?.budgetUsedPercent || 0) >= 100
+                    ? "bg-expense"
+                    : (dashboardData?.budgetUsedPercent || 0) >= 80
+                      ? "bg-[#FFB04A]"
+                      : "bg-accent"
+                    }`}
+                  style={{ width: `${Math.min(100, dashboardData?.budgetUsedPercent || 0)}%` }}
+                />
+              </div>
+              {(dashboardData?.budgetUsedPercent || 0) >= 80 && (
+                <p className="text-[10px] font-bold text-[#FFB04A] flex items-center gap-1">
+                  <span>⚠️ Pemakaian sudah {(dashboardData?.budgetUsedPercent || 0) >= 100 ? "mencapai 100%" : "di atas 80%"}, kendalikan pengeluaranmu!</span>
+                </p>
+              )}
+            </div>
           </section>
 
           {/* 2.05 Kartu Konfirmasi Hari Kiriman (Payday Prompt) */}
