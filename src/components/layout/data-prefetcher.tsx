@@ -6,6 +6,7 @@ import { getStatisticsDataAction } from "@/app/actions/statistics";
 import { getSavingsDataAction } from "@/app/actions/savings";
 import { getAccountsAction } from "@/app/actions/accounts";
 import { getDebtsAction } from "@/app/actions/debts";
+import { getBudgetsWorkspaceAction } from "@/app/actions/category-pots";
 
 /**
  * DataPrefetcher: Komponen pintar di latar belakang (Background Prefetcher)
@@ -40,6 +41,7 @@ export function DataPrefetcher() {
         getSavingsDataAction(),
         getAccountsAction(),
         getDebtsAction(),
+        getBudgetsWorkspaceAction(),
       ]);
 
       // 1. Transactions Cache
@@ -81,6 +83,13 @@ export function DataPrefetcher() {
       if (results[5].status === "fulfilled" && results[5].value.success && results[5].value.data) {
         try {
           localStorage.setItem("sakuin_cached_debts", JSON.stringify(results[5].value.data));
+        } catch {}
+      }
+
+      // 7. Category Pots Cache
+      if (results[6].status === "fulfilled" && results[6].value.success && results[6].value.data) {
+        try {
+          localStorage.setItem("sakuin_cached_budget_pots", JSON.stringify(results[6].value.data));
         } catch {}
       }
     } catch (e) {

@@ -28,6 +28,8 @@ export function ReminderScheduler() {
     title: string;
     body: string;
     level: DailyLimitAlertPayload["level"];
+    group?: string;
+    url?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -142,6 +144,8 @@ export function ReminderScheduler() {
         title: string;
         body: string;
         level?: DailyLimitAlertPayload["level"];
+        group?: string;
+        url?: string;
         snapshot?: DailyLimitAlertPayload;
       };
       if (detail?.title && detail?.body) {
@@ -149,6 +153,8 @@ export function ReminderScheduler() {
           title: detail.title,
           body: detail.body,
           level: detail.level || detail.snapshot?.level || "warning",
+          group: detail.group,
+          url: detail.url,
         });
       }
     };
@@ -291,15 +297,28 @@ export function ReminderScheduler() {
       >
         <div
           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-            isSevere ? "bg-expense/15 text-expense" : "bg-[#FFB04A]/20 text-[#FFB04A]"
+            isSevere ? "bg-expense/15 text-[color:var(--expense-text)]" : "bg-[#FFB04A]/20 text-[color:var(--warning-text)]"
           }`}
         >
           <AlertTriangle className="w-5 h-5" />
         </div>
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => {
+            const target = inAppAlert.url;
+            setInAppAlert(null);
+            if (target) router.push(target);
+          }}
+          className="min-w-0 flex-1 text-left focus:outline-none"
+        >
+          {inAppAlert.group && (
+            <span className="inline-block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
+              {inAppAlert.group}
+            </span>
+          )}
           <p className="text-xs font-black text-foreground">{inAppAlert.title}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{inAppAlert.body}</p>
-        </div>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{inAppAlert.body}</p>
+        </button>
         <button
           type="button"
           onClick={() => setInAppAlert(null)}

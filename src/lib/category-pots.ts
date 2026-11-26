@@ -359,3 +359,67 @@ export function calculateDailyLimitWithLockedPots(params: {
     lockedCategoryTotal,
   };
 }
+
+const CLIENT_CATEGORY_ALIAS_MAP: Record<string, string> = {
+  nongkrong: "jajan & nongkrong",
+  "jajan & cemilan": "jajan & nongkrong",
+  bensin: "transport / bensin",
+  "bensin & transport": "transport / bensin",
+  kuota: "kuota & internet",
+  "kuliah & fotokopi": "kuliah",
+  "kebutuhan lain": "lainnya",
+};
+
+/**
+ * Menormalkan nama kategori (termasuk alias sebelum Sprint 2) agar pencocokan
+ * antrean offline dan notifikasi konsisten dengan nama kategori di database.
+ */
+export function resolvePotCategoryKey(rawName: string): string {
+  const normalized = (rawName || "").toLowerCase().trim();
+  return CLIENT_CATEGORY_ALIAS_MAP[normalized] || normalized;
+}
+
+/**
+ * Mengagregasi total pengeluaran di antrean offline yang masuk ke rentang periode aktif.
+ * Karena antrean offline hanya menyimpan transaksi yang belum tersinkron ke server,
+ * menjumlahkan hasil ini ke `periodSpent` server tidak akan menggandakan hitungan setelah sinkron.
+ */
+export function aggregatePendingOfflineSpentByCategory(
+  queue: Array<{
+    type: string;
+    amount: number;
+    categoryName: string;
+    occurredOn?: string | null;
+  }>,
+  periodStart: string,
+  periodEnd: string,
+  fallbackDateKey: string
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const item of queue) {
+    if (item.type !== "expense") continue;
+    const amt = Math.max(0, Math.round(Number(item.amount || 0)));
+    if (amt <= 0) continue;
+    const txDate = (item.occurredOn || fallbackDateKey).slice(0, 10);
+    if (periodStart && periodEnd && (txDate < periodStart || txDate > periodEnd)) {
+      continue;
+    }
+    const key = resolvePotCategoryKey(item.categoryName);
+    if (!key) continue;
+    result[key] = (result[key] || 0) + amt;
+  }
+  return result;
+}
+
+/**
+ * Format ringkas rupiah untuk ruang sempit (misal tombol 3 kolom di /record atau ringkasan 1 baris).
+ * Kelipatan ribuan penuh < 1 juta ditulis `Rp Xrb` (contoh: Rp 540rb); selebihnya tetap presisi.
+ */
+export function formatCompactRupiah(amount: number): string {
+  const abs = Math.max(0, Math.round(Math.abs(amount || 0)));
+  if (abs === 0) return "Rp 0";
+  if (abs >= 1000 && abs < 1_000_000 && abs % 1000 === 0) {
+    return `Rp ${Math.round(abs / 1000)}rb`;
+  }
+  return `Rp ${abs.toLocaleString("id-ID")}`;
+}

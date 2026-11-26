@@ -37,7 +37,18 @@ import {
   getCategoriesAction,
 } from "@/app/actions/transactions";
 import { getAccountsAction } from "@/app/actions/accounts";
-import { enqueueOfflineTransaction } from "@/lib/offline-queue";
+import {
+  getBudgetsWorkspaceAction,
+  type BudgetsWorkspaceData,
+  type BudgetPotWorkspaceItem,
+} from "@/app/actions/category-pots";
+import { enqueueOfflineTransaction, getOfflineQueue } from "@/lib/offline-queue";
+import {
+  aggregatePendingOfflineSpentByCategory,
+  evaluatePotUsage,
+  formatCompactRupiah,
+  resolvePotCategoryKey,
+} from "@/lib/category-pots";
 import {
   notifyDailyLimitAlert,
   notifyCategoryLimitAlert,
@@ -106,9 +117,15 @@ export default function RecordPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastImpact, setToastImpact] = useState("");
+  const [toastPotImpact, setToastPotImpact] = useState("");
   const [toastQuote, setToastQuote] = useState("");
   const [todayTransactions, setTodayTransactions] = useState<RecentTx[]>([]);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [potsWorkspace, setPotsWorkspace] = useState<BudgetsWorkspaceData | null>(null);
+  const [pendingOfflineByCat, setPendingOfflineByCat] = useState<Record<string, number>>({});
+  const [longPressedCategory, setLongPressedCategory] = useState<string | null>(null);
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressHideRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const amountInputRef = React.useRef<HTMLInputElement>(null);
 
   // Jaga tombol Simpan sticky tetap terlihat di atas keyboard HP tanpa memicu re-render saat scroll
@@ -185,6 +202,14 @@ export default function RecordPage() {
         }
       } catch {}
 
+      const cachedPotsRaw = localStorage.getItem("sakuin_cached_budget_pots");
+      if (cachedPotsRaw) {
+        const parsedPots = JSON.parse(cachedPotsRaw) as BudgetsWorkspaceData;
+        if (parsedPots && Array.isArray(parsedPots.pots)) {
+          setPotsWorkspace(parsedPots);
+        }
+      }
+
       const cachedCat = localStorage.getItem("sakuin_cached_categories");
       if (cachedCat) {
         const parsedCat = JSON.parse(cachedCat);
@@ -227,10 +252,18 @@ export default function RecordPage() {
     // 2. Fresh Network Sync in background
     async function initData() {
       try {
-        const [catRes, accRes] = await Promise.all([
+        const [catRes, accRes, potsRes] = await Promise.all([
           getCategoriesAction(),
           getAccountsAction(),
+          getBudgetsWorkspaceAction(),
         ]);
+
+        if (potsRes.success && potsRes.data) {
+          setPotsWorkspace(potsRes.data);
+          try {
+            localStorage.setItem("sakuin_cached_budget_pots", JSON.stringify(potsRes.data));
+          } catch {}
+        }
 
         if (catRes.success && catRes.data && catRes.data.length > 0) {
           const normalizedData: CategoryItem[] = catRes.data.map((c) => ({
@@ -272,23 +305,63 @@ export default function RecordPage() {
     }
     initData();
 
-    const refreshAccounts = async () => {
+    const refreshWorkspace = async () => {
       try {
-        const accRes = await getAccountsAction();
+        const [accRes, potsRes] = await Promise.all([
+          getAccountsAction(),
+          getBudgetsWorkspaceAction(),
+        ]);
         if (accRes.success && accRes.data && accRes.data.accounts.length > 0) {
           setAccountsList(accRes.data.accounts);
           try {
             localStorage.setItem("sakuin_cached_accounts", JSON.stringify(accRes.data));
           } catch {}
         }
+        if (potsRes.success && potsRes.data) {
+          setPotsWorkspace(potsRes.data);
+          try {
+            localStorage.setItem("sakuin_cached_budget_pots", JSON.stringify(potsRes.data));
+          } catch {}
+        }
       } catch {}
     };
 
-    window.addEventListener("sakuin:sync-complete", refreshAccounts);
-    window.addEventListener("sakuin:data-invalidated", refreshAccounts);
+    window.addEventListener("sakuin:sync-complete", refreshWorkspace);
+    window.addEventListener("sakuin:data-invalidated", refreshWorkspace);
     return () => {
-      window.removeEventListener("sakuin:sync-complete", refreshAccounts);
-      window.removeEventListener("sakuin:data-invalidated", refreshAccounts);
+      window.removeEventListener("sakuin:sync-complete", refreshWorkspace);
+      window.removeEventListener("sakuin:data-invalidated", refreshWorkspace);
+    };
+  }, []);
+
+  // Hitung pengeluaran yang masih mengantre di offline queue agar indikator pos akurat tanpa hitungan dobel
+  useEffect(() => {
+    const syncPendingQueue = () => {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const periodStart = potsWorkspace?.periodStart || "";
+      const periodEnd = potsWorkspace?.periodEnd || "";
+      setPendingOfflineByCat(
+        aggregatePendingOfflineSpentByCategory(
+          getOfflineQueue(),
+          periodStart,
+          periodEnd,
+          todayStr
+        )
+      );
+    };
+    syncPendingQueue();
+    window.addEventListener("sakuin:offline-queue-changed", syncPendingQueue);
+    window.addEventListener("sakuin:sync-complete", syncPendingQueue);
+    return () => {
+      window.removeEventListener("sakuin:offline-queue-changed", syncPendingQueue);
+      window.removeEventListener("sakuin:sync-complete", syncPendingQueue);
+    };
+  }, [potsWorkspace?.periodStart, potsWorkspace?.periodEnd]);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      if (longPressHideRef.current) clearTimeout(longPressHideRef.current);
     };
   }, []);
 
@@ -367,6 +440,73 @@ export default function RecordPage() {
     amount > 0 &&
     selectedAccount.balance < amount;
 
+  const potByCategoryKey = React.useMemo(() => {
+    const map = new Map<string, BudgetPotWorkspaceItem>();
+    if (!potsWorkspace?.pots) return map;
+    for (const pot of potsWorkspace.pots) {
+      if (!pot.isSelected || pot.isOther || pot.allocatedAmount <= 0) continue;
+      map.set(resolvePotCategoryKey(pot.name), pot);
+    }
+    return map;
+  }, [potsWorkspace]);
+
+  const startCategoryLongPress = (categoryName: string) => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    if (longPressHideRef.current) clearTimeout(longPressHideRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      setLongPressedCategory(categoryName);
+      longPressHideRef.current = setTimeout(() => {
+        setLongPressedCategory((prev) => (prev === categoryName ? null : prev));
+      }, 2600);
+    }, 420);
+  };
+
+  const cancelCategoryLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const computeOfflinePotToastAndAlert = (categoryName: string, txDateStr: string) => {
+    if (recordType !== "expense") return "";
+    const pot = potByCategoryKey.get(resolvePotCategoryKey(categoryName));
+    if (!pot || pot.allocatedAmount <= 0) return "";
+    if (
+      potsWorkspace?.periodStart &&
+      potsWorkspace?.periodEnd &&
+      (txDateStr < potsWorkspace.periodStart || txDateStr > potsWorkspace.periodEnd)
+    ) {
+      return "";
+    }
+
+    const updatedPending = aggregatePendingOfflineSpentByCategory(
+      getOfflineQueue(),
+      potsWorkspace?.periodStart || "",
+      potsWorkspace?.periodEnd || "",
+      txDateStr
+    );
+    const totalSpent = pot.periodSpent + (updatedPending[resolvePotCategoryKey(pot.name)] || 0);
+    const usage = evaluatePotUsage(pot.allocatedAmount, totalSpent);
+
+    if (usage.status !== "safe") {
+      void notifyCategoryLimitAlert({
+        categoryName: pot.name,
+        periodKey: potsWorkspace?.periodKey,
+        spent: usage.spent,
+        limit: usage.allocatedAmount,
+        remaining: usage.remaining,
+        overAmount: usage.overAmount,
+        usagePercent: usage.usagePercent,
+        level: usage.status === "warning" ? "warning" : usage.status === "reached" ? "reached" : "exceeded",
+      });
+    }
+
+    return usage.overAmount > 0
+      ? `Pos ${pot.name} over budget ${formatCompactRupiah(usage.overAmount)}`
+      : `Sisa jatah ${pot.name} ${formatCompactRupiah(usage.remaining)}`;
+  };
+
   const applyLocalAccountBalance = (accountId: string, delta: number) => {
     if (!accountId) return;
     setAccountsList((prev) => {
@@ -431,6 +571,7 @@ export default function RecordPage() {
 
       setToastMessage(`${itemTitle} (${formatRupiah(amount)}) disimpan ke antrean offline!`);
       setToastImpact("Menunggu sinyal untuk menyinkronkan ke server.");
+      setToastPotImpact(computeOfflinePotToastAndAlert(finalCategory, txDate));
       setToastQuote(getRandomOfflineQuote().text);
       setShowToast(true);
 
@@ -465,6 +606,15 @@ export default function RecordPage() {
           );
         } else {
           setToastImpact("");
+        }
+        if (recordType === "expense" && res.categoryLimitAlert) {
+          setToastPotImpact(
+            res.categoryLimitAlert.overAmount > 0
+              ? `Pos ${res.categoryLimitAlert.categoryName} over budget ${formatCompactRupiah(res.categoryLimitAlert.overAmount)}`
+              : `Sisa jatah ${res.categoryLimitAlert.categoryName} ${formatCompactRupiah(res.categoryLimitAlert.remaining)}`
+          );
+        } else {
+          setToastPotImpact("");
         }
         setToastQuote(getRandomOfflineQuote().text);
         setShowToast(true);
@@ -515,6 +665,7 @@ export default function RecordPage() {
       applyLocalAccountBalance(selectedAccountId, localDelta);
       setToastMessage(`${itemTitle} disimpan ke antrean offline!`);
       setToastImpact("Akan otomatis disinkronkan saat koneksi kembali.");
+      setToastPotImpact(computeOfflinePotToastAndAlert(finalCategory, txDate));
       setToastQuote("");
       setShowToast(true);
       setAmount(0);
@@ -555,7 +706,7 @@ export default function RecordPage() {
               <button
                 type="button"
                 onClick={() => router.push("/transactions")}
-                className="text-xs font-extrabold text-accent hover:underline shrink-0"
+                className="text-xs font-extrabold text-[color:var(--accent-text)] hover:underline shrink-0"
               >
                 Lihat di Riwayat
               </button>
@@ -563,6 +714,11 @@ export default function RecordPage() {
             {toastImpact && (
               <p className="text-xs font-extrabold text-foreground pl-7">
                 {toastImpact}
+              </p>
+            )}
+            {toastPotImpact && (
+              <p className="text-xs font-bold text-[color:var(--accent-text)] pl-7">
+                {toastPotImpact}
               </p>
             )}
             {toastQuote && (
@@ -686,7 +842,7 @@ export default function RecordPage() {
             {recordType === "expense" && (
               <Link
                 href="/budgets"
-                className="text-xs font-extrabold text-accent hover:underline py-1 px-1"
+                className="text-xs font-extrabold text-[color:var(--accent-text)] hover:underline py-1 px-1"
               >
                 Atur jatah
               </Link>
@@ -696,6 +852,21 @@ export default function RecordPage() {
             {displayCategories.map((cat) => {
               const Icon = getCategoryIconComponent(cat.name, cat.icon);
               const isSelected = !isCustomCategory && selectedCategory === cat.name;
+              const catKey = resolvePotCategoryKey(cat.name);
+              const pot = recordType === "expense" ? potByCategoryKey.get(catKey) : undefined;
+              const potUsage = pot
+                ? evaluatePotUsage(
+                    pot.allocatedAmount,
+                    pot.periodSpent + (pendingOfflineByCat[catKey] || 0)
+                  )
+                : null;
+              const isLowRemaining =
+                potUsage !== null &&
+                pot !== undefined &&
+                potUsage.remaining <= pot.allocatedAmount * 0.2;
+              const isPeeking = longPressedCategory === cat.name;
+              const showRemainingLabel =
+                potUsage !== null && (isLowRemaining || isPeeking);
 
               return (
                 <button
@@ -706,14 +877,55 @@ export default function RecordPage() {
                     setIsCustomCategory(false);
                     setCustomCategory("");
                   }}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-bold border transition-all text-left min-h-[44px] ${
+                  onPointerDown={() => {
+                    if (potUsage) startCategoryLongPress(cat.name);
+                  }}
+                  onPointerUp={cancelCategoryLongPress}
+                  onPointerLeave={cancelCategoryLongPress}
+                  onPointerCancel={cancelCategoryLongPress}
+                  onContextMenu={(e) => {
+                    if (potUsage) e.preventDefault();
+                  }}
+                  className={`flex flex-col justify-center p-2.5 rounded-lg text-xs font-bold border transition-all text-left min-h-[44px] select-none ${
                     isSelected
-                      ? "bg-accent/15 border-accent text-accent ring-1 ring-accent scale-[1.02]"
+                      ? "bg-accent/15 border-accent text-[color:var(--accent-text)] ring-1 ring-accent scale-[1.02]"
                       : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0 stroke-[2.2]" />
-                  <span className="truncate">{cat.name}</span>
+                  <div className="flex items-center gap-2 min-w-0 w-full">
+                    <Icon className="w-4 h-4 shrink-0 stroke-[2.2]" />
+                    <span className="truncate">{cat.name}</span>
+                  </div>
+
+                  {potUsage && (
+                    <div className="w-full mt-1.5 space-y-1">
+                      <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            potUsage.status === "exceeded" || potUsage.status === "reached"
+                              ? "bg-expense"
+                              : potUsage.status === "warning"
+                              ? "bg-[#FFB04A]"
+                              : "bg-accent"
+                          }`}
+                          style={{ width: `${Math.min(100, potUsage.usagePercent)}%` }}
+                        />
+                      </div>
+                      {showRemainingLabel && (
+                        <span
+                          className={`block text-[10px] leading-none font-bold truncate ${
+                            potUsage.status === "exceeded" || potUsage.status === "reached"
+                              ? "text-[color:var(--expense-text)]"
+                              : potUsage.status === "warning"
+                              ? "text-[color:var(--warning-text)]"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          Sisa {formatCompactRupiah(potUsage.remaining)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </button>
               );
             })}

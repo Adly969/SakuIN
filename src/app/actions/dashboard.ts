@@ -10,6 +10,7 @@ import {
   motivations,
   accounts,
   lockedFunds,
+  categoryPots,
 } from "@/db/schema";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import {
@@ -330,6 +331,14 @@ export async function getDashboardDataAction() {
     const hasIncomeToday = userTransactions.some(
       (tx) => tx.type === "income" && tx.occurredOn === todayKey
     );
+    const activeSavedPots = userId
+      ? await db.query.categoryPots.findMany({
+          where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
+        })
+      : [];
+    const savedPotsCount = activeSavedPots.filter((p) => Number(p.unitAmount || 0) > 0).length;
+    const hasSavedPots = savedPotsCount > 0;
+
     const paydayPrompt =
       Boolean(userId) &&
       allowance > 0 &&
@@ -341,6 +350,8 @@ export async function getDashboardDataAction() {
             dateLabel: dateInfo.short,
             cycle: allowanceCycle,
             suggestedAmount: allowance,
+            hasSavedPots,
+            savedPotsCount,
           }
         : null;
 

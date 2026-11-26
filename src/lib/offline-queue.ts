@@ -5,6 +5,7 @@
  */
 
 import { CreateTransactionInput, createTransactionAction } from "@/app/actions/transactions";
+import { notifyCategoryLimitAlert } from "@/lib/native-notifications";
 
 export interface QueuedTransaction extends CreateTransactionInput {
   queueId: string;
@@ -90,6 +91,9 @@ export async function syncOfflineQueue(): Promise<{
 
       if (res.success) {
         successCount++;
+        if (res.categoryLimitAlert && res.categoryLimitAlert.level !== "ok") {
+          void notifyCategoryLimitAlert(res.categoryLimitAlert);
+        }
       } else {
         failCount++;
         remainingQueue.push(item);

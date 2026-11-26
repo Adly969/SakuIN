@@ -38,10 +38,18 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return false;
 }
 
+export interface InstantNotificationOptions {
+  tag?: string;
+  group?: string;
+  channelId?: string;
+  channelName?: string;
+}
+
 export async function sendInstantNotification(
   title: string,
   body: string,
-  url: string = "/dashboard"
+  url: string = "/dashboard",
+  options?: InstantNotificationOptions
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
@@ -49,6 +57,16 @@ export async function sendInstantNotification(
   if (await isCapacitorNative()) {
     try {
       const { LocalNotifications } = await import("@capacitor/local-notifications");
+      if (options?.channelId) {
+        try {
+          await LocalNotifications.createChannel({
+            id: options.channelId,
+            name: options.channelName || options.group || "Peringatan batas",
+            description: "Peringatan pemakaian batas harian & jatah pos kategori",
+            importance: 4,
+          });
+        } catch {}
+      }
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -58,7 +76,9 @@ export async function sendInstantNotification(
             schedule: { at: new Date(Date.now() + 500) },
             smallIcon: "ic_stat_icon_config_sample",
             iconColor: "#D4FF5A",
-            extra: { url },
+            channelId: options?.channelId,
+            group: options?.group,
+            extra: { url, group: options?.group },
           },
         ],
       });
@@ -77,13 +97,15 @@ export async function sendInstantNotification(
           body,
           icon: "/app-icon.png",
           badge: "/app-icon.png",
-          data: { url },
-        } as NotificationOptions & { data?: { url: string } });
+          tag: options?.tag,
+          data: { url, group: options?.group },
+        } as NotificationOptions & { data?: { url: string; group?: string } });
         return true;
       } else {
         new Notification(title, {
           body,
           icon: "/app-icon.png",
+          tag: options?.tag,
         });
         return true;
       }
@@ -332,6 +354,7 @@ export async function notifyDailyLimitAlert(
 
 export interface CategoryLimitAlertPayload {
   categoryName: string;
+  periodKey?: string;
   spent: number;
   limit: number;
   remaining: number;
@@ -341,25 +364,48 @@ export interface CategoryLimitAlertPayload {
 }
 
 /**
- * Mengirim notifikasi ketika pengeluaran kategori tertentu mendekati/melewati batas bulanan
+ * Mengirim notifikasi kelompok "Peringatan batas" saat pemakaian pos kategori menyentuh
+ * 80% (waspada), 100% (habis), atau >100% (over budget) — maksimal sekali per ambang per periode.
+ * Ketuk notifikasi membuka halaman Statistik langsung pada pos terkait.
  */
 export async function notifyCategoryLimitAlert(
   snapshot: CategoryLimitAlertPayload
 ): Promise<boolean> {
   if (typeof window === "undefined" || snapshot.level === "ok") return false;
 
+  const now = new Date();
+  const periodKey =
+    snapshot.periodKey ||
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const catKey = (snapshot.categoryName || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
+  const dedupeKey = `sakuin_pot_alert_${periodKey}_${catKey}_${snapshot.level}`;
+
+  try {
+    if (localStorage.getItem(dedupeKey)) {
+      return false;
+    }
+    localStorage.setItem(dedupeKey, "1");
+  } catch {
+    return false;
+  }
+
   let title = "";
   let body = "";
   if (snapshot.level === "warning") {
-    title = `⚠️ Pos ${snapshot.categoryName} Hampir Batas (${snapshot.usagePercent}%)`;
-    body = `Terpakai ${formatRp(snapshot.spent)} dari batas ${formatRp(snapshot.limit)}. Sisa bulan ini: ${formatRp(snapshot.remaining)}.`;
+    title = `Jatah ${snapshot.categoryName} hampir habis (${snapshot.usagePercent}%)`;
+    body = `Terpakai ${formatRp(snapshot.spent)} dari ${formatRp(snapshot.limit)}. Sisa ${formatRp(snapshot.remaining)} lagi sampai akhir periode.`;
   } else if (snapshot.level === "reached") {
-    title = `🛑 Batas Kategori ${snapshot.categoryName} Tercapai!`;
-    body = `Pengeluaran ${snapshot.categoryName} sudah mencapai ${formatRp(snapshot.limit)} bulan ini.`;
+    title = `Jatah ${snapshot.categoryName} pas habis (100%)`;
+    body = `Pengeluaran ${snapshot.categoryName} sudah mencapai ${formatRp(snapshot.limit)}. Catatan berikutnya bakal lewat batas.`;
   } else {
-    title = `🚨 Pos ${snapshot.categoryName} Over Budget!`;
-    body = `Terpakai ${formatRp(snapshot.spent)} (lebih ${formatRp(snapshot.overAmount)} dari batas ${formatRp(snapshot.limit)}).`;
+    title = `Pos ${snapshot.categoryName} over budget ${formatRp(snapshot.overAmount)}`;
+    body = `Sudah terpakai ${formatRp(snapshot.spent)} dari jatah ${formatRp(snapshot.limit)}. Ketuk untuk cek rinciannya di Statistik.`;
   }
+
+  const targetUrl = `/statistics?pos=${encodeURIComponent(snapshot.categoryName)}#ringkasan-pos`;
 
   window.dispatchEvent(
     new CustomEvent("sakuin:smart-alert", {
@@ -367,11 +413,18 @@ export async function notifyCategoryLimitAlert(
         title,
         body,
         level: snapshot.level,
+        group: "Peringatan batas",
+        url: targetUrl,
       },
     })
   );
 
-  return sendInstantNotification(title, body, "/budgets");
+  return sendInstantNotification(title, body, targetUrl, {
+    tag: dedupeKey,
+    group: "Peringatan batas",
+    channelId: "peringatan-batas",
+    channelName: "Peringatan batas",
+  });
 }
 
 export interface DebtDueAlertPayload {

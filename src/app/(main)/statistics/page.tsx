@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   SlidersHorizontal,
   Plus,
+  Lock,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -41,7 +42,14 @@ import {
 import {
   getCategoryBudgetsAction,
   type CategoryBudgetItem,
+  type CategoryPotsSummaryMeta,
 } from "@/app/actions/category-budgets";
+import { getOfflineQueue } from "@/lib/offline-queue";
+import {
+  aggregatePendingOfflineSpentByCategory,
+  evaluatePotUsage,
+  resolvePotCategoryKey,
+} from "@/lib/category-pots";
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<"month" | "year">("month");
@@ -52,6 +60,9 @@ export default function StatisticsPage() {
 
   const [statsData, setStatsData] = useState<StatisticsData | null>(null);
   const [catBudgets, setCatBudgets] = useState<CategoryBudgetItem[]>([]);
+  const [catSummary, setCatSummary] = useState<CategoryPotsSummaryMeta | null>(null);
+  const [pendingOfflineByCat, setPendingOfflineByCat] = useState<Record<string, number>>({});
+  const [highlightedPos, setHighlightedPos] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
@@ -59,6 +70,14 @@ export default function StatisticsPage() {
   // Instant Cache Hydration on initial mount (0ms delay)
   useEffect(() => {
     setIsMounted(true);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const posParam = params.get("pos");
+      if (posParam) {
+        setHighlightedPos(resolvePotCategoryKey(posParam));
+      }
+    } catch {}
+
     const today = new Date();
     const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
     setSelectedMonthKey(curMonthKey);
@@ -77,7 +96,52 @@ export default function StatisticsPage() {
     } catch {}
 
     loadData("month", curMonthKey, today.getFullYear(), "expense", hasCache);
+
+    const handleRefreshStats = () => {
+      loadData("month", curMonthKey, today.getFullYear(), "expense", true);
+    };
+    window.addEventListener("sakuin:sync-complete", handleRefreshStats);
+    window.addEventListener("sakuin:data-invalidated", handleRefreshStats);
+    return () => {
+      window.removeEventListener("sakuin:sync-complete", handleRefreshStats);
+      window.removeEventListener("sakuin:data-invalidated", handleRefreshStats);
+    };
   }, []);
+
+  useEffect(() => {
+    const syncPendingQueue = () => {
+      if (!catSummary?.isCurrentView) {
+        setPendingOfflineByCat({});
+        return;
+      }
+      const todayStr = new Date().toISOString().split("T")[0];
+      setPendingOfflineByCat(
+        aggregatePendingOfflineSpentByCategory(
+          getOfflineQueue(),
+          catSummary.periodStart,
+          catSummary.periodEnd,
+          todayStr
+        )
+      );
+    };
+    syncPendingQueue();
+    window.addEventListener("sakuin:offline-queue-changed", syncPendingQueue);
+    window.addEventListener("sakuin:sync-complete", syncPendingQueue);
+    return () => {
+      window.removeEventListener("sakuin:offline-queue-changed", syncPendingQueue);
+      window.removeEventListener("sakuin:sync-complete", syncPendingQueue);
+    };
+  }, [catSummary?.isCurrentView, catSummary?.periodStart, catSummary?.periodEnd]);
+
+  useEffect(() => {
+    if (!highlightedPos || catBudgets.length === 0) return;
+    const timer = setTimeout(() => {
+      const target = document.getElementById(`pos-${highlightedPos.replace(/\s+/g, "-")}`)
+        || document.getElementById("ringkasan-pos");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [highlightedPos, catBudgets.length]);
 
   // Load statistics data
   const loadData = (
@@ -112,6 +176,7 @@ export default function StatisticsPage() {
         }
         if (catBudgetRes.success && catBudgetRes.data) {
           setCatBudgets(catBudgetRes.data.items);
+          setCatSummary(catBudgetRes.data.summary ?? null);
         }
       } catch (err) {
         console.error("Gagal memuat statistik:", err);
@@ -853,15 +918,18 @@ export default function StatisticsPage() {
             </section>
           )}
 
-          {/* Section 4.5: Kontrol Pos Boros / Batas Kategori */}
-          <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
+          {/* Section 4.5: Ringkasan Semua Pos Jatah Kategori & Sisa Bebas */}
+          <section
+            id="ringkasan-pos"
+            className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5"
+          >
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-extrabold text-foreground tracking-tight">
-                  Kontrol Pos Boros (Jatah Kategori)
+                  Ringkasan Pos Kategori
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Bagi dan pantau jatah per pos agar pengeluaran tetap aman sampai akhir siklus
+                  Transaksi pada kategori tanpa jatah otomatis dihitung ke Sisa Bebas.
                 </p>
               </div>
               <Link
@@ -873,22 +941,94 @@ export default function StatisticsPage() {
               </Link>
             </div>
 
+            {catSummary && catBudgets.length > 0 && (() => {
+              const allocatedKeySet = new Set(
+                catBudgets.map((b) => resolvePotCategoryKey(b.categoryName))
+              );
+              const pendingUnallocated = Object.entries(pendingOfflineByCat).reduce(
+                (sum, [k, amt]) => (allocatedKeySet.has(k) ? sum : sum + amt),
+                0
+              );
+              const totalUnallocatedSpent = catSummary.unallocatedSpent + pendingUnallocated;
+              const liveFreeRemaining =
+                Math.max(0, catSummary.freeRemainingBeforeUnallocated) - totalUnallocatedSpent;
+
+              return (
+                <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-background/70 border border-border/70 text-xs">
+                  <div>
+                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                      Total Jatah Pos
+                    </span>
+                    <span className="font-black text-foreground">
+                      {formatRupiah(catSummary.totalAllocated)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                      Tanpa Jatah
+                    </span>
+                    <span className="font-black text-foreground">
+                      {formatRupiah(totalUnallocatedSpent)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] font-semibold text-muted-foreground block">
+                      Sisa Bebas
+                    </span>
+                    <span
+                      className={`font-black ${
+                        catSummary.isOverAllocated || liveFreeRemaining < 0
+                          ? "text-[color:var(--expense-text)]"
+                          : "text-[color:var(--accent-text)]"
+                      }`}
+                    >
+                      {liveFreeRemaining < 0
+                        ? `-${formatRupiah(Math.abs(liveFreeRemaining))}`
+                        : formatRupiah(liveFreeRemaining)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {catBudgets.length === 0 ? (
               <div className="p-4 rounded-xl bg-background/60 border border-dashed border-border text-center text-xs text-muted-foreground">
-                Belum ada pos jatah aktif siklus ini. Ketuk <strong>Atur jatah</strong> untuk membagi pos kategori sekaligus.
+                Belum ada pos jatah aktif periode ini. Ketuk <strong>Atur jatah</strong> untuk membagi jatah pos sekaligus.
               </div>
             ) : (
               <div className="space-y-2.5">
                 {catBudgets.map((item) => {
-                  const isOver = item.status === "exceeded" || item.status === "reached";
-                  const isWarn = item.status === "warning";
+                  const itemKey = resolvePotCategoryKey(item.categoryName);
+                  const pendingSpent = catSummary?.isCurrentView
+                    ? pendingOfflineByCat[itemKey] || 0
+                    : 0;
+                  const liveUsage = evaluatePotUsage(
+                    item.limitAmount,
+                    item.spent + pendingSpent
+                  );
+                  const isOver =
+                    liveUsage.status === "exceeded" || liveUsage.status === "reached";
+                  const isWarn = liveUsage.status === "warning";
+                  const isHighlighted = highlightedPos === itemKey;
+                  const cadenceLabel =
+                    item.cadence === "daily"
+                      ? "Harian"
+                      : item.cadence === "weekly"
+                      ? "Mingguan"
+                      : "Bulanan";
+
                   return (
                     <div
                       key={item.categoryId}
-                      className="p-3 rounded-xl bg-background/70 border border-border/70 space-y-1.5"
+                      id={`pos-${itemKey.replace(/\s+/g, "-")}`}
+                      className={`p-3 rounded-xl bg-background/70 border space-y-2 transition-all ${
+                        isHighlighted
+                          ? "border-accent ring-2 ring-accent/60"
+                          : "border-border/70"
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             className="w-2.5 h-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: item.color }}
@@ -896,43 +1036,77 @@ export default function StatisticsPage() {
                           <span className="font-bold text-foreground truncate">
                             {item.categoryName}
                           </span>
-                          <span
-                            className={`text-xs font-black px-1.5 py-0.5 rounded ${
-                              isOver
-                                ? "bg-expense/15 text-expense"
-                                : isWarn
-                                ? "bg-[#FFB04A]/20 text-[#FFB04A]"
-                                : "bg-accent/15 text-accent"
-                            }`}
-                          >
-                            {item.usagePercent}%
+                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                            {cadenceLabel}
                           </span>
+                          {item.isLockedFromDaily && (
+                            <span
+                              title="Dikunci dari Batas Hari Ini"
+                              className="inline-flex items-center text-[color:var(--warning-text)] shrink-0"
+                            >
+                              <Lock className="w-3 h-3" aria-label="Terkunci" />
+                            </span>
+                          )}
                         </div>
-                        <Link
-                          href="/budgets"
-                          className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded"
-                          title="Atur semua jatah pos"
+                        <span
+                          className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${
+                            isOver
+                              ? "bg-expense/15 text-[color:var(--expense-text)]"
+                              : isWarn
+                              ? "bg-[#FFB04A]/20 text-[color:var(--warning-text)]"
+                              : "bg-accent/15 text-[color:var(--accent-text)]"
+                          }`}
                         >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                        </Link>
+                          {liveUsage.status === "exceeded"
+                            ? `Over (${liveUsage.usagePercent}%)`
+                            : liveUsage.status === "reached"
+                            ? `Habis (${liveUsage.usagePercent}%)`
+                            : isWarn
+                            ? `Waspada (${liveUsage.usagePercent}%)`
+                            : `Aman (${liveUsage.usagePercent}%)`}
+                        </span>
                       </div>
 
-                      <div className="h-1.5 w-full bg-card rounded-full overflow-hidden border border-border/50">
+                      <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
                             isOver ? "bg-expense" : isWarn ? "bg-[#FFB04A]" : "bg-accent"
                           }`}
-                          style={{ width: `${Math.min(100, item.usagePercent)}%` }}
+                          style={{ width: `${Math.min(100, liveUsage.usagePercent)}%` }}
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold">
-                        <span>
-                          Terpakai: <strong className="text-foreground">{formatRupiah(item.spent)}</strong>
-                        </span>
-                        <span>
-                          Batas: {formatRupiah(item.limitAmount)}
-                        </span>
+                      <div className="grid grid-cols-3 gap-2 text-xs font-semibold pt-0.5">
+                        <div>
+                          <span className="text-[11px] text-muted-foreground block">Jatah</span>
+                          <span className="font-bold text-foreground">
+                            {formatRupiah(liveUsage.allocatedAmount)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-muted-foreground block">Terpakai</span>
+                          <span className="font-bold text-foreground">
+                            {formatRupiah(liveUsage.spent)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[11px] text-muted-foreground block">
+                            {liveUsage.overAmount > 0 ? "Over" : "Sisa"}
+                          </span>
+                          <span
+                            className={`font-black ${
+                              liveUsage.overAmount > 0 || liveUsage.remaining === 0
+                                ? "text-[color:var(--expense-text)]"
+                                : isWarn
+                                ? "text-[color:var(--warning-text)]"
+                                : "text-[color:var(--accent-text)]"
+                            }`}
+                          >
+                            {liveUsage.overAmount > 0
+                              ? `+${formatRupiah(liveUsage.overAmount)}`
+                              : formatRupiah(liveUsage.remaining)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );

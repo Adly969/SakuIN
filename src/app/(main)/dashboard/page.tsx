@@ -55,6 +55,7 @@ import { getDashboardDataAction, getNextMotivationAction } from "@/app/actions/d
 import { getAccountsAction } from "@/app/actions/accounts";
 import { claimCarryoverSavingsAction } from "@/app/actions/savings";
 import { createTransactionAction } from "@/app/actions/transactions";
+import { reusePreviousPeriodPotsAction } from "@/app/actions/category-pots";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
 
@@ -157,6 +158,8 @@ interface DashboardData {
     dateLabel: string;
     cycle: AllowanceCycle;
     suggestedAmount: number;
+    hasSavedPots?: boolean;
+    savedPotsCount?: number;
   } | null;
   remainingDays: number;
   remainingBalance: number;
@@ -233,9 +236,12 @@ export default function DashboardPage() {
   } | null>(null);
   const [paydayAmount, setPaydayAmount] = useState<string>("");
   const [paydayAccountId, setPaydayAccountId] = useState<string>("");
+  const [reusePrevPotsOnPayday, setReusePrevPotsOnPayday] = useState<boolean>(true);
   const [isSubmittingPayday, setIsSubmittingPayday] = useState(false);
+  const [isReusingPrevPots, setIsReusingPrevPots] = useState(false);
   const [dismissedPaydayKey, setDismissedPaydayKey] = useState<string | null>(null);
   const [paydaySuccessMsg, setPaydaySuccessMsg] = useState<string | null>(null);
+  const [paydayCanReusePrev, setPaydayCanReusePrev] = useState<boolean>(false);
   const { isOnline, queueCount, isSyncing, manualSync } = useOfflineSync();
   const shouldReduceMotion = useReducedMotion();
 
@@ -527,6 +533,13 @@ export default function DashboardPage() {
       });
 
       if (res.success) {
+        let appliedPrevCount = 0;
+        if (paydayPrompt.hasSavedPots && reusePrevPotsOnPayday) {
+          const reuseRes = await reusePreviousPeriodPotsAction();
+          if (reuseRes.success && reuseRes.count) {
+            appliedPrevCount = reuseRes.count;
+          }
+        }
         if (paydayAccountId) {
           setAccountsList((prev) => {
             const updated = prev.map((acc) =>
@@ -542,10 +555,15 @@ export default function DashboardPage() {
           });
         }
         setDismissedPaydayKey(paydayPrompt.dateKey);
-        setPaydaySuccessMsg(`Uang kiriman ${formatRupiah(amt)} berhasil dicatat masuk!`);
+        setPaydayCanReusePrev(Boolean(paydayPrompt.hasSavedPots) && appliedPrevCount === 0);
+        setPaydaySuccessMsg(
+          appliedPrevCount > 0
+            ? `Uang kiriman ${formatRupiah(amt)} dicatat & pembagian ${appliedPrevCount} pos periode lalu langsung dipasang!`
+            : `Uang kiriman ${formatRupiah(amt)} berhasil dicatat masuk!`
+        );
         window.dispatchEvent(new Event("sakuin:data-invalidated"));
         await loadData();
-        setTimeout(() => setPaydaySuccessMsg(null), 6000);
+        setTimeout(() => setPaydaySuccessMsg(null), 6500);
       } else {
         alert(res.error || "Gagal mencatat uang kiriman");
       }
@@ -553,6 +571,26 @@ export default function DashboardPage() {
       console.error("Gagal catat kiriman:", err);
     } finally {
       setIsSubmittingPayday(false);
+    }
+  };
+
+  const handleReusePrevPotsAfterPayday = async () => {
+    if (isReusingPrevPots) return;
+    setIsReusingPrevPots(true);
+    try {
+      const res = await reusePreviousPeriodPotsAction();
+      if (res.success) {
+        setPaydayCanReusePrev(false);
+        setPaydaySuccessMsg(
+          `Pembagian ${res.count || ""} pos periode lalu berhasil dipasang untuk siklus baru!`
+        );
+        window.dispatchEvent(new Event("sakuin:data-invalidated"));
+        await loadData();
+      } else {
+        alert(res.error || "Gagal memakai pembagian periode lalu");
+      }
+    } finally {
+      setIsReusingPrevPots(false);
     }
   };
 
@@ -943,18 +981,32 @@ export default function DashboardPage() {
 
           {/* 2.05 Kartu Konfirmasi Hari Kiriman (Payday Prompt) */}
           {paydaySuccessMsg && (
-            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm flex items-center justify-between gap-3 flex-wrap text-xs">
-              <div className="flex items-center gap-2 font-black text-accent">
+            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm flex items-center justify-between gap-2.5 flex-wrap text-xs">
+              <div className="flex items-center gap-2 font-black text-[color:var(--accent-text)]">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{paydaySuccessMsg}</span>
               </div>
-              <Link
-                href="/budgets"
-                className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105 transition-all"
-              >
-                <span>Atur Jatah Kategori</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              <div className="flex items-center gap-2 flex-wrap">
+                {paydayCanReusePrev && (
+                  <button
+                    type="button"
+                    disabled={isReusingPrevPots}
+                    onClick={handleReusePrevPotsAfterPayday}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full border border-accent/50 bg-background text-foreground font-bold hover:border-accent transition-all"
+                  >
+                    <span>
+                      {isReusingPrevPots ? "Memasang..." : "Pakai pembagian periode lalu"}
+                    </span>
+                  </button>
+                )}
+                <Link
+                  href="/budgets"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105 transition-all"
+                >
+                  <span>Atur Jatah Kategori</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
           )}
 
@@ -1010,6 +1062,33 @@ export default function DashboardPage() {
                 </select>
               </div>
 
+              {paydayPrompt.hasSavedPots && (
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={reusePrevPotsOnPayday}
+                  onClick={() => setReusePrevPotsOnPayday((prev) => !prev)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] rounded-lg border text-xs font-bold transition-colors text-left ${
+                    reusePrevPotsOnPayday
+                      ? "bg-accent/15 border-accent/50 text-foreground"
+                      : "bg-background border-border text-muted-foreground"
+                  }`}
+                >
+                  <span>
+                    Pakai pembagian periode lalu ({paydayPrompt.savedPotsCount || 0} pos aktif)
+                  </span>
+                  <span
+                    className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                      reusePrevPotsOnPayday
+                        ? "bg-accent border-accent text-[#1F1F1F]"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    {reusePrevPotsOnPayday ? "✓" : ""}
+                  </span>
+                </button>
+              )}
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -1029,7 +1108,7 @@ export default function DashboardPage() {
                 </button>
                 <Link
                   href="/budgets"
-                  className="px-3 py-2 min-h-[44px] rounded-full border border-accent/40 bg-accent/10 text-xs font-extrabold text-accent hover:bg-accent/20 transition-all flex items-center"
+                  className="px-3 py-2 min-h-[44px] rounded-full border border-accent/40 bg-accent/10 text-xs font-extrabold text-[color:var(--accent-text)] hover:bg-accent/20 transition-all flex items-center"
                 >
                   Atur jatah
                 </Link>

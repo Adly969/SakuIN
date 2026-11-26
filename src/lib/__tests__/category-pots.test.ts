@@ -10,6 +10,9 @@ import {
   calculateFreePoolUsage,
   calculateLockedCategoryDeduction,
   calculateDailyLimitWithLockedPots,
+  resolvePotCategoryKey,
+  aggregatePendingOfflineSpentByCategory,
+  formatCompactRupiah,
 } from "../category-pots";
 
 test("1. Jatah per sifat (Harian, Mingguan, Bulanan)", () => {
@@ -214,4 +217,44 @@ test("7. Total dibagi, Sisa Bebas, kelebihan alokasi, & transaksi tanpa jatah ma
   assert.equal(computed[0].remaining, 550000);
   assert.equal(computed[1].allocatedAmount, 214000);
   assert.equal(computed[1].remaining, 164000);
+});
+
+test("8. Konsistensi offline queue, alias kategori, & format ringkas", () => {
+  // Alias sebelum Sprint 2 dipetakan ke nama pos resmi
+  assert.equal(resolvePotCategoryKey("Nongkrong"), "jajan & nongkrong");
+  assert.equal(resolvePotCategoryKey("Jajan & Cemilan"), "jajan & nongkrong");
+  assert.equal(resolvePotCategoryKey("Bensin"), "transport / bensin");
+  assert.equal(resolvePotCategoryKey("Kuota"), "kuota & internet");
+
+  // Agregasi pengeluaran di antrean offline hanya menghitung expense dalam rentang periode
+  const pending = aggregatePendingOfflineSpentByCategory(
+    [
+      { type: "expense", amount: 25000, categoryName: "Makan", occurredOn: "2026-11-15" },
+      { type: "expense", amount: 15000, categoryName: "Nongkrong", occurredOn: "2026-11-20" },
+      { type: "income", amount: 500000, categoryName: "Uang Kiriman", occurredOn: "2026-11-20" },
+      { type: "expense", amount: 40000, categoryName: "Makan", occurredOn: "2026-10-30" }, // di luar periode
+    ],
+    "2026-11-01",
+    "2026-11-30",
+    "2026-11-26"
+  );
+
+  assert.equal(pending["makan"], 25000);
+  assert.equal(pending["jajan & nongkrong"], 15000);
+  assert.equal(pending["uang kiriman"], undefined);
+
+  // Simulasi sebelum & sesudah sinkron tidak dobel:
+  // Offline: serverSpent=100rb + pending=25rb => sisa 375rb dari jatah 500rb
+  const offlineUsage = evaluatePotUsage(500000, 100000 + (pending["makan"] || 0));
+  assert.equal(offlineUsage.remaining, 375000);
+
+  // Setelah sinkron: antrean kosong & serverSpent sudah jadi 125rb => sisa tetap 375rb
+  const afterSyncQueue = aggregatePendingOfflineSpentByCategory([], "2026-11-01", "2026-11-30", "2026-11-26");
+  const syncedUsage = evaluatePotUsage(500000, 125000 + (afterSyncQueue["makan"] || 0));
+  assert.equal(syncedUsage.remaining, 375000);
+
+  // Format ringkas rupiah
+  assert.equal(formatCompactRupiah(540000), "Rp 540rb");
+  assert.equal(formatCompactRupiah(542500), "Rp 542.500");
+  assert.equal(formatCompactRupiah(0), "Rp 0");
 });

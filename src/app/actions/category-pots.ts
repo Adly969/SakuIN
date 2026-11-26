@@ -604,3 +604,99 @@ export async function createCustomCategoryPotAction(
     return { success: false, error: "Gagal menambahkan pos baru" };
   }
 }
+
+/**
+ * Aksi ringkas dari konfirmasi Hari Kiriman (Payday):
+ * Memastikan pembagian jatah pos dari periode sebelumnya langsung aktif di periode baru.
+ * (Penyesuaian lanjutan/salin detail akan disempurnakan di Sprint 5.)
+ */
+export async function reusePreviousPeriodPotsAction(): Promise<{
+  success: boolean;
+  count?: number;
+  error?: string;
+}> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const userId = user?.id;
+    if (!userId) return { success: false, error: "Pengguna belum login" };
+
+    const [userProfile, activePots, existingPeriodRows] = await Promise.all([
+      db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
+      db.query.categoryPots.findMany({
+        where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
+      }),
+      db.query.categoryPotPeriods.findMany({
+        where: eq(categoryPotPeriods.userId, userId),
+      }),
+    ]);
+
+    const candidatePots = activePots.filter((p) => Number(p.unitAmount || 0) > 0);
+    if (candidatePots.length === 0) {
+      return { success: false, error: "Belum ada pembagian pos dari periode lalu" };
+    }
+
+    const allowanceCycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
+    const paydayDay = userProfile?.paydayDay || 1;
+    const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const periodInfo = getCyclePeriodInfo(new Date(), allowanceCycle, paydayDay, paydayWeekday);
+
+    const latestPrevByPot = new Map<string, number>();
+    const sortedPrev = existingPeriodRows
+      .filter((r) => r.periodKey !== periodInfo.periodKey)
+      .sort((a, b) => (a.periodStart > b.periodStart ? -1 : 1));
+    for (const row of sortedPrev) {
+      if (!latestPrevByPot.has(row.potId)) {
+        latestPrevByPot.set(row.potId, Number(row.allocatedAmount || 0));
+      }
+    }
+
+    for (const pot of candidatePots) {
+      const prevAlloc = latestPrevByPot.get(pot.id);
+      const nextAlloc =
+        prevAlloc && prevAlloc > 0
+          ? prevAlloc
+          : calculatePotPeriodAllocation(
+              Number(pot.unitAmount || 0),
+              (pot.cadence as PotCadence) || "monthly",
+              periodInfo.cycleDays
+            );
+      if (nextAlloc <= 0) continue;
+
+      await db
+        .insert(categoryPotPeriods)
+        .values({
+          userId,
+          potId: pot.id,
+          periodKey: periodInfo.periodKey,
+          periodStart: periodInfo.periodStart,
+          periodEnd: periodInfo.periodEnd,
+          baseLimit: BigInt(nextAlloc),
+          allocatedAmount: BigInt(nextAlloc),
+        })
+        .onConflictDoUpdate({
+          target: [categoryPotPeriods.potId, categoryPotPeriods.periodKey],
+          set: {
+            periodStart: periodInfo.periodStart,
+            periodEnd: periodInfo.periodEnd,
+            baseLimit: BigInt(nextAlloc),
+            allocatedAmount: BigInt(nextAlloc),
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    revalidatePath("/budgets");
+    revalidatePath("/statistics");
+    revalidatePath("/dashboard");
+    revalidatePath("/record");
+
+    return { success: true, count: candidatePots.length };
+  } catch (error) {
+    console.error("Gagal memakai pembagian periode lalu:", error);
+    return { success: false, error: "Gagal memakai pembagian periode lalu" };
+  }
+}

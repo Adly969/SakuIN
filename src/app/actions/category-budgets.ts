@@ -10,12 +10,20 @@ import {
   categories,
   profiles,
   transactions,
+  accounts,
+  savingsEntries,
+  lockedFunds,
 } from "@/db/schema";
 import { eq, and, isNull, asc } from "drizzle-orm";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
-import type { AllowanceCycle } from "@/lib/finance";
+import {
+  calculateAdaptiveDailyLimit,
+  type AllowanceCycle,
+  type ReserveMode,
+} from "@/lib/finance";
 import {
   calculatePotPeriodAllocation,
+  evaluatePotUsage,
   getCyclePeriodInfo,
   type PotCadence,
 } from "@/lib/category-pots";
@@ -24,11 +32,27 @@ export interface CategoryBudgetItem {
   categoryId: string;
   categoryName: string;
   color: string;
+  cadence?: PotCadence;
+  isLockedFromDaily?: boolean;
   limitAmount: number;
   spent: number;
   remaining: number;
+  overAmount: number;
   usagePercent: number;
   status: "ok" | "warning" | "reached" | "exceeded";
+}
+
+export interface CategoryPotsSummaryMeta {
+  isCurrentView: boolean;
+  periodKey: string;
+  periodStart: string;
+  periodEnd: string;
+  availableFunds: number;
+  totalAllocated: number;
+  freeRemainingBeforeUnallocated: number;
+  unallocatedSpent: number;
+  freePoolRemaining: number;
+  isOverAllocated: boolean;
 }
 
 export async function getCategoryBudgetsAction(rawMonthKey?: string) {
@@ -47,7 +71,16 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
         : getJakartaDateKey().slice(0, 7);
     const monthDate = `${monthKey}-01`;
 
-    const [userProfile, expenseCategories, monthBudget, monthExpenses, userPots] = await Promise.all([
+    const [
+      userProfile,
+      expenseCategories,
+      monthBudget,
+      allUserTransactions,
+      userPots,
+      userAccounts,
+      activeLockedFunds,
+      userSavings,
+    ] = await Promise.all([
       db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
       db.query.categories.findMany({
         where: and(
@@ -61,15 +94,16 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
         where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
       }),
       db.query.transactions.findMany({
-        where: and(
-          eq(transactions.userId, userId),
-          eq(transactions.type, "expense"),
-          isNull(transactions.deletedAt)
-        ),
+        where: and(eq(transactions.userId, userId), isNull(transactions.deletedAt)),
       }),
       db.query.categoryPots.findMany({
         where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
       }),
+      db.query.accounts.findMany({ where: eq(accounts.userId, userId) }),
+      db.query.lockedFunds.findMany({
+        where: and(eq(lockedFunds.userId, userId), eq(lockedFunds.isPaid, false)),
+      }),
+      db.query.savingsEntries.findMany({ where: eq(savingsEntries.userId, userId) }),
     ]);
 
     const currentMonthKey = getJakartaDateKey().slice(0, 7);
@@ -77,6 +111,9 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
     const cycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
     const paydayDay = userProfile?.paydayDay || 1;
     const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const reserveMode = (userProfile?.reserveMode as ReserveMode) || "none";
+    const reserveValue = Number(userProfile?.reserveValue || 0);
+    const allowance = Number(userProfile?.monthlyAllowance || 0);
     const activePeriodInfo = getCyclePeriodInfo(new Date(), cycle, paydayDay, paydayWeekday);
 
     const periodOverrides =
@@ -91,16 +128,29 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
     const overrideByPotId = new Map(
       periodOverrides.map((o) => [o.potId, Number(o.allocatedAmount || 0)])
     );
+    const potByCategoryId = new Map(userPots.map((p) => [p.categoryId, p]));
 
     const spentByCategory: Record<string, number> = {};
-    for (const tx of monthExpenses) {
+    let totalExpenseMonth = 0;
+    let totalIncomeMonth = 0;
+
+    for (const tx of allUserTransactions) {
       if (!tx.occurredOn) continue;
-      const inWindow = isCurrentMonthView && userPots.length > 0
-        ? tx.occurredOn >= activePeriodInfo.periodStart && tx.occurredOn <= activePeriodInfo.periodEnd
-        : tx.occurredOn.slice(0, 7) === monthKey;
+      const amt = Number(tx.amount || 0);
+      const txMonthKey = tx.occurredOn.slice(0, 7);
+      if (tx.type === "income") {
+        if (txMonthKey === currentMonthKey) totalIncomeMonth += amt;
+        continue;
+      }
+      if (tx.type !== "expense") continue;
+      if (txMonthKey === currentMonthKey) totalExpenseMonth += amt;
+
+      const inWindow =
+        isCurrentMonthView && userPots.length > 0
+          ? tx.occurredOn >= activePeriodInfo.periodStart && tx.occurredOn <= activePeriodInfo.periodEnd
+          : txMonthKey === monthKey;
       if (inWindow) {
-        spentByCategory[tx.categoryId] =
-          (spentByCategory[tx.categoryId] || 0) + Number(tx.amount || 0);
+        spentByCategory[tx.categoryId] = (spentByCategory[tx.categoryId] || 0) + amt;
       }
     }
 
@@ -135,33 +185,83 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
       if (limitAmount <= 0) continue;
 
       const spent = spentByCategory[cat.id] || 0;
-      const usagePercent = Math.round((spent / limitAmount) * 100);
-      const remaining = Math.max(0, limitAmount - spent);
-
-      let status: CategoryBudgetItem["status"] = "ok";
-      if (spent > limitAmount) status = "exceeded";
-      else if (spent === limitAmount || usagePercent >= 100) status = "reached";
-      else if (usagePercent >= 80) status = "warning";
+      const usage = evaluatePotUsage(limitAmount, spent);
+      const potMeta = potByCategoryId.get(cat.id);
 
       items.push({
         categoryId: cat.id,
         categoryName: cat.name,
         color: cat.color || "#8CCBFF",
+        cadence: (potMeta?.cadence as PotCadence) || "monthly",
+        isLockedFromDaily: Boolean(potMeta?.isLockedFromDaily),
         limitAmount,
         spent,
-        remaining,
-        usagePercent,
-        status,
+        remaining: usage.remaining,
+        overAmount: usage.overAmount,
+        usagePercent: usage.usagePercent,
+        status: usage.status === "safe" ? "ok" : usage.status,
       });
     }
 
     items.sort((a, b) => b.usagePercent - a.usagePercent);
+
+    // Hitung ringkasan Sisa Bebas & pengeluaran tanpa jatah (termasuk kategori Lainnya)
+    let totalSavedMonth = 0;
+    for (const s of userSavings) {
+      if (s.occurredOn?.slice(0, 7) === currentMonthKey) {
+        if (s.type === "deposit") totalSavedMonth += Number(s.amount || 0);
+        if (s.type === "withdraw") totalSavedMonth -= Number(s.amount || 0);
+      }
+    }
+    const totalAccountsBalance = userAccounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+    const hasAccountsData =
+      userAccounts.some((a) => Number(a.balance || 0) !== 0) ||
+      allUserTransactions.some((t) => Boolean(t.accountId));
+    const remainingBudget = Math.max(
+      0,
+      allowance + totalIncomeMonth - totalExpenseMonth - Math.max(0, totalSavedMonth)
+    );
+    const remainingBalance = hasAccountsData
+      ? Math.max(0, totalAccountsBalance)
+      : remainingBudget;
+    const billLockedTotal = activeLockedFunds.reduce((sum, f) => sum + Number(f.amount || 0), 0);
+
+    const baseAdaptive = calculateAdaptiveDailyLimit(
+      remainingBalance,
+      activePeriodInfo.remainingDays,
+      reserveMode,
+      reserveValue,
+      billLockedTotal
+    );
+
+    const availableFunds = isCurrentMonthView ? baseAdaptive.spendableBalance : allowance;
+    const totalAllocated = items.reduce((sum, i) => sum + i.limitAmount, 0);
+    const unallocatedSpent = Object.entries(spentByCategory).reduce((sum, [catId, amt]) => {
+      if ((limitsByCategory[catId] || 0) > 0) return sum;
+      return sum + amt;
+    }, 0);
+    const freeRemainingBeforeUnallocated = availableFunds - totalAllocated;
+    const freePoolRemaining = Math.max(0, freeRemainingBeforeUnallocated) - unallocatedSpent;
+
+    const summary: CategoryPotsSummaryMeta = {
+      isCurrentView: isCurrentMonthView,
+      periodKey: isCurrentMonthView ? activePeriodInfo.periodKey : monthKey,
+      periodStart: isCurrentMonthView ? activePeriodInfo.periodStart : `${monthKey}-01`,
+      periodEnd: isCurrentMonthView ? activePeriodInfo.periodEnd : `${monthKey}-31`,
+      availableFunds,
+      totalAllocated,
+      freeRemainingBeforeUnallocated,
+      unallocatedSpent,
+      freePoolRemaining,
+      isOverAllocated: totalAllocated > availableFunds,
+    };
 
     return {
       success: true,
       data: {
         monthKey,
         items,
+        summary,
         categories: expenseCategories.map((c) => ({
           id: c.id,
           name: c.name,

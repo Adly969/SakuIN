@@ -71,6 +71,7 @@ export function getJakartaDayAndWeekday(date: Date = new Date()): {
 
 export interface CategoryLimitAlertPayload {
   categoryName: string;
+  periodKey: string;
   spent: number;
   limit: number;
   remaining: number;
@@ -146,10 +147,9 @@ export async function evaluateCategoryBudgetForUser(
       else if (spent === limit || usagePercent >= 100) level = "reached";
       else if (usagePercent >= 80) level = "warning";
 
-      if (level === "ok") return null;
-
       return {
         categoryName,
+        periodKey: periodInfo.periodKey,
         spent,
         limit,
         remaining,
@@ -200,10 +200,9 @@ export async function evaluateCategoryBudgetForUser(
   else if (spent === limit || usagePercent >= 100) level = "reached";
   else if (usagePercent >= 80) level = "warning";
 
-  if (level === "ok") return null;
-
   return {
     categoryName,
+    periodKey: monthKey,
     spent,
     limit,
     remaining,
