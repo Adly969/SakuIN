@@ -3,11 +3,17 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, CreditCard, HandCoins, User, Settings } from "lucide-react";
+import { ChevronDown, CreditCard, HandCoins, PieChart, User, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { BrandLogo } from "@/components/ui/brand-logo";
 
 const QUICK_MENU_ITEMS = [
+  {
+    href: "/budgets",
+    label: "Atur Jatah Kategori",
+    desc: "Bagi jatah pos belanja & kunci batas",
+    icon: PieChart,
+  },
   {
     href: "/accounts",
     label: "Multi Rekening & Tagihan",

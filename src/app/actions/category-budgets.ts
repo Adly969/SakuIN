@@ -2,17 +2,23 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { budgets, categoryBudgets, categories, transactions } from "@/db/schema";
+import {
+  budgets,
+  categoryBudgets,
+  categoryPots,
+  categoryPotPeriods,
+  categories,
+  profiles,
+  transactions,
+} from "@/db/schema";
 import { eq, and, isNull, asc } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
-
-const upsertCategoryBudgetSchema = z.object({
-  categoryId: z.string().uuid("Kategori tidak valid"),
-  limitAmount: z.number().min(0, "Nominal tidak boleh negatif").max(1000000000),
-  monthKey: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-});
+import type { AllowanceCycle } from "@/lib/finance";
+import {
+  calculatePotPeriodAllocation,
+  getCyclePeriodInfo,
+  type PotCadence,
+} from "@/lib/category-pots";
 
 export interface CategoryBudgetItem {
   categoryId: string;
@@ -41,7 +47,8 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
         : getJakartaDateKey().slice(0, 7);
     const monthDate = `${monthKey}-01`;
 
-    const [expenseCategories, monthBudget, monthExpenses] = await Promise.all([
+    const [userProfile, expenseCategories, monthBudget, monthExpenses, userPots] = await Promise.all([
+      db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
       db.query.categories.findMany({
         where: and(
           eq(categories.userId, userId),
@@ -60,11 +67,38 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
           isNull(transactions.deletedAt)
         ),
       }),
+      db.query.categoryPots.findMany({
+        where: and(eq(categoryPots.userId, userId), eq(categoryPots.isArchived, false)),
+      }),
     ]);
+
+    const currentMonthKey = getJakartaDateKey().slice(0, 7);
+    const isCurrentMonthView = monthKey === currentMonthKey;
+    const cycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
+    const paydayDay = userProfile?.paydayDay || 1;
+    const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const activePeriodInfo = getCyclePeriodInfo(new Date(), cycle, paydayDay, paydayWeekday);
+
+    const periodOverrides =
+      isCurrentMonthView && userPots.length > 0
+        ? await db.query.categoryPotPeriods.findMany({
+            where: and(
+              eq(categoryPotPeriods.userId, userId),
+              eq(categoryPotPeriods.periodKey, activePeriodInfo.periodKey)
+            ),
+          })
+        : [];
+    const overrideByPotId = new Map(
+      periodOverrides.map((o) => [o.potId, Number(o.allocatedAmount || 0)])
+    );
 
     const spentByCategory: Record<string, number> = {};
     for (const tx of monthExpenses) {
-      if (tx.occurredOn && tx.occurredOn.slice(0, 7) === monthKey) {
+      if (!tx.occurredOn) continue;
+      const inWindow = isCurrentMonthView && userPots.length > 0
+        ? tx.occurredOn >= activePeriodInfo.periodStart && tx.occurredOn <= activePeriodInfo.periodEnd
+        : tx.occurredOn.slice(0, 7) === monthKey;
+      if (inWindow) {
         spentByCategory[tx.categoryId] =
           (spentByCategory[tx.categoryId] || 0) + Number(tx.amount || 0);
       }
@@ -77,6 +111,21 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
       });
       for (const row of catRows) {
         limitsByCategory[row.categoryId] = Number(row.limitAmount || 0);
+      }
+    }
+
+    if (isCurrentMonthView) {
+      for (const pot of userPots) {
+        const limitVal =
+          overrideByPotId.get(pot.id) ??
+          calculatePotPeriodAllocation(
+            Number(pot.unitAmount || 0),
+            (pot.cadence as PotCadence) || "monthly",
+            activePeriodInfo.cycleDays
+          );
+        if (limitVal > 0) {
+          limitsByCategory[pot.categoryId] = limitVal;
+        }
       }
     }
 
@@ -125,88 +174,5 @@ export async function getCategoryBudgetsAction(rawMonthKey?: string) {
   } catch (error) {
     console.error("Gagal mengambil batas kategori:", error);
     return { success: false, error: "Gagal memuat batas kategori" };
-  }
-}
-
-export async function upsertCategoryBudgetAction(
-  rawInput: z.infer<typeof upsertCategoryBudgetSchema>
-) {
-  try {
-    const validation = upsertCategoryBudgetSchema.safeParse(rawInput);
-    if (!validation.success) {
-      return {
-        success: false,
-        error: validation.error.issues.map((i) => i.message).join(", "),
-      };
-    }
-
-    const input = validation.data;
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const userId = user?.id;
-    if (!userId) return { success: false, error: "Pengguna belum login" };
-
-    const cat = await db.query.categories.findFirst({
-      where: and(eq(categories.id, input.categoryId), eq(categories.userId, userId)),
-    });
-    if (!cat) return { success: false, error: "Kategori tidak ditemukan" };
-
-    const monthKey = input.monthKey || getJakartaDateKey().slice(0, 7);
-    const monthDate = `${monthKey}-01`;
-
-    let budget = await db.query.budgets.findFirst({
-      where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
-    });
-
-    if (!budget) {
-      if (input.limitAmount <= 0) {
-        return { success: true };
-      }
-      const [created] = await db
-        .insert(budgets)
-        .values({
-          userId,
-          month: monthDate,
-          totalLimit: BigInt(input.limitAmount),
-        })
-        .returning();
-      budget = created;
-    }
-
-    const existing = await db.query.categoryBudgets.findFirst({
-      where: and(
-        eq(categoryBudgets.budgetId, budget.id),
-        eq(categoryBudgets.categoryId, input.categoryId)
-      ),
-    });
-
-    if (input.limitAmount <= 0) {
-      if (existing) {
-        await db.delete(categoryBudgets).where(eq(categoryBudgets.id, existing.id));
-      }
-    } else if (existing) {
-      await db
-        .update(categoryBudgets)
-        .set({ limitAmount: BigInt(input.limitAmount), updatedAt: new Date() })
-        .where(eq(categoryBudgets.id, existing.id));
-    } else {
-      await db.insert(categoryBudgets).values({
-        budgetId: budget.id,
-        categoryId: input.categoryId,
-        limitAmount: BigInt(input.limitAmount),
-      });
-    }
-
-    revalidatePath("/statistics");
-    revalidatePath("/dashboard");
-    revalidatePath("/record");
-
-    return { success: true };
-  } catch (error) {
-    console.error("Gagal menyimpan batas kategori:", error);
-    return { success: false, error: "Gagal menyimpan batas pengeluaran kategori" };
   }
 }

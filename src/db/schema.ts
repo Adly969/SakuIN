@@ -54,7 +54,8 @@ export const categories = pgTable(
     color: varchar("color", { length: 50 }).notNull(),
     isDefault: boolean("is_default").default(false),
     isHidden: boolean("is_hidden").default(false),
-    requiresLabel: boolean("requires_label").default(false), // true for 'Kebutuhan Lain'
+    requiresLabel: boolean("requires_label").default(false), // true for legacy 'Kebutuhan Lain'
+    defaultCadence: varchar("default_cadence", { length: 20 }).default("monthly").notNull(), // 'daily' | 'weekly' | 'monthly'
     sortOrder: integer("sort_order").default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -126,6 +127,77 @@ export const categoryBudgets = pgTable(
   },
   (table) => ({
     budgetCatUnq: uniqueIndex("cat_budgets_unq_idx").on(table.budgetId, table.categoryId),
+  })
+);
+
+// 5B. CATEGORY POTS (Konfigurasi Pos Jatah Kategori per User)
+export const categoryPots = pgTable(
+  "category_pots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    cadence: varchar("cadence", { length: 20 }).default("monthly").notNull(), // 'daily' | 'weekly' | 'monthly'
+    unitAmount: bigint("unit_amount", { mode: "bigint" }).default(sql`0`).notNull(),
+    isLockedFromDaily: boolean("is_locked_from_daily").default(false).notNull(),
+    isArchived: boolean("is_archived").default(false).notNull(),
+    inactivePeriods: integer("inactive_periods").default(0).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userCatUnq: uniqueIndex("category_pots_user_cat_unq").on(table.userId, table.categoryId),
+    userArchivedIdx: index("category_pots_user_archived_idx").on(table.userId, table.isArchived),
+  })
+);
+
+// 5C. CATEGORY POT PERIODS (Snapshot Jatah & Penyesuaian per Siklus Berjalan)
+export const categoryPotPeriods = pgTable(
+  "category_pot_periods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    potId: uuid("pot_id")
+      .notNull()
+      .references(() => categoryPots.id, { onDelete: "cascade" }),
+    periodKey: varchar("period_key", { length: 32 }).notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    baseLimit: bigint("base_limit", { mode: "bigint" }).notNull(),
+    allocatedAmount: bigint("allocated_amount", { mode: "bigint" }).notNull(),
+    carryoverClaimedAmount: bigint("carryover_claimed_amount", { mode: "bigint" }).default(sql`0`).notNull(),
+    carryoverClaimedAt: timestamp("carryover_claimed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    potPeriodUnq: uniqueIndex("category_pot_periods_pot_period_unq").on(table.potId, table.periodKey),
+    userPeriodIdx: index("category_pot_periods_user_period_idx").on(table.userId, table.periodKey),
+  })
+);
+
+// 5D. CATEGORY POT TRANSFERS (Log Audit Geser Jatah)
+export const categoryPotTransfers = pgTable(
+  "category_pot_transfers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    periodKey: varchar("period_key", { length: 32 }).notNull(),
+    fromPotId: uuid("from_pot_id")
+      .notNull()
+      .references(() => categoryPots.id, { onDelete: "cascade" }),
+    toPotId: uuid("to_pot_id")
+      .notNull()
+      .references(() => categoryPots.id, { onDelete: "cascade" }),
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userPeriodIdx: index("category_pot_transfers_user_period_idx").on(table.userId, table.periodKey),
   })
 );
 
@@ -323,6 +395,33 @@ export const lockedFunds = pgTable(
 // RELATIONS
 export const categoriesRelations = relations(categories, ({ many }) => ({
   transactions: many(transactions),
+  pots: many(categoryPots),
+}));
+
+export const categoryPotsRelations = relations(categoryPots, ({ one, many }) => ({
+  category: one(categories, {
+    fields: [categoryPots.categoryId],
+    references: [categories.id],
+  }),
+  periods: many(categoryPotPeriods),
+}));
+
+export const categoryPotPeriodsRelations = relations(categoryPotPeriods, ({ one }) => ({
+  pot: one(categoryPots, {
+    fields: [categoryPotPeriods.potId],
+    references: [categoryPots.id],
+  }),
+}));
+
+export const categoryPotTransfersRelations = relations(categoryPotTransfers, ({ one }) => ({
+  fromPot: one(categoryPots, {
+    fields: [categoryPotTransfers.fromPotId],
+    references: [categoryPots.id],
+  }),
+  toPot: one(categoryPots, {
+    fields: [categoryPotTransfers.toPotId],
+    references: [categoryPots.id],
+  }),
 }));
 
 export const accountsRelations = relations(accounts, ({ many }) => ({

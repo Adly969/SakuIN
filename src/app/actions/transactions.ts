@@ -11,34 +11,24 @@ import {
   evaluateCategoryBudgetForUser,
   getJakartaDateKey,
 } from "@/lib/daily-limit-server";
+import {
+  ensureFallbackLainnyaCategory,
+  resolveExpenseCategoryName,
+} from "@/lib/category-pots-server";
 
 // Skema Validasi Zod Server-side
-const createTransactionSchema = z
-  .object({
-    amount: z
-      .number()
-      .positive("Nominal harus lebih dari 0")
-      .max(1000000000, "Nominal melebihi batas wajar"),
-    type: z.enum(["expense", "income"]),
-    categoryName: z.string().min(1, "Kategori wajib dipilih"),
-    note: z.string().max(200, "Catatan maksimal 200 karakter").optional().nullable(),
-    customLabel: z.string().max(60, "Keterangan maksimal 60 karakter").optional().nullable(),
-    accountId: z.string().uuid().nullish().or(z.literal("")),
-    occurredOn: z.string().optional().nullable(),
-  })
-  .refine(
-    (data) => {
-      // PRD T3: Kebutuhan Lain WAJIB mengisi keterangan kustom
-      if (data.categoryName === "Kebutuhan Lain") {
-        return Boolean(data.customLabel && data.customLabel.trim().length > 0);
-      }
-      return true;
-    },
-    {
-      message: "Keterangan wajib diisi untuk kategori Kebutuhan Lain (T3)",
-      path: ["customLabel"],
-    }
-  );
+const createTransactionSchema = z.object({
+  amount: z
+    .number()
+    .positive("Nominal harus lebih dari 0")
+    .max(1000000000, "Nominal melebihi batas wajar"),
+  type: z.enum(["expense", "income"]),
+  categoryName: z.string().min(1, "Kategori wajib dipilih"),
+  note: z.string().max(200, "Catatan maksimal 200 karakter").optional().nullable(),
+  customLabel: z.string().max(60, "Keterangan maksimal 60 karakter").optional().nullable(),
+  accountId: z.string().uuid().nullish().or(z.literal("")),
+  occurredOn: z.string().optional().nullable(),
+});
 
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 
@@ -71,38 +61,58 @@ export async function createTransactionAction(rawInput: CreateTransactionInput) 
       return { success: false, error: "Pengguna belum login" };
     }
 
-    // Cari kategori resmi pengguna
+    const resolvedCategoryName =
+      input.type === "expense"
+        ? resolveExpenseCategoryName(input.categoryName)
+        : input.categoryName;
+
+    // Cari kategori resmi pengguna (utamakan kecocokan tipe + nama hasil alias, lalu nama asli)
     let category = await db.query.categories.findFirst({
       where: and(
         eq(categories.userId, userId),
-        eq(categories.name, input.categoryName)
+        eq(categories.type, input.type),
+        eq(categories.name, resolvedCategoryName)
       ),
     });
 
-    // Jika kategori tidak ditemukan, arahkan ke Kebutuhan Lain / Lainnya agar tidak mengotori tabel kategori
-    if (!category) {
-      const fallbackName = input.type === "expense" ? "Kebutuhan Lain" : "Lainnya";
+    if (!category && resolvedCategoryName !== input.categoryName) {
       category = await db.query.categories.findFirst({
         where: and(
           eq(categories.userId, userId),
-          eq(categories.name, fallbackName)
+          eq(categories.type, input.type),
+          eq(categories.name, input.categoryName)
         ),
       });
+    }
 
-      if (!category) {
-        const [newCat] = await db
-          .insert(categories)
-          .values({
-            userId: userId,
-            name: fallbackName,
-            type: input.type,
-            icon: "MoreHorizontal",
-            color: "#8A8A8A",
-            requiresLabel: true,
-            isDefault: true,
-          })
-          .returning();
-        category = newCat;
+    // Jika kategori tidak ditemukan, arahkan ke Lainnya agar tidak mengotori tabel kategori
+    if (!category) {
+      if (input.type === "expense") {
+        category = await ensureFallbackLainnyaCategory(userId);
+      } else {
+        category = await db.query.categories.findFirst({
+          where: and(
+            eq(categories.userId, userId),
+            eq(categories.type, "income"),
+            eq(categories.name, "Lainnya")
+          ),
+        });
+
+        if (!category) {
+          const [newCat] = await db
+            .insert(categories)
+            .values({
+              userId: userId,
+              name: "Lainnya",
+              type: "income",
+              icon: "Coins",
+              color: "#8A8A8A",
+              requiresLabel: false,
+              isDefault: true,
+            })
+            .returning();
+          category = newCat;
+        }
       }
     }
 
@@ -235,37 +245,57 @@ export async function updateTransactionAction(
       return { success: false, error: "Transaksi tidak ditemukan" };
     }
 
+    const resolvedCategoryName =
+      input.type === "expense"
+        ? resolveExpenseCategoryName(input.categoryName)
+        : input.categoryName;
+
     // Cari kategori resmi pengguna
     let category = await db.query.categories.findFirst({
       where: and(
         eq(categories.userId, userId),
-        eq(categories.name, input.categoryName)
+        eq(categories.type, input.type),
+        eq(categories.name, resolvedCategoryName)
       ),
     });
 
-    if (!category) {
-      const fallbackName = input.type === "expense" ? "Kebutuhan Lain" : "Lainnya";
+    if (!category && resolvedCategoryName !== input.categoryName) {
       category = await db.query.categories.findFirst({
         where: and(
           eq(categories.userId, userId),
-          eq(categories.name, fallbackName)
+          eq(categories.type, input.type),
+          eq(categories.name, input.categoryName)
         ),
       });
+    }
 
-      if (!category) {
-        const [newCat] = await db
-          .insert(categories)
-          .values({
-            userId: userId,
-            name: fallbackName,
-            type: input.type,
-            icon: "MoreHorizontal",
-            color: "#8A8A8A",
-            requiresLabel: true,
-            isDefault: true,
-          })
-          .returning();
-        category = newCat;
+    if (!category) {
+      if (input.type === "expense") {
+        category = await ensureFallbackLainnyaCategory(userId);
+      } else {
+        category = await db.query.categories.findFirst({
+          where: and(
+            eq(categories.userId, userId),
+            eq(categories.type, "income"),
+            eq(categories.name, "Lainnya")
+          ),
+        });
+
+        if (!category) {
+          const [newCat] = await db
+            .insert(categories)
+            .values({
+              userId: userId,
+              name: "Lainnya",
+              type: "income",
+              icon: "Coins",
+              color: "#8A8A8A",
+              requiresLabel: false,
+              isDefault: true,
+            })
+            .returning();
+          category = newCat;
+        }
       }
     }
 
@@ -637,13 +667,25 @@ export async function getUserCategoriesAction() {
       }
     }
 
-    // Saring hanya kategori resmi agar catatan satu kali (one-off custom notes) tidak menjadi tombol permanen
-    const officialNames = [
-      "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
-      "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
-      "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
-    ];
-    const cleanCats = cats.filter((c) => c.isDefault || officialNames.includes(c.name.toLowerCase().trim()));
+    // Pastikan kategori "Lainnya" (expense) selalu tersedia dan tidak tersembunyi
+    const hasActiveExpenseLainnya = cats.some(
+      (c) => !c.isHidden && c.type === "expense" && (c.name || "").toLowerCase().trim() === "lainnya"
+    );
+    if (!hasActiveExpenseLainnya) {
+      const ensured = await ensureFallbackLainnyaCategory(userId);
+      if (!cats.some((c) => c.id === ensured.id)) {
+        cats.push(ensured);
+      } else {
+        for (const c of cats) {
+          if (c.id === ensured.id) {
+            c.isHidden = false;
+            c.isDefault = true;
+          }
+        }
+      }
+    }
+
+    const cleanCats = cats.filter((c) => !c.isHidden);
 
     return {
       success: true,

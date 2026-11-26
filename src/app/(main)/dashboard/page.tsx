@@ -914,9 +914,18 @@ export default function DashboardPage() {
 
           {/* 2.05 Kartu Konfirmasi Hari Kiriman (Payday Prompt) */}
           {paydaySuccessMsg && (
-            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm flex items-center gap-2 text-xs font-black text-accent">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{paydaySuccessMsg}</span>
+            <div className="p-3.5 rounded-xl bg-accent/15 border border-accent/40 shadow-sm flex items-center justify-between gap-3 flex-wrap text-xs">
+              <div className="flex items-center gap-2 font-black text-accent">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{paydaySuccessMsg}</span>
+              </div>
+              <Link
+                href="/budgets"
+                className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-full bg-accent text-[#1F1F1F] font-black hover:brightness-105 transition-all"
+              >
+                <span>Atur Jatah Kategori</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           )}
 
@@ -985,10 +994,16 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={handleDismissPayday}
-                  className="px-3 py-2 rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                  className="px-3 py-2 min-h-[44px] rounded-full border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
                 >
                   Nanti
                 </button>
+                <Link
+                  href="/budgets"
+                  className="px-3 py-2 min-h-[44px] rounded-full border border-accent/40 bg-accent/10 text-xs font-extrabold text-accent hover:bg-accent/20 transition-all flex items-center"
+                >
+                  Atur jatah
+                </Link>
               </div>
             </section>
           )}

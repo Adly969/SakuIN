@@ -73,11 +73,11 @@ interface CategoryObj {
 
 const DEFAULT_EXPENSE_CATEGORIES = [
   "Makan",
-  "Nongkrong",
-  "Bensin & Transport",
-  "Jajan & Cemilan",
+  "Transport / Bensin",
   "Kuota & Internet",
-  "Laundry",
+  "Jajan & Nongkrong",
+  "Kuliah",
+  "Lainnya",
 ];
 
 const DEFAULT_INCOME_CATEGORIES = [
@@ -381,11 +381,7 @@ function TransactionsContent() {
     if (!isCustomEditCategory && !editCategory) return;
 
     setIsUpdating(true);
-    const finalCategory = isCustomEditCategory
-      ? editType === "expense"
-        ? "Kebutuhan Lain"
-        : "Lainnya"
-      : editCategory;
+    const finalCategory = isCustomEditCategory ? "Lainnya" : editCategory;
 
     try {
       const res = await updateTransactionAction(editingTx.id, {

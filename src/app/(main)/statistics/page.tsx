@@ -21,7 +21,6 @@ import {
   AlertTriangle,
   SlidersHorizontal,
   Plus,
-  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -41,7 +40,6 @@ import {
 } from "@/app/actions/statistics";
 import {
   getCategoryBudgetsAction,
-  upsertCategoryBudgetAction,
   type CategoryBudgetItem,
 } from "@/app/actions/category-budgets";
 
@@ -54,13 +52,6 @@ export default function StatisticsPage() {
 
   const [statsData, setStatsData] = useState<StatisticsData | null>(null);
   const [catBudgets, setCatBudgets] = useState<CategoryBudgetItem[]>([]);
-  const [catOptions, setCatOptions] = useState<
-    Array<{ id: string; name: string; color: string; spent: number; limitAmount: number }>
-  >([]);
-  const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [editBudgetCatId, setEditBudgetCatId] = useState("");
-  const [editBudgetAmount, setEditBudgetAmount] = useState("");
-  const [isSavingBudget, setIsSavingBudget] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isMounted, setIsMounted] = useState(false);
@@ -121,14 +112,6 @@ export default function StatisticsPage() {
         }
         if (catBudgetRes.success && catBudgetRes.data) {
           setCatBudgets(catBudgetRes.data.items);
-          setCatOptions(catBudgetRes.data.categories);
-          if (!editBudgetCatId && catBudgetRes.data.categories.length > 0) {
-            const pref =
-              catBudgetRes.data.categories.find((c) =>
-                c.name.toLowerCase().includes("nongkrong")
-              ) || catBudgetRes.data.categories[0];
-            setEditBudgetCatId(pref.id);
-          }
         }
       } catch (err) {
         console.error("Gagal memuat statistik:", err);
@@ -136,30 +119,6 @@ export default function StatisticsPage() {
         setIsLoading(false);
       }
     });
-  };
-
-  const handleSaveCategoryBudget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editBudgetCatId || isSavingBudget) return;
-    const amt = parseInt(editBudgetAmount.replace(/[^0-9]/g, "") || "0", 10);
-    setIsSavingBudget(true);
-    try {
-      const res = await upsertCategoryBudgetAction({
-        categoryId: editBudgetCatId,
-        limitAmount: amt,
-        monthKey: selectedMonthKey || undefined,
-      });
-      if (res.success) {
-        setShowBudgetModal(false);
-        loadData(period, selectedMonthKey, selectedYear, type, true);
-      } else {
-        alert(res.error || "Gagal menyimpan batas kategori");
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSavingBudget(false);
-    }
   };
 
   const handlePeriodChange = (newPeriod: "month" | "year") => {
@@ -894,37 +853,29 @@ export default function StatisticsPage() {
             </section>
           )}
 
-          {/* Section 4.5: Kontrol Pos Boros / Batas Kategori Bulan Ini */}
+          {/* Section 4.5: Kontrol Pos Boros / Batas Kategori */}
           <section className="bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-extrabold text-foreground tracking-tight">
-                  Kontrol Pos Boros (Batas Kategori)
+                  Kontrol Pos Boros (Jatah Kategori)
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Pasang batas bulanan per pos agar pengeluaran seperti nongkrong/jajan terkendali
+                  Bagi dan pantau jatah per pos agar pengeluaran tetap aman sampai akhir siklus
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const current = catOptions.find((c) => c.id === editBudgetCatId) || catOptions[0];
-                  if (current) {
-                    setEditBudgetCatId(current.id);
-                    setEditBudgetAmount(current.limitAmount > 0 ? String(current.limitAmount) : "");
-                  }
-                  setShowBudgetModal(true);
-                }}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all shrink-0"
+              <Link
+                href="/budgets"
+                className="inline-flex items-center gap-1 px-3.5 py-2 min-h-[44px] rounded-full bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 transition-all shrink-0"
               >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Atur Batas</span>
-              </button>
+                <SlidersHorizontal className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Atur jatah</span>
+              </Link>
             </div>
 
             {catBudgets.length === 0 ? (
               <div className="p-4 rounded-xl bg-background/60 border border-dashed border-border text-center text-xs text-muted-foreground">
-                Belum ada batas kategori aktif bulan ini. Klik <strong>Atur Batas</strong> untuk mengawasi kategori tertentu.
+                Belum ada pos jatah aktif siklus ini. Ketuk <strong>Atur jatah</strong> untuk membagi pos kategori sekaligus.
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -957,18 +908,13 @@ export default function StatisticsPage() {
                             {item.usagePercent}%
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditBudgetCatId(item.categoryId);
-                            setEditBudgetAmount(String(item.limitAmount));
-                            setShowBudgetModal(true);
-                          }}
-                          className="p-1 text-muted-foreground hover:text-foreground rounded"
-                          title="Ubah batas kategori"
+                        <Link
+                          href="/budgets"
+                          className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded"
+                          title="Atur semua jatah pos"
                         >
                           <SlidersHorizontal className="w-3.5 h-3.5" />
-                        </button>
+                        </Link>
                       </div>
 
                       <div className="h-1.5 w-full bg-card rounded-full overflow-hidden border border-border/50">
@@ -1049,85 +995,6 @@ export default function StatisticsPage() {
           )}
         </div>
       </div>
-
-      {/* Modal Atur Batas Kategori */}
-      {showBudgetModal && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-black text-foreground">
-                  Atur Batas Pengeluaran Kategori
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Isi nominal 0 untuk menghapus batas pada kategori tersebut
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowBudgetModal(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveCategoryBudget} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-foreground">Pilih Kategori</label>
-                <select
-                  value={editBudgetCatId}
-                  onChange={(e) => {
-                    const nextId = e.target.value;
-                    setEditBudgetCatId(nextId);
-                    const found = catOptions.find((c) => c.id === nextId);
-                    setEditBudgetAmount(found && found.limitAmount > 0 ? String(found.limitAmount) : "");
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  {catOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} (Terpakai bulan ini: {formatRupiah(c.spent)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-foreground">Batas Maksimal per Bulan</label>
-                <div className="relative flex items-center bg-background border border-border rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-accent">
-                  <span className="text-sm font-black text-muted-foreground mr-2">Rp</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={parseInt(editBudgetAmount || "0", 10) > 0 ? parseInt(editBudgetAmount || "0", 10).toLocaleString("id-ID") : ""}
-                    onChange={(e) => setEditBudgetAmount(e.target.value.replace(/[^0-9]/g, ""))}
-                    placeholder="Contoh: 200.000 (atau kosongkan untuk hapus)"
-                    className="flex-1 min-w-0 bg-transparent text-sm font-black text-foreground focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowBudgetModal(false)}
-                  className="w-1/3 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingBudget || !editBudgetCatId}
-                  className="flex-1 py-2.5 rounded-xl bg-accent text-[#1F1F1F] text-xs font-black hover:brightness-105 disabled:opacity-50"
-                >
-                  {isSavingBudget ? "Menyimpan..." : "Simpan Batas"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

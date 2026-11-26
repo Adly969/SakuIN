@@ -128,9 +128,32 @@ CREATE POLICY "Users can manage their own push subscriptions"
   ON push_subscriptions FOR ALL
   USING (auth.uid() = user_id);
 
+-- 11. Category Pots Policies
+ALTER TABLE category_pots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE category_pot_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE category_pot_transfers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage their own category pots" ON category_pots;
+CREATE POLICY "Users can manage their own category pots"
+  ON category_pots FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can manage their own category pot periods" ON category_pot_periods;
+CREATE POLICY "Users can manage their own category pot periods"
+  ON category_pot_periods FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can manage their own category pot transfers" ON category_pot_transfers;
+CREATE POLICY "Users can manage their own category pot transfers"
+  ON category_pot_transfers FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 -- ========================================================
 -- Automatic User Profile & Default Categories Initialization
--- (PRD K1 & K2: Salin 7 kategori pengeluaran + 4 pemasukan)
+-- (Set awal Keputusan Desain #4 + 4 kategori pemasukan)
 -- ========================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -144,16 +167,15 @@ BEGIN
     NEW.raw_user_meta_data->>'avatar_url'
   );
 
-  -- 2. Insert Default Expense Categories (K1)
-  INSERT INTO public.categories (user_id, name, type, icon, color, is_default, requires_label, sort_order)
+  -- 2. Insert Default Expense Categories (Keputusan Desain #4)
+  INSERT INTO public.categories (user_id, name, type, icon, color, is_default, requires_label, default_cadence, sort_order)
   VALUES
-    (NEW.id, 'Makan', 'expense', 'Utensils', '#8CCBFF', true, false, 1),
-    (NEW.id, 'Nongkrong', 'expense', 'Coffee', '#6B72FF', true, false, 2),
-    (NEW.id, 'Rokok', 'expense', 'Cigarette', '#FF7B7B', true, false, 3),
-    (NEW.id, 'Listrik', 'expense', 'Zap', '#FFB04A', true, false, 4),
-    (NEW.id, 'Kuota', 'expense', 'Wifi', '#5BAA6B', true, false, 5),
-    (NEW.id, 'Laundry', 'expense', 'Shirt', '#A78BFA', true, false, 6),
-    (NEW.id, 'Kebutuhan Lain', 'expense', 'MoreHorizontal', '#8A8A8A', true, true, 7);
+    (NEW.id, 'Makan', 'expense', 'Utensils', '#8CCBFF', true, false, 'daily', 1),
+    (NEW.id, 'Transport / Bensin', 'expense', 'Bike', '#5BAA6B', true, false, 'weekly', 2),
+    (NEW.id, 'Kuota & Internet', 'expense', 'Wifi', '#38BDF8', true, false, 'monthly', 3),
+    (NEW.id, 'Jajan & Nongkrong', 'expense', 'Coffee', '#6B72FF', true, false, 'daily', 4),
+    (NEW.id, 'Kuliah', 'expense', 'GraduationCap', '#4ADE80', true, false, 'monthly', 5),
+    (NEW.id, 'Lainnya', 'expense', 'MoreHorizontal', '#8A8A8A', true, false, 'monthly', 6);
 
   -- 3. Insert Default Income Categories (K2)
   INSERT INTO public.categories (user_id, name, type, icon, color, is_default, requires_label, sort_order)

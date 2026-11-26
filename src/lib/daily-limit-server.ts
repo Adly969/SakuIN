@@ -7,6 +7,8 @@ import {
   lockedFunds,
   budgets,
   categoryBudgets,
+  categoryPots,
+  categoryPotPeriods,
 } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import {
@@ -15,6 +17,12 @@ import {
   type AllowanceCycle,
   type ReserveMode,
 } from "@/lib/finance";
+import {
+  calculatePotPeriodAllocation,
+  getCyclePeriodInfo,
+  type PotCadence,
+} from "@/lib/category-pots";
+import { getLockedCategoryDeductionsForUser } from "@/lib/category-pots-server";
 
 export interface DailyLimitSnapshot {
   todayBudget: number;
@@ -77,6 +85,82 @@ export async function evaluateCategoryBudgetForUser(
   categoryName: string,
   monthKey: string
 ): Promise<CategoryLimitAlertPayload | null> {
+  // 1. Cek terlebih dahulu di category_pots (fondasi Sprint 2/3) mengikuti siklus aktif user
+  const [userProfile, activePot] = await Promise.all([
+    db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
+    db.query.categoryPots.findFirst({
+      where: and(
+        eq(categoryPots.userId, userId),
+        eq(categoryPots.categoryId, categoryId),
+        eq(categoryPots.isArchived, false)
+      ),
+    }),
+  ]);
+
+  if (activePot) {
+    const cycle = (userProfile?.allowanceCycle as AllowanceCycle) || "monthly";
+    const paydayDay = userProfile?.paydayDay || 1;
+    const paydayWeekday = userProfile?.paydayWeekday ?? 1;
+    const periodInfo = getCyclePeriodInfo(new Date(), cycle, paydayDay, paydayWeekday);
+
+    const periodRow = await db.query.categoryPotPeriods.findFirst({
+      where: and(
+        eq(categoryPotPeriods.potId, activePot.id),
+        eq(categoryPotPeriods.periodKey, periodInfo.periodKey)
+      ),
+    });
+
+    const limit = periodRow
+      ? Number(periodRow.allocatedAmount || 0)
+      : calculatePotPeriodAllocation(
+          Number(activePot.unitAmount || 0),
+          (activePot.cadence as PotCadence) || "monthly",
+          periodInfo.cycleDays
+        );
+
+    if (limit > 0) {
+      const userCatTx = await db.query.transactions.findMany({
+        where: and(
+          eq(transactions.userId, userId),
+          eq(transactions.categoryId, categoryId),
+          eq(transactions.type, "expense"),
+          isNull(transactions.deletedAt)
+        ),
+      });
+
+      const spent = userCatTx
+        .filter(
+          (t) =>
+            t.occurredOn &&
+            t.occurredOn >= periodInfo.periodStart &&
+            t.occurredOn <= periodInfo.periodEnd
+        )
+        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+      const usagePercent = Math.round((spent / limit) * 100);
+      const remaining = Math.max(0, limit - spent);
+      const overAmount = Math.max(0, spent - limit);
+
+      let level: CategoryLimitAlertPayload["level"] = "ok";
+      if (spent > limit) level = "exceeded";
+      else if (spent === limit || usagePercent >= 100) level = "reached";
+      else if (usagePercent >= 80) level = "warning";
+
+      if (level === "ok") return null;
+
+      return {
+        categoryName,
+        spent,
+        limit,
+        remaining,
+        overAmount,
+        usagePercent,
+        level,
+      };
+    }
+  }
+
+  // 2. Fallback ke category_budgets lama bila belum ada di category_pots
   const monthDate = `${monthKey}-01`;
   const monthBudget = await db.query.budgets.findFirst({
     where: and(eq(budgets.userId, userId), eq(budgets.month, monthDate)),
@@ -137,7 +221,7 @@ export async function evaluateDailyLimitForUser(userId: string): Promise<DailyLi
   const todayKey = getJakartaDateKey(today);
   const currentMonthKey = todayKey.slice(0, 7);
 
-  const [userProfile, userAccounts, userTransactions, userSavings, activeLockedFunds] = await Promise.all([
+  const [userProfile, userAccounts, userTransactions, userSavings, activeLockedFunds, lockedCatDeduction] = await Promise.all([
     db.query.profiles.findFirst({ where: eq(profiles.id, userId) }),
     db.query.accounts.findMany({ where: eq(accounts.userId, userId) }),
     db.query.transactions.findMany({
@@ -147,9 +231,20 @@ export async function evaluateDailyLimitForUser(userId: string): Promise<DailyLi
     db.query.lockedFunds.findMany({
       where: and(eq(lockedFunds.userId, userId), eq(lockedFunds.isPaid, false)),
     }),
+    db.query.profiles.findFirst({ where: eq(profiles.id, userId) }).then((p) =>
+      getLockedCategoryDeductionsForUser({
+        userId,
+        today,
+        todayKey,
+        cycle: (p?.allowanceCycle as AllowanceCycle) || "monthly",
+        paydayDay: p?.paydayDay || 1,
+        paydayWeekday: p?.paydayWeekday ?? 1,
+      })
+    ),
   ]);
 
   const lockedTotal = activeLockedFunds.reduce((sum, f) => sum + Number(f.amount || 0), 0);
+  const effectiveTodayStartLockedTotal = lockedTotal + lockedCatDeduction.todayStartRemaining;
 
   const allowance = Number(userProfile?.monthlyAllowance || 0);
   const paydayDay = userProfile?.paydayDay || 1;
@@ -203,7 +298,7 @@ export async function evaluateDailyLimitForUser(userId: string): Promise<DailyLi
     remainingDays,
     reserveMode,
     reserveValue,
-    lockedTotal
+    effectiveTodayStartLockedTotal
   );
 
   const todayBudget = todayAdaptive.dailyLimit;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -206,19 +207,14 @@ export default function RecordPage() {
             };
           });
 
+          const excludedNames = new Set(["listrik", "listrik & token", "kebutuhan kos", "kos", "wifi", "kebutuhan lain", "jajan & cemilan"]);
           const cleanCached = normalizedList.filter(
-            (c) =>
-              c.isDefault ||
-              [
-                "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
-                "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
-                "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
-              ].includes(c.name.toLowerCase().trim())
+            (c) => !excludedNames.has((c.name || "").toLowerCase().trim())
           );
 
           setCategoriesList(cleanCached);
 
-          const firstExp = cleanCached.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          const firstExp = cleanCached.find((c) => c.type === "expense" && c.name.toLowerCase() !== "lainnya");
           if (firstExp) {
             setSelectedCategory(firstExp.name);
           }
@@ -242,21 +238,13 @@ export default function RecordPage() {
             type: isKnownIncome(c.name) ? "income" : (c.type || "expense"),
           }));
 
-          const cleanData = normalizedData.filter(
-            (c) =>
-              c.isDefault ||
-              [
-                "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
-                "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
-                "kebutuhan lain", "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah", "lainnya"
-              ].includes(c.name.toLowerCase().trim())
-          );
+          const cleanData = normalizedData;
 
           setCategoriesList(cleanData);
           try {
             localStorage.setItem("sakuin_cached_categories", JSON.stringify(cleanData));
           } catch {}
-          const firstExp = cleanData.find((c) => c.type === "expense" && c.name !== "Kebutuhan Lain");
+          const firstExp = cleanData.find((c) => c.type === "expense" && c.name.toLowerCase() !== "lainnya");
           if (firstExp) setSelectedCategory(firstExp.name);
         }
 
@@ -341,18 +329,11 @@ export default function RecordPage() {
     return Tag;
   };
 
-  const OFFICIAL_CATEGORY_NAMES = [
-    "makan", "nongkrong", "bensin", "bensin & transport", "rokok",
-    "listrik", "kuota", "kuota & internet", "laundry", "jajan & cemilan",
-    "uang kiriman", "kerja sambilan", "beasiswa", "gaji / upah"
-  ];
-
   const currentCategories = categoriesList.filter(
     (c) =>
       c.type === recordType &&
       c.name !== "Kebutuhan Lain" &&
-      c.name !== "Lainnya" &&
-      OFFICIAL_CATEGORY_NAMES.includes(c.name.toLowerCase().trim())
+      c.name !== "Lainnya"
   );
 
   // Fallback if dbCategories empty yet
@@ -362,11 +343,10 @@ export default function RecordPage() {
       : recordType === "expense"
       ? [
           { id: "1", name: "Makan", type: "expense", icon: "Utensils", color: "#8CCBFF", requiresLabel: false },
-          { id: "2", name: "Nongkrong", type: "expense", icon: "Coffee", color: "#6B72FF", requiresLabel: false },
-          { id: "3", name: "Bensin & Transport", type: "expense", icon: "Bike", color: "#5BAA6B", requiresLabel: false },
-          { id: "4", name: "Jajan & Cemilan", type: "expense", icon: "Cookie", color: "#FFB04A", requiresLabel: false },
-          { id: "5", name: "Kuota & Internet", type: "expense", icon: "Wifi", color: "#38BDF8", requiresLabel: false },
-          { id: "6", name: "Laundry", type: "expense", icon: "Shirt", color: "#A78BFA", requiresLabel: false },
+          { id: "2", name: "Transport / Bensin", type: "expense", icon: "Bike", color: "#5BAA6B", requiresLabel: false },
+          { id: "3", name: "Kuota & Internet", type: "expense", icon: "Wifi", color: "#38BDF8", requiresLabel: false },
+          { id: "4", name: "Jajan & Nongkrong", type: "expense", icon: "Coffee", color: "#6B72FF", requiresLabel: false },
+          { id: "5", name: "Kuliah", type: "expense", icon: "GraduationCap", color: "#4ADE80", requiresLabel: false },
         ]
       : [
           { id: "7", name: "Uang Kiriman", type: "income", icon: "Wallet", color: "#D4FF5A", requiresLabel: false },
@@ -415,10 +395,8 @@ export default function RecordPage() {
     if (!isCustomCategory && !selectedCategory) return;
 
     setIsSaving(true);
-    // Kategori kustom diarahkan ke Kebutuhan Lain / Lainnya sesuai PRD (tidak membuat kategori permanen baru)
-    const finalCategory = isCustomCategory
-      ? (recordType === "expense" ? "Kebutuhan Lain" : "Lainnya")
-      : selectedCategory;
+    // Kategori kustom diarahkan ke Lainnya sesuai Keputusan Desain #5
+    const finalCategory = isCustomCategory ? "Lainnya" : selectedCategory;
     const itemTitle = isCustomCategory
       ? customCategory.trim()
       : (note.trim() || selectedCategory);
@@ -701,9 +679,19 @@ export default function RecordPage() {
 
         {/* Pilih Kategori */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-foreground block">
-            Pilih Kategori
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-bold text-foreground">
+              Pilih Kategori
+            </label>
+            {recordType === "expense" && (
+              <Link
+                href="/budgets"
+                className="text-xs font-extrabold text-accent hover:underline py-1 px-1"
+              >
+                Atur jatah
+              </Link>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {displayCategories.map((cat) => {
               const Icon = getCategoryIconComponent(cat.name, cat.icon);

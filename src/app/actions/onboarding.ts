@@ -120,19 +120,21 @@ export async function saveOnboardingAction(rawInput: SaveOnboardingInput) {
           color: found?.color || "#8CCBFF",
           requiresLabel: false,
           isDefault: true,
+          defaultCadence: found?.defaultCadence || "monthly",
           sortOrder: sortIdx++,
         });
       });
 
-      // Selalu sertakan Kebutuhan Lain
+      // Selalu sertakan Lainnya (tidak bisa dihapus)
       toInsert.push({
         userId,
-        name: "Kebutuhan Lain",
+        name: "Lainnya",
         type: "expense",
         icon: "MoreHorizontal",
         color: "#8A8A8A",
-        requiresLabel: true,
+        requiresLabel: false,
         isDefault: true,
+        defaultCadence: "monthly",
         sortOrder: sortIdx++,
       });
 

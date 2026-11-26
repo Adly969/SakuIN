@@ -371,7 +371,7 @@ export async function notifyCategoryLimitAlert(
     })
   );
 
-  return sendInstantNotification(title, body);
+  return sendInstantNotification(title, body, "/budgets");
 }
 
 export interface DebtDueAlertPayload {

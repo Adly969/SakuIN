@@ -21,6 +21,7 @@ import {
   type ReserveMode,
 } from "@/lib/finance";
 import { getJakartaDateKey, getJakartaDayAndWeekday } from "@/lib/daily-limit-server";
+import { getLockedCategoryDeductionsForUser } from "@/lib/category-pots-server";
 
 export async function getDashboardDataAction() {
   try {
@@ -185,12 +186,30 @@ export async function getDashboardDataAction() {
 
     // Saldo Utama: jika user menggunakan Multi-Rekening, gunakan total seluruh saldo rekening/e-wallet/dompet fisik
     const remainingBalance = hasAccountsData ? Math.max(0, totalAccountsBalance) : remainingBudget;
+
+    // Tambahan pengurangan dari pos kategori yang dikunci ("Kunci dari batas harian").
+    // Jika user tidak mengunci pos mana pun, hasilnya 0 -> Sisa Batas Hari Ini identik.
+    const lockedCategoryDeductions = userId
+      ? await getLockedCategoryDeductionsForUser({
+          userId,
+          today,
+          todayKey,
+          cycle: allowanceCycle,
+          paydayDay,
+          paydayWeekday,
+        })
+      : { currentRemaining: 0, todayStartRemaining: 0 };
+
+    const effectiveLockedTotal = lockedTotal + lockedCategoryDeductions.currentRemaining;
+    const effectiveTodayStartLockedTotal =
+      lockedTotal + lockedCategoryDeductions.todayStartRemaining;
+
     const adaptive = calculateAdaptiveDailyLimit(
       remainingBalance,
       remainingDays,
       reserveMode,
       reserveValue,
-      lockedTotal
+      effectiveLockedTotal
     );
     const dailyLimit = adaptive.dailyLimit;
     const reservedTotal = adaptive.reservedTotal;
@@ -199,14 +218,14 @@ export async function getDashboardDataAction() {
     const appliedLockedTotal = adaptive.lockedTotal;
     const status = getSpendingStatus(dailyLimit);
 
-    // Evaluasi status batas harian hari ini (untuk peringatan mendekati/mencapai limit)
+    // Evaluasi status batas harian hari ini (untuk peringatan mendekati/mapai limit)
     const todayStartBalance = remainingBalance + todayExpense;
     const todayAdaptive = calculateAdaptiveDailyLimit(
       todayStartBalance,
       remainingDays,
       reserveMode,
       reserveValue,
-      lockedTotal
+      effectiveTodayStartLockedTotal
     );
     const todayBudget = todayAdaptive.dailyLimit;
 
@@ -222,7 +241,7 @@ export async function getDashboardDataAction() {
       remainingDays + 1,
       reserveMode,
       reserveValue,
-      lockedTotal
+      effectiveTodayStartLockedTotal
     );
     const yesterdaySavedAmount = Math.max(0, yesterdayAdaptive.dailyLimit - yesterdayExpense);
     const canOfferCarryover =
@@ -495,7 +514,7 @@ export async function getDashboardDataAction() {
         reservedTotal,
         spendableBalance,
         lockedTotal: appliedLockedTotal,
-        rawLockedTotal: lockedTotal,
+        rawLockedTotal: effectiveLockedTotal,
         lockedFundsCount,
         freeBalance,
         carryoverOffer,

@@ -2,11 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
-import { lockedFunds, accounts, transactions, categories } from "@/db/schema";
+import { lockedFunds, accounts, transactions } from "@/db/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getJakartaDateKey } from "@/lib/daily-limit-server";
+import { ensureFallbackLainnyaCategory } from "@/lib/category-pots-server";
 
 const lockedFundSchema = z.object({
   name: z.string().trim().min(1, "Nama pos tagihan wajib diisi").max(100),
@@ -244,25 +245,7 @@ export async function payLockedFundAction(rawInput: PayLockedFundInput) {
 
     // Catat transaksi pengeluaran jika diinginkan (ketika dibayar melalui rekening / kas aktif)
     if (input.recordExpense && targetAccountId) {
-      let category = await db.query.categories.findFirst({
-        where: and(eq(categories.userId, userId), eq(categories.name, "Kebutuhan Lain")),
-      });
-
-      if (!category) {
-        const [newCat] = await db
-          .insert(categories)
-          .values({
-            userId,
-            name: "Kebutuhan Lain",
-            type: "expense",
-            icon: "MoreHorizontal",
-            color: "#8A8A8A",
-            requiresLabel: true,
-            isDefault: true,
-          })
-          .returning();
-        category = newCat;
-      }
+      const category = await ensureFallbackLainnyaCategory(userId);
 
       const dateStr = input.occurredOn || getJakartaDateKey();
       await db.insert(transactions).values({
