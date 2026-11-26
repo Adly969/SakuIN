@@ -55,7 +55,6 @@ import { getDashboardDataAction, getNextMotivationAction } from "@/app/actions/d
 import { getAccountsAction } from "@/app/actions/accounts";
 import { claimCarryoverSavingsAction } from "@/app/actions/savings";
 import { createTransactionAction } from "@/app/actions/transactions";
-import { BrandText } from "@/components/ui/brand-logo";
 import { getRandomOfflineQuote } from "@/lib/offline-quotes";
 import { Landmark, Smartphone as PhoneIcon, Banknote } from "lucide-react";
 
@@ -449,6 +448,36 @@ export default function DashboardPage() {
       ? { status: "warning" as const, label: "Waspada" }
       : { status: "danger" as const, label: "Kritis" };
 
+  // Satukan sinyal visual status Hero Card agar badge, angka besar, dan progress bar selalu konsisten
+  const unifiedStatusTone: "safe" | "warning" | "danger" =
+    heroStatus.status === "danger" ||
+    heroTodayAlertLevel === "exceeded" ||
+    heroTodayAlertLevel === "reached"
+      ? "danger"
+      : heroStatus.status === "warning" || heroTodayAlertLevel === "warning"
+      ? "warning"
+      : "safe";
+
+  const unifiedStatusLabel =
+    unifiedStatusTone === "danger"
+      ? "Kritis"
+      : unifiedStatusTone === "warning"
+      ? "Waspada"
+      : "Aman";
+
+  const heroStatusReason =
+    heroTodayAlertLevel === "exceeded"
+      ? `Melewati batas hari ini sebesar ${formatRupiah(heroOverLimit)}`
+      : heroTodayAlertLevel === "reached"
+      ? "Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)"
+      : heroTodayAlertLevel === "warning"
+      ? `Pemakaian hari ini sudah ${heroTodayUsagePercent}%, sisa ${formatRupiah(heroTodayRemaining)}`
+      : heroStatus.status === "danger"
+      ? `Jatah harian tersisa di bawah Rp 30rb/hari`
+      : heroStatus.status === "warning"
+      ? `Jatah harian tersisa di bawah Rp 65rb/hari`
+      : null;
+
   const carryoverOffer = dashboardData?.carryoverOffer || null;
   const paydayPrompt = dashboardData?.paydayPrompt || null;
 
@@ -602,26 +631,23 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="w-full max-w-[1100px] mx-auto space-y-6 pb-6">
-      {/* 0 & 1: Top Hero Section (Full width on all screens) */}
-      <div className="space-y-4">
+    <div className="w-full max-w-[1100px] mx-auto space-y-4 sm:space-y-6 pb-8">
+      {/* 0 & 1: Top Hero Section (Rapat di HP agar Hero Card mulai < 20% tinggi layar) */}
+      <div className="space-y-2.5 sm:space-y-3.5">
         {/* 0. Header Tanggal Dinamis & Sapaan */}
-        <div className="flex items-center justify-between px-1">
-          <div>
-            <div className="flex items-center gap-1.5 text-accent text-[11px] font-black uppercase tracking-wider">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>{dateInfo?.full || "Rabu, 18 November 2026"}</span>
+        <div className="px-1 space-y-0.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[color:var(--accent-text)] text-xs font-extrabold tracking-wide truncate">
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{dateInfo?.full || "Rabu, 18 November 2026"}</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight mt-0.5">
-              Halo, {dashboardData?.userName || "Mahasiswa"}
-            </h1>
-          </div>
-
-          <div className="text-right">
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-card border border-border text-muted-foreground">
-              Bulan {dateInfo?.monthName || "November"}
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-card border border-border text-muted-foreground shrink-0">
+              {dateInfo?.monthName || "November"}
             </span>
           </div>
+          <h1 className="text-lg sm:text-2xl font-black text-foreground tracking-tight leading-snug">
+            Halo, {dashboardData?.userName || "Mahasiswa"}
+          </h1>
         </div>
 
         {/* 1. Kartu Motivasi Harian (Disembunyikan di HP sesuai PRD Tahap 1) */}
@@ -676,31 +702,34 @@ export default function DashboardPage() {
         {/* Left Column (lg:col-span-6 space-y-5) */}
         <div className="lg:col-span-6 space-y-5">
           {/* 2. Hero Card Ramping: Fokus Sisa Batas Hari Ini */}
-          <section className="relative overflow-hidden bg-card border border-border rounded-xl p-5 shadow-md space-y-3.5">
-            {/* Baris 1: Brand + Status + Angka Utama Sisa Batas Hari Ini */}
+          <section className="relative overflow-hidden bg-card border border-border rounded-xl p-4 sm:p-5 shadow-md space-y-3">
+            {/* Baris 1: Label "Hari ini" + Status Konsisten + Angka Utama Sisa Batas Hari Ini */}
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <BrandText height={18} />
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                    Hari ini
+                  </span>
                   <span
-                    className={`inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-0.5 rounded-full ${heroStatus.status === "safe"
-                      ? "bg-accent/20 text-accent"
-                      : heroStatus.status === "warning"
-                        ? "bg-[#FFB04A]/20 text-[#FFB04A]"
-                        : "bg-expense/20 text-expense"
-                      }`}
+                    className={`inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                      unifiedStatusTone === "safe"
+                        ? "bg-accent/15 text-[color:var(--accent-text)]"
+                        : unifiedStatusTone === "warning"
+                        ? "bg-[#FFB04A]/15 text-[color:var(--warning-text)]"
+                        : "bg-expense/15 text-[color:var(--expense-text)]"
+                    }`}
                   >
-                    {heroStatus.status === "safe" ? (
+                    {unifiedStatusTone === "safe" ? (
                       <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                    ) : heroStatus.status === "warning" ? (
+                    ) : unifiedStatusTone === "warning" ? (
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     ) : (
                       <ShieldAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     )}
-                    <span>{heroStatus.label}</span>
+                    <span>{unifiedStatusLabel}</span>
                   </span>
                 </div>
-                <p className="text-ui-label text-muted-foreground pt-0.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground pt-0.5">
                   Sisa Batas Hari Ini
                 </p>
               </div>
@@ -708,11 +737,11 @@ export default function DashboardPage() {
               <div className="text-right">
                 <div
                   className={`text-3xl font-black tracking-tight ${
-                    heroTodayAlertLevel === "exceeded" || heroTodayAlertLevel === "reached"
-                      ? "text-expense"
-                      : heroTodayAlertLevel === "warning"
-                      ? "text-[#FFB04A]"
-                      : "text-accent"
+                    unifiedStatusTone === "danger"
+                      ? "text-[color:var(--expense-text)]"
+                      : unifiedStatusTone === "warning"
+                      ? "text-[color:var(--warning-text)]"
+                      : "text-[color:var(--accent-text)]"
                   }`}
                 >
                   {dashboardData || accountsList.length > 0 ? formatRupiah(heroTodayRemaining) : "Rp ..."}
@@ -725,7 +754,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Baris 2: 1 Progress Bar Pemakaian Hari Ini */}
+            {/* Baris 2: 1 Progress Bar Pemakaian Hari Ini + Alasan Singkat Saat Waspada/Kritis */}
             {dashboardData && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
@@ -739,28 +768,24 @@ export default function DashboardPage() {
                 <div className="h-2 w-full bg-background rounded-full overflow-hidden border border-border/70">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${
-                      heroTodayAlertLevel === "exceeded" || heroTodayAlertLevel === "reached"
+                      unifiedStatusTone === "danger"
                         ? "bg-expense"
-                        : heroTodayAlertLevel === "warning"
+                        : unifiedStatusTone === "warning"
                         ? "bg-[#FFB04A]"
                         : "bg-accent"
                     }`}
                     style={{ width: `${Math.min(100, heroTodayUsagePercent)}%` }}
                   />
                 </div>
-                {(heroTodayAlertLevel === "warning" ||
-                  heroTodayAlertLevel === "reached" ||
-                  heroTodayAlertLevel === "exceeded") && (
+                {heroStatusReason && (
                   <p
-                    className={`text-xs font-bold ${
-                      heroTodayAlertLevel === "warning" ? "text-[#FFB04A]" : "text-expense"
+                    className={`text-xs font-bold truncate ${
+                      unifiedStatusTone === "warning"
+                        ? "text-[color:var(--warning-text)]"
+                        : "text-[color:var(--expense-text)]"
                     }`}
                   >
-                    {heroTodayAlertLevel === "warning"
-                      ? `Batas hari ini hampir habis, tersisa ${formatRupiah(heroTodayRemaining)}.`
-                      : heroTodayAlertLevel === "reached"
-                      ? "Batas pengeluaran hari ini sudah tercapai (Sisa Rp 0)."
-                      : `Melewati batas hari ini sebesar ${formatRupiah(heroOverLimit)}.`}
+                    {heroStatusReason}
                   </p>
                 )}
               </div>
@@ -770,7 +795,7 @@ export default function DashboardPage() {
             {queueCount > 0 && (
               <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#FFB04A]/15 border border-[#FFB04A]/35 text-xs font-bold text-foreground">
                 <div className="flex items-center gap-2 min-w-0">
-                  <RefreshCw className={`w-3.5 h-3.5 text-[#FFB04A] shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 text-[color:var(--warning-text)] shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
                   <span className="truncate">
                     {isSyncing
                       ? `Menyinkronkan ${queueCount} transaksi...`
@@ -781,7 +806,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => void manualSync()}
-                    className="text-xs font-black text-accent hover:underline shrink-0"
+                    className="text-xs font-black text-[color:var(--accent-text)] hover:underline shrink-0"
                   >
                     Kirim
                   </button>
@@ -789,41 +814,45 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Baris 4: Chip Dana Terkunci + Ringkasan Saldo & Siklus */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-border/60 text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
+            {/* Baris 4: Dua baris info rapi (WCAG AA >= 4.5:1, min 12px) */}
+            <div className="pt-2.5 border-t border-border/60 text-xs space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <div className="flex items-center gap-1.5 flex-wrap text-muted-foreground font-semibold">
+                  <span>
+                    Saldo{" "}
+                    <strong className="text-foreground">
+                      {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
+                    </strong>
+                  </span>
+                  {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 && (
+                    <span>
+                      · Disisihkan{" "}
+                      <strong className="text-foreground">{formatRupiah(heroReservedTotal)}</strong>
+                    </span>
+                  )}
+                </div>
+
                 {heroLockedTotal > 0 && (
                   <Link
                     href="/accounts#dana-terkunci"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFB04A]/15 border border-[#FFB04A]/30 text-[#FFB04A] font-bold hover:brightness-110 transition-all"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFB04A]/15 border border-[#FFB04A]/30 text-[color:var(--warning-text)] font-bold hover:brightness-110 transition-all"
                   >
                     <Lock className="w-3 h-3 shrink-0" />
                     <span>Terkunci {formatRupiah(heroLockedTotal)}</span>
                   </Link>
                 )}
-                <span className="text-muted-foreground font-semibold">
-                  Saldo{" "}
-                  <strong className="text-foreground">
-                    {dashboardData || accountsList.length > 0 ? formatRupiah(heroMainBalance) : "Rp ..."}
-                  </strong>
-                </span>
-                {dashboardData?.reserveMode && dashboardData.reserveMode !== "none" && heroReservedTotal > 0 && (
-                  <span className="text-muted-foreground">
-                    • Sisih {formatRupiah(heroReservedTotal)}
-                  </span>
-                )}
               </div>
 
-              <div className="text-right text-muted-foreground font-semibold">
+              <p className="text-muted-foreground font-semibold">
                 <span>
                   {dashboardData?.allowanceCycle === "weekly"
                     ? `Sisa ${dashboardData?.remainingDays ?? "..."} hari (${INDONESIAN_DAYS[dashboardData?.paydayWeekday ?? 1]})`
                     : dashboardData?.allowanceCycle === "flexible"
                     ? `Sisa ${dashboardData?.remainingDays ?? "..."} hari`
-                    : `Sisa ${dashboardData?.remainingDays ?? "..."} hari (Tgl ${dashboardData?.paydayDay ?? 1})`}
+                    : `Sisa ${dashboardData?.remainingDays ?? "..."} hari (tgl ${dashboardData?.paydayDay ?? 1})`}
                 </span>
-                <span className="ml-2">• Bulan ini {dashboardData?.budgetUsedPercent || 0}%</span>
-              </div>
+                <span> · Bulan ini {dashboardData?.budgetUsedPercent || 0}% terpakai</span>
+              </p>
             </div>
           </section>
 
@@ -1121,23 +1150,18 @@ export default function DashboardPage() {
             </section>
           )}
 
-          {/* 2.2 Kartu Rekening (HP: horizontal snap, md ke atas: grid 2-3 kolom) */}
+          {/* 2.2 Kartu Rekening (Tanpa teks terpotong & tanpa badge total ganda) */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1 gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <Wallet className="w-4 h-4 text-accent shrink-0" />
-                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground truncate">
-                  Rekening & Dompet
+                <Wallet className="w-4 h-4 text-[color:var(--accent-text)] shrink-0" />
+                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  Rekening
                 </h2>
-                {accountsList.length > 0 && (
-                  <span className="text-xs font-black text-accent bg-accent/15 px-2 py-0.5 rounded-full border border-accent/25 shrink-0">
-                    Total {formatRupiah(liveAccountsTotal)}
-                  </span>
-                )}
               </div>
               <Link
                 href="/accounts"
-                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 min-h-[44px] px-2 shrink-0"
+                className="text-xs font-bold text-[color:var(--accent-text)] hover:underline flex items-center gap-1 min-h-[44px] px-2 shrink-0"
               >
                 <span>Kelola</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -1147,7 +1171,7 @@ export default function DashboardPage() {
             {accountsList.length === 0 ? (
               <div className="p-4 rounded-xl bg-card border border-border text-center text-xs text-muted-foreground">
                 Belum ada rekening aktif.{" "}
-                <Link href="/accounts" className="text-accent font-bold underline">
+                <Link href="/accounts" className="text-[color:var(--accent-text)] font-bold underline">
                   Tambah Rekening
                 </Link>
               </div>
@@ -1157,9 +1181,7 @@ export default function DashboardPage() {
                   ? "grid-cols-1"
                   : accountsList.length === 2
                     ? "grid-cols-2"
-                    : accountsList.length === 3
-                      ? "grid-cols-2 sm:grid-cols-3"
-                      : "grid-cols-2 sm:grid-cols-3"
+                    : "grid-cols-2 sm:grid-cols-3"
                   }`}
               >
                 {accountsList.map((acc: any) => {
@@ -1169,28 +1191,26 @@ export default function DashboardPage() {
                       : acc.type === "ewallet"
                         ? PhoneIcon
                         : Banknote;
+                  const typeLabel =
+                    acc.type === "bank" ? "Bank" : acc.type === "ewallet" ? "E-Wallet" : "Tunai";
                   return (
                     <Link
                       key={acc.id}
                       href="/accounts"
+                      aria-label={`${acc.name} (${typeLabel}), saldo ${formatRupiah(acc.balance || 0)}`}
                       className="w-full bg-card border border-border rounded-xl p-3 sm:p-3.5 shadow-xs hover:border-accent/40 transition-all flex flex-col justify-between group min-h-[88px]"
                     >
-                      <div className="flex items-center justify-between gap-1.5 min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60">
-                            <AccIcon className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="text-xs font-bold text-foreground truncate">
-                            {acc.name}
-                          </span>
+                      <div className="flex items-start gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-muted text-foreground flex items-center justify-center shrink-0 border border-border/60 mt-0.5">
+                          <AccIcon className="w-3.5 h-3.5" aria-hidden="true" />
                         </div>
-                        <span className="text-[11px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/40">
-                          {acc.type === "bank" ? "Bank" : acc.type === "ewallet" ? "E-Wallet" : "Tunai"}
+                        <span className="text-xs font-bold text-foreground leading-snug line-clamp-2 break-words">
+                          {acc.name}
                         </span>
                       </div>
                       <div className="mt-2.5">
                         <p className="text-xs text-muted-foreground font-medium">Saldo</p>
-                        <p className="text-xs sm:text-sm font-black text-foreground group-hover:text-accent transition-colors truncate">
+                        <p className="text-xs sm:text-sm font-black text-foreground group-hover:text-[color:var(--accent-text)] transition-colors">
                           {formatRupiah(acc.balance || 0)}
                         </p>
                       </div>

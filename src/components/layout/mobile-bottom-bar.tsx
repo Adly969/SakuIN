@@ -1,9 +1,8 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
+import { usePathname } from "next/navigation";
 import {
   Home,
   PieChart,
@@ -36,24 +35,21 @@ const NAV_ITEMS: NavItem[] = [
 /* ------------------------------------------------------------------ */
 
 const BAR_HEIGHT       = 72;   // height of the visible card area
-const CIRCLE_SIZE      = 56;   // diameter of the floating active circle
-const CIRCLE_BORDER    = 3;    // border width of the circle
+const CIRCLE_SIZE      = 56;   // diameter of the center Catat action button
 const NOTCH_DEPTH      = 30;   // how far the notch dips from bar top
 const CORNER_RADIUS    = 26;   // squircle corner radius
 const TAB_COUNT        = 5;
+const CREATE_TAB_INDEX = 2;
 
 /* ------------------------------------------------------------------ */
 /*  SVG NOTCH PATH GENERATOR                                           */
-/*  Creates a rounded rectangular bar with a smooth concave notch       */
-/*  that hugs the active tab's floating circle.                        */
+/*  Creates a rounded rectangular bar with a fixed center concave      */
+/*  notch hugging the primary Catat (+) action button.                 */
 /* ------------------------------------------------------------------ */
 
-function generateBarPath(
-  width: number,
-  activeIndex: number,
-): string {
+function generateBarPath(width: number): string {
   const tabW = width / TAB_COUNT;
-  const cx = tabW * (activeIndex + 0.5); // center X of active tab
+  const cx = tabW * (CREATE_TAB_INDEX + 0.5); // center X of Catat tab
 
   // Notch geometry
   const notchHalfW = CIRCLE_SIZE / 2 + 10; // half-width of the concave notch cutout
@@ -108,10 +104,6 @@ function generateBarPath(
 
 function BottomBarContent() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const shouldReduceMotion = useReducedMotion();
-  const isCreateAction =
-    pathname === "/transactions" && searchParams.get("action") === "new";
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
@@ -142,21 +134,13 @@ function BottomBarContent() {
   }
 
   const tabWidth = width / TAB_COUNT;
-  const activeCenterX = tabWidth * (activeIndex + 0.5);
-  const ActiveIcon = NAV_ITEMS[activeIndex].icon;
+  const centerActionX = tabWidth * (CREATE_TAB_INDEX + 0.5);
+  const isCreateActive = activeIndex === CREATE_TAB_INDEX;
 
-  /* ---- Transitions ---- */
-  const springTransition = shouldReduceMotion
-    ? { duration: 0.01 }
-    : { type: "spring" as const, stiffness: 350, damping: 26 };
+  /* ---- SVG path (fixed center notch for Catat) ---- */
+  const barPath = useMemo(() => generateBarPath(width), [width]);
 
-  /* ---- SVG path ---- */
-  const barPath = useMemo(
-    () => generateBarPath(width, activeIndex),
-    [width, activeIndex],
-  );
-
-  /* ---- Circle position (centered above notch) ---- */
+  /* ---- Circle position (centered above center notch) ---- */
   const circleTop = -(CIRCLE_SIZE / 2) + NOTCH_DEPTH / 2 - 2;
 
   return (
@@ -164,13 +148,23 @@ function BottomBarContent() {
       aria-label="Navigasi Bawah"
       className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-none select-none pb-safe"
     >
-      <div className="max-w-md mx-auto px-4 pb-2">
+      {/* Alas penutup halus agar kartu halaman di belakang tidak tembus & tidak membentuk bingkai ganda */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(to top, var(--background) 62%, color-mix(in srgb, var(--background) 80%, transparent) 84%, transparent 100%)",
+        }}
+      />
+
+      <div className="relative max-w-md mx-auto px-4 pb-1.5">
         <div
           ref={containerRef}
           className="relative w-full pointer-events-auto"
           style={{ height: BAR_HEIGHT }}
         >
-          {/* ========== SVG BAR SHAPE (card surface + notch) ========== */}
+          {/* ========== SVG BAR SHAPE (1 wadah bersih + stroke tipis) ========== */}
           <svg
             width={width}
             height={BAR_HEIGHT}
@@ -178,87 +172,97 @@ function BottomBarContent() {
             className="absolute inset-0 overflow-visible pointer-events-none"
             style={{
               filter:
-                "drop-shadow(0 -2px 12px rgba(0, 0, 0, 0.08)) drop-shadow(0 -1px 4px rgba(0, 0, 0, 0.04))",
+                "drop-shadow(0 -4px 14px rgba(0, 0, 0, 0.16))",
             }}
           >
-            <defs>
-              {/* Add dark-mode specific shadow via class */}
-            </defs>
             <path
               d={barPath}
-              className="fill-card"
-              style={{ transition: "d 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+              className="fill-card stroke-border"
+              strokeWidth={1}
             />
           </svg>
 
-          {/* ========== FLOATING ACTIVE CIRCLE ========== */}
-          <motion.div
-            initial={false}
-            animate={{ x: activeCenterX - CIRCLE_SIZE / 2 }}
-            transition={springTransition}
+          {/* ========== PERMANENT CENTER CATAT BUTTON (OPSI A) ========== */}
+          <div
+            aria-hidden="true"
             className="absolute z-20 pointer-events-none"
             style={{
               width: CIRCLE_SIZE,
               height: CIRCLE_SIZE,
+              left: centerActionX - CIRCLE_SIZE / 2,
               top: circleTop,
             }}
           >
             <div
-              className="w-full h-full rounded-full bg-card flex items-center justify-center shadow-lg"
-              style={{
-                border: `${CIRCLE_BORDER}px solid var(--accent-border)`,
-              }}
+              className={`w-full h-full rounded-full bg-accent text-[#1F1F1F] flex items-center justify-center shadow-lg transition-transform ${
+                isCreateActive
+                  ? "ring-2 ring-foreground/25 dark:ring-white/35 scale-[1.03]"
+                  : "ring-2 ring-background/90"
+              }`}
             >
-              <ActiveIcon
-                className="w-6 h-6 stroke-[2]"
-                style={{ color: "var(--accent-text)" }}
-              />
+              <Plus className="w-7 h-7 stroke-[2.6]" />
             </div>
-          </motion.div>
+          </div>
 
           {/* ========== TAB BUTTONS ========== */}
           <div className="relative z-30 w-full h-full grid grid-cols-5">
             {NAV_ITEMS.map((item, index) => {
               const isActive = activeIndex === index;
+              const isCenterAction = index === CREATE_TAB_INDEX;
               const Icon = item.icon;
 
               return (
                 <Link
                   key={item.id}
                   href={item.href}
-                  aria-label={item.name}
+                  aria-label={isCenterAction ? "Catat transaksi" : item.name}
                   aria-current={isActive ? "page" : undefined}
-                  className="relative flex flex-col items-center justify-center h-full group focus-visible:outline-none"
+                  className={`relative flex flex-col items-center justify-center h-full group focus-visible:outline-none ${
+                    isCenterAction
+                      ? "before:content-[''] before:absolute before:inset-x-0 before:-top-4 before:bottom-0"
+                      : ""
+                  }`}
                   style={{ minHeight: 44 }}
                 >
-                  {/* Icon: only visible for INACTIVE tabs */}
-                  {!isActive && (
-                    <div className="flex items-center justify-center mb-1">
-                      <Icon className="w-[22px] h-[22px] stroke-[1.5] text-muted-foreground group-hover:text-foreground transition-colors" />
+                  {isCenterAction ? (
+                    <div style={{ height: 22 }} />
+                  ) : (
+                    <div className="relative flex items-center justify-center mb-0.5">
+                      <Icon
+                        className={`w-[22px] h-[22px] transition-colors ${
+                          isActive
+                            ? "stroke-[2.2] text-[color:var(--accent-text)]"
+                            : "stroke-[1.7] text-muted-foreground group-hover:text-foreground"
+                        }`}
+                      />
                     </div>
                   )}
 
-                  {/* Spacer for active tab (icon is in the floating circle) */}
-                  {isActive && <div style={{ height: 24 }} />}
-
                   {/* Label */}
                   <span
-                    className={`text-[11px] leading-tight transition-all ${
+                    className={`text-xs leading-tight transition-colors ${
                       isActive
-                        ? "font-bold text-foreground"
+                        ? "font-bold text-[color:var(--accent-text)]"
+                        : isCenterAction
+                        ? "font-bold text-foreground group-hover:text-[color:var(--accent-text)]"
                         : "font-medium text-muted-foreground group-hover:text-foreground"
                     }`}
                   >
                     {item.name}
                   </span>
+
+                  {/* Active non-color indicator bar (fixed position so baseline never shifts) */}
+                  {isActive && !isCenterAction && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute bottom-1.5 w-4 h-[3px] rounded-full bg-accent"
+                    />
+                  )}
                 </Link>
               );
             })}
           </div>
         </div>
-
-        {/* ========== HOME INDICATOR LINE ========== */}
-        <div className="w-28 h-[5px] bg-muted-foreground/25 rounded-full mx-auto mt-2" />
       </div>
     </nav>
   );
@@ -269,9 +273,5 @@ function BottomBarContent() {
 /* ------------------------------------------------------------------ */
 
 export function MobileBottomBar() {
-  return (
-    <Suspense fallback={null}>
-      <BottomBarContent />
-    </Suspense>
-  );
+  return <BottomBarContent />;
 }

@@ -26,7 +26,7 @@ export default function MainLayout({
             <TopHeader />
 
             {/* Content Container (max ~1100px, centered) */}
-            <main className="flex-1 w-full max-w-[1100px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+            <main className="flex-1 w-full max-w-[1100px] mx-auto px-4 pt-2.5 pb-28 sm:p-6 lg:p-8 md:pb-8">
               {children}
             </main>
 
